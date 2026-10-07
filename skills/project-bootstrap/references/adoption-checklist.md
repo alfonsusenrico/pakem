@@ -11,7 +11,10 @@ Do this as its own change on a `chore/adopt-agent-framework` branch.
 1. Replace any legacy `<!-- owner-baseline:start -->` block with the pinned digest
    (`af project sync <repo> --replace-legacy --apply`).
 2. Remove text in `AGENTS.md` that restates the kernel or skills, absolute home paths,
-   and dangling references. Move spec-like content into `openspec/specs/` or `docs/`,
+   and dangling references. Before deleting a paragraph because a spec "already says
+   it", compare them: specs are often older than `AGENTS.md`. Delete only when the spec
+   states the same fact without contradiction; otherwise move the paragraph with a dated
+   note naming the disagreeing spec and propose a corrective change. Move spec-like content into `openspec/specs/` or `docs/`,
    decision logs into `research/notes/`, and benchmark numbers into
    `research/evidence/`. Target: project content under 8,000 characters.
 3. Add `Capabilities:` and `## Overrides` (only real deviations, each with a reason).
@@ -35,3 +38,9 @@ Do this as its own change on a `chore/adopt-agent-framework` branch.
      or expect no hooks in other worktrees until the branch adding `.githooks/` is
      merged into theirs.
 9. Verify: `af project check <repo>`, the project's tests, lint, and build.
+10. While the adoption branch is unmerged, commit only from the adoption worktree:
+    `core.hooksPath` is repository-wide, so other checkouts run no hooks until
+    `.githooks/` reaches their branch.
+11. If a newer OpenSpec CLI turns new warnings into `--strict` failures, report errors and
+    warnings separately and record the warnings as follow-up work; never reshape specs
+    just to silence them (see `change-planning`).

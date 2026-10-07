@@ -96,7 +96,9 @@ verification gate. Get it approved, then propose changes phase by phase.
   alternatives and why; data, API, and failure behaviour; compatibility, migration,
   recovery, and rollback when relevant; risks; open questions.
 - **Spec deltas**: testable requirements using SHALL with WHEN/THEN scenarios,
-  including failure and permission scenarios.
+  including failure and permission scenarios. Never satisfy validation by wrapping a
+  requirement's text in a generic scenario; write a real WHEN/THEN case or leave the
+  warning recorded as follow-up work.
 - **Tasks**: grouped in phases; each phase ends with an "Expected Result" line;
   every task names the evidence that proves it (command, test, HTTP check, browser
   check). The last task pushes the branch and reports the compare link.
