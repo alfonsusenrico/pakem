@@ -80,7 +80,10 @@ verification gate. Get it approved, then propose changes phase by phase.
 - Generated `openspec-*` skills and commands are tool-owned. Create and refresh them
   only with `openspec init` / `openspec update`; never hand-author or imitate them.
 - Query the CLI (`openspec status`, `openspec instructions`, `openspec validate`)
-  instead of reconstructing its rules from memory. Never claim OpenSpec ran when it
+  instead of reconstructing its rules from memory.
+- Validation gate: `openspec validate --all` must report no errors. Also run it with
+  `--strict` and record any warnings as follow-up work; do not block on warnings, and
+  never reshape specs only to silence them. Never claim OpenSpec ran when it
   did not. If the CLI is unavailable, say so and use a clearly labelled manual
   fallback.
 - Keep `openspec/config.yaml` `context` and `rules` real and current (template:

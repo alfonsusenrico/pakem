@@ -41,6 +41,6 @@ Do this as its own change on a `chore/adopt-agent-framework` branch.
 10. While the adoption branch is unmerged, commit only from the adoption worktree:
     `core.hooksPath` is repository-wide, so other checkouts run no hooks until
     `.githooks/` reaches their branch.
-11. If a newer OpenSpec CLI turns new warnings into `--strict` failures, report errors and
-    warnings separately and record the warnings as follow-up work; never reshape specs
-    just to silence them (see `change-planning`).
+11. OpenSpec gate: `openspec validate --all` with no errors. Run `--strict` as well and
+    record its warnings (for example long requirements in older specs) as follow-up
+    work; never reshape specs just to silence them (see `change-planning`).
