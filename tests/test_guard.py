@@ -88,6 +88,64 @@ SHELL_CASES = [
 ]
 
 
+SECRET_GAP_CASES = [
+    # git object reads
+    ("git show HEAD:.env", DENY),
+    ("git show origin/main:config/.env.production", DENY),
+    ("git show :.env", DENY),
+    ("git --no-pager show HEAD~2:secrets/api_secret.txt", DENY),
+    ("git -C app show main:certs/server.key", DENY),
+    ("git show HEAD -- .env", DENY),
+    ("git cat-file -p HEAD:.env", DENY),
+    ("git cat-file blob HEAD:deploy/credentials.json", DENY),
+    ("git show HEAD:README.md", ALLOW),
+    ("git show HEAD:.env.example", ALLOW),
+    ("git show HEAD -- src/app.py", ALLOW),
+    ("git show --stat HEAD", ALLOW),
+    ("git cat-file -p HEAD:package.json", ALLOW),
+    # interpreter one-liners
+    ("python3 -c \"print(open('.env').read())\"", DENY),
+    ("python -c 'import pathlib; print((pathlib.Path.home() / \".ssh/id_ed25519\").read_text())'", DENY),
+    ("python3 -Ic \"print(open('config/.env.production').read())\"", DENY),
+    ("python3.12 -c \"import os; print(open(os.path.expanduser('~/.codex/auth.json')).read())\"", DENY),
+    ("python3 -c 'import sys; print(open(sys.argv[1]).read())' .env", DENY),
+    ("node -e \"console.log(require('fs').readFileSync('.env.production', 'utf8'))\"", DENY),
+    ("node --eval=\"require('fs').readFileSync('credentials.json')\"", DENY),
+    ("ruby -e 'puts File.read(\"id_ed25519\")'", DENY),
+    ("perl -ne 'print' .env", DENY),
+    ("perl -e 'open(F, \"<\", \"$ENV{HOME}/.ssh/id_rsa\"); print <F>'", DENY),
+    ("php -r 'echo file_get_contents(\".env\");'", DENY),
+    ("deno eval \"console.log(Deno.readTextFileSync('.env'))\"", DENY),
+    ("bun -e \"console.log(await Bun.file('.env.local').text())\"", DENY),
+    ("env python3 -c \"print(open('.env').read())\"", DENY),
+    ("python3 -c \"print(1 + 1)\"", ALLOW),
+    ("python3 -c \"print(open('.env.example').read())\"", ALLOW),
+    ("python3 -c \"from google.oauth2 import credentials\"", ALLOW),
+    ("python3 -m http.server 8000", ALLOW),
+    ("node -e \"console.log(require('./package.json').version)\"", ALLOW),
+    ("node -e \"const o = {key: 1}; console.log(o.key)\"", ALLOW),
+    ("ruby -e 'puts 1'", ALLOW),
+    # variable indirection within one command line
+    ("F=.env; cat $F", DENY),
+    ('F=.env && cat "${F}"', DENY),
+    ("export KEY_FILE=~/.ssh/id_rsa; base64 $KEY_FILE", DENY),
+    ("declare -x F=config/.env.local; grep TOKEN $F", DENY),
+    ("D=~/.ssh; K=$D/id_ed25519; cat $K", DENY),
+    ("F=.env; git show HEAD:$F", DENY),
+    ("F=.env\ncat $F", DENY),
+    ('F=.env; echo "$(cat $F)"', DENY),
+    ("F=.env; bash -c \"cat $F\"", DENY),
+    ("F='.env.production'; python3 -c \"print(open('$F').read())\"", DENY),
+    ("F=.env; python3 app.py < $F", DENY),
+    ("F=.env.example; cat $F", ALLOW),
+    ("F=README.md; cat $F", ALLOW),
+    ("F=.env; echo configured", ALLOW),
+    ("F=.env; F=README.md; cat $F", ALLOW),
+    ("D=~/.ssh; cat $D/known_hosts", ALLOW),
+    ("cat $F", ALLOW),
+]
+
+
 GUARD_HOME: Path | None = None
 
 
@@ -148,6 +206,21 @@ class GuardShellTests(IsolatedTestCase):
 
     def test_antigravity_run_command_cases(self) -> None:
         for command, expected in SHELL_CASES:
+            with self.subTest(command=command):
+                payload = {
+                    "toolCall": {"name": "run_command", "args": {"CommandLine": command}},
+                    "workspacePaths": [str(self.repo)],
+                }
+                self.assertEqual(antigravity_decision(run_guard("antigravity", payload)), expected)
+
+    def test_claude_secret_gap_cases(self) -> None:
+        for command, expected in SECRET_GAP_CASES:
+            with self.subTest(command=command):
+                payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(self.repo)}
+                self.assertEqual(claude_decision(run_guard("claude", payload)), expected)
+
+    def test_antigravity_secret_gap_cases(self) -> None:
+        for command, expected in SECRET_GAP_CASES:
             with self.subTest(command=command):
                 payload = {
                     "toolCall": {"name": "run_command", "args": {"CommandLine": command}},

@@ -154,10 +154,15 @@ def write_text_atomically(path: Path, text: str, mode: int | None = None) -> Non
     """Write via a sibling temp file and os.replace so a symlink at path is replaced, not followed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.af-tmp")
-    temporary.write_text(text, encoding="utf-8")
-    if mode is not None:
-        os.chmod(temporary, mode)
-    os.replace(temporary, path)
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        if mode is not None:
+            os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    except OSError:
+        if temporary.exists():
+            temporary.unlink()
+        raise
 
 
 def eprint(message: str) -> None:
