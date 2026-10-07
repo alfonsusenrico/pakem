@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//**/.env)",
+      "Read(~/.ssh/**)",
+      "Read(//**/*.pem)",
+      "Read(//**/db_prod.txt)",
+      "Read(~/.codex/auth.json)",
+      "Read(~/.gemini/oauth_creds.json)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main *)",
+      "Bash(git push origin master)",
+      "Bash(git push origin master *)",
+      "Bash(git commit --no-verify *)",
+      "Bash(git commit * --no-verify *)",
+      "Bash(printenv)",
+      "Bash(printenv *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.local/share/agent-framework/guard.py\" --host claude",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  }
+}

@@ -1,0 +1,10 @@
+# Prettier 3 already skips node_modules and everything in .gitignore.
+# List generated or vendored files that are committed but must not be reformatted.
+package-lock.json
+pnpm-lock.yaml
+coverage/
+dist/
+build/
+.next/
+out/
+next-env.d.ts

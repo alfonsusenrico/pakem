@@ -1,0 +1,22 @@
+# Banned patterns checked by `af lint` in *.md, *.toml, *.json, *.py, *.sh,
+# *.tmpl, *.rules, and hooks/* outside archive/ and tests/.
+# Each entry: id, regex (Python syntax), message, allow_paths (globs relative to
+# the repo root; `*` also matches `/`). This file itself is never scanned.
+
+[[banned]]
+id = "absolute-home-path"
+regex = '/Users/[A-Za-z0-9_-]+/'
+message = "machine-specific absolute home path; use ~/ or a repo-relative path"
+allow_paths = ["hosts/**", "docs/host-matrix.md", "tests/**"]
+
+[[banned]]
+id = "cut-env-values"
+regex = 'cut -d='
+message = "do not teach cut -d= on env files; use skills/sensitive-operations/scripts/env_keys.py"
+allow_paths = []
+
+[[banned]]
+id = "retired-skill-names"
+regex = '(?i)\b(caveman|ponytail|hallmark)\b'
+message = "retired compression/style skill names belong only in ADRs and the changelog"
+allow_paths = ["docs/adr/**", "docs/discovery/**", "CHANGELOG.md"]

@@ -1,0 +1,48 @@
+# Capability triggers (Working Standard Profile, section 2). A project lists its active
+# capabilities in AGENTS.md as: `Capabilities: deployed, database, money`
+# Standards name the capability that makes them mandatory; "always" applies to every project.
+
+[capabilities.always]
+summary = "Every project from the first commit"
+standards = [
+  "git with Conventional subject-only commits",
+  "native OpenSpec planning",
+  "typed fail-fast configuration",
+  "thin layering",
+  "schema validation at trust boundaries",
+  "formatter, linter, and CI",
+  "no secrets in code",
+  "research/ folder and PROJECT_STATE.md",
+]
+
+[capabilities.database]
+summary = "Uses a database"
+standards = ["versioned hand-written migrations run as a separate step", "real disposable Postgres in tests and CI", "migration re-apply and drift check"]
+
+[capabilities.deployed]
+summary = "Deployed or used by people other than the developer"
+standards = ["request id and safe structured logs", "security scans in CI", "immutable releases with health check and rollback", "backups", "light and dark themes for UI"]
+
+[capabilities.money]
+summary = "Payments, bookings, inventory, settlement, or balances"
+standards = ["idempotency keys", "append-only audit events", "amount and price snapshots", "row or advisory locks", "critical-path tests", "webhook signature verification", "auth on admin and money routes"]
+
+[capabilities.personal-data]
+summary = "Stores or processes personal data"
+standards = ["privacy and logging rules", "retention and access control", "synthetic fixtures only"]
+
+[capabilities.background-jobs]
+summary = "Durable background or scheduled work"
+standards = ["DB-backed jobs or outbox claimed with FOR UPDATE SKIP LOCKED", "separate worker process", "idempotent handlers"]
+
+[capabilities.api-consumers]
+summary = "API consumed by a separate frontend team, mobile app, or third party"
+standards = ["OpenAPI generated from code as the contract", "generated clients", "contract drift check in CI"]
+
+[capabilities.multi-user]
+summary = "Multiple users or roles"
+standards = ["authorization model", "audit trail", "auth requirements (expiry, revocation, CSRF, constant-time compares)"]
+
+[capabilities.llm]
+summary = "Uses a language model"
+standards = ["versioned prompt files", "evals with development and held-out sets before shipping model or prompt changes", "structured validated output when code consumes it", "confidence gate when decisions have side effects"]

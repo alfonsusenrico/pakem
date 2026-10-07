@@ -1,0 +1,35 @@
+# Host targets for `af install`. Facts here are version-sensitive: re-verify each
+# entry against its source at least quarterly and update `verified`.
+
+[hosts.claude]
+label = "Claude Code"
+instructions = "~/.claude/CLAUDE.md"
+skills_dirs = ["~/.claude/skills"]
+max_chars = 40000
+# A CLAUDE.md in the working directory or above stops AGENTS.md from loading;
+# ~/.claude/CLAUDE.md does not, so project AGENTS.md files still load.
+verify = "Run /context and confirm each instruction file appears exactly once."
+source = "https://code.claude.com/docs/en/memory"
+verified = "2026-10-07"
+
+[hosts.codex]
+label = "Codex"
+instructions = "~/.codex/AGENTS.md"
+skills_dirs = ["~/.agents/skills"]
+# project_doc_max_bytes default; applies to the combined instruction chain.
+max_bytes = 32768
+verify = "Run /status, then ask the agent to quote the 'agent-framework kernel' version line."
+source = "https://developers.openai.com/codex/guides/agents-md"
+verified = "2026-10-07"
+
+[hosts.antigravity]
+label = "Antigravity CLI (agy)"
+instructions = "~/.gemini/GEMINI.md"
+skills_dirs = ["~/.gemini/config/skills"]
+# Per rule file cap from agy 1.2.13 built-in docs; truncated on line boundaries.
+max_bytes = 24000
+# agy reports "conflicting global rules" when several global rule files exist.
+must_not_exist = ["~/.gemini/AGENTS.md", "~/.gemini/config/GEMINI.md", "~/.gemini/config/AGENTS.md"]
+verify = "Start agy, open Global rules, then ask the agent to quote the 'agent-framework kernel' version line."
+source = "agy 1.2.13 built-in skill agy-customizations (docs/rules.md, docs/skills.md)"
+verified = "2026-10-07"

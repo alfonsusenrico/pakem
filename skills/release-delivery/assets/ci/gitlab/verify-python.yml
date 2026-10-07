@@ -1,0 +1,35 @@
+# agent-framework CI template (GitLab): verify a Python project managed by uv.
+# Capability: always. Runs: locked install, format check, lint, type check, tests.
+# Use: include this file, then `extends: .af:verify-python` and set the variables below.
+# Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch
+# variable (set inconsistently); jobs use CI_COMMIT_REF_NAME and a static cache key.
+
+.af:verify-python:
+  # Pinned tag; pin by digest too (image@sha256:...) once recorded in assets/ci/PINS.md.
+  image: $AF_PYTHON_IMAGE
+  variables:
+    AF_PYTHON_IMAGE: ghcr.io/astral-sh/uv:0.12.23-python3.13-trixie-slim
+    PYTHON_DIR: "."
+    TYPECHECK_CMD: uv run pyright
+    TEST_CMD: uv run pytest
+    TEST_ARGS: ""
+    UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
+    UV_LINK_MODE: copy
+  interruptible: true
+  timeout: 20 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  cache:
+    key: af-uv-v1
+    paths:
+      - .cache/uv
+  script:
+    - cd "$PYTHON_DIR"
+    - uv sync --locked
+    - uv run ruff format --check
+    - uv run ruff check
+    - eval "$TYPECHECK_CMD"
+    - eval "$TEST_CMD $TEST_ARGS"
+  after_script:
+    - uv cache prune --ci

@@ -1,0 +1,40 @@
+# CI Standard
+
+Status: Active
+Applies to: every repository
+Last reviewed: 2026-10-07
+Review by: 2027-04-07
+Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard Profile section 10
+
+## Always
+- Triggers: pull/merge requests, pushes to `main`, tags.
+- Lockfile-checked install (`uv sync --locked`, `npm ci`); runtime versions match the
+  Dockerfile.
+- Format check, lint, type check, tests, build - the same commands developers run.
+- Secret scan (gitleaks), dependency audit (pip-audit, npm audit at high), lint for CI
+  files, shell scripts, and Dockerfiles.
+- Least-privilege tokens (`permissions: contents: read` by default); secrets only via
+  environment, never interpolated into scripts; every third-party action or image
+  pinned (actions by commit SHA).
+- Timeouts on every job; verify jobs cancel when superseded; required checks enforced
+  on `main`.
+
+## `database`
+- PostgreSQL service in CI; `REQUIRE_DB=1` so database tests cannot skip.
+- Apply migrations to an empty database, apply again (must be a no-op), run drift
+  checks, then tests.
+
+## `deployed`
+- Image build labelled with the revision; image scan (HIGH/CRITICAL fail); SBOM kept
+  with the release.
+- `main` deploys to staging; a `v*` tag that is an ancestor of `main` deploys to
+  production behind a manual approval.
+- One deployment per environment at a time (concurrency group / resource group plus a
+  host lock).
+- Post-deploy smoke checks the revision locally and publicly; notifications carry
+  environment, revision, and job link only.
+
+The CI templates ship in this skill's `assets/ci/` (GitHub Actions reusable workflows,
+GitLab CI hidden jobs, a project example for each, `README.md` for adoption, and
+`PINS.md` for pinned versions). Deployment pipeline templates are planned
+(`assets/ci/DEPLOY_DESIGN.md`).

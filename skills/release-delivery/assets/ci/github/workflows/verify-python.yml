@@ -1,0 +1,87 @@
+# agent-framework CI template: verify a Python project managed by uv.
+# Capability: always. Runs: locked install, format check, lint, type check, tests.
+# Expects the tooling from the project-bootstrap skill assets/tooling/python (ruff, pyright, pytest as dev dependencies).
+name: verify-python
+
+on:
+  workflow_call:
+    inputs:
+      python_dir:
+        description: Directory containing pyproject.toml and uv.lock, relative to the repository root.
+        type: string
+        default: "."
+      python_version:
+        description: Python version for uv (UV_PYTHON). Empty uses .python-version or requires-python.
+        type: string
+        default: ""
+      uv_version:
+        description: Exact uv version; keep it equal to the version pinned in the Dockerfile.
+        type: string
+        default: "0.12.23"
+      typecheck_cmd:
+        description: Type-check command.
+        type: string
+        default: uv run pyright
+      test_cmd:
+        description: Test command.
+        type: string
+        default: uv run pytest
+      test_args:
+        description: Extra arguments appended to test_cmd.
+        type: string
+        default: ""
+      runner:
+        description: Runner label.
+        type: string
+        default: ubuntu-24.04
+      timeout_minutes:
+        description: Job timeout in minutes.
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify-python
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.python_dir }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ inputs.uv_version }}
+          python-version: ${{ inputs.python_version }}
+          working-directory: ${{ inputs.python_dir }}
+
+      - name: Install from the lockfile
+        run: uv sync --locked
+
+      - name: Format check
+        run: uv run ruff format --check
+
+      - name: Lint
+        run: uv run ruff check
+
+      - name: Type check
+        env:
+          TYPECHECK_CMD: ${{ inputs.typecheck_cmd }}
+        run: eval "$TYPECHECK_CMD"
+
+      - name: Test
+        env:
+          TEST_CMD: ${{ inputs.test_cmd }}
+          TEST_ARGS: ${{ inputs.test_args }}
+        run: eval "$TEST_CMD $TEST_ARGS"

@@ -1,0 +1,33 @@
+# agent-framework CI template (GitLab): verify a Node or TypeScript project managed by npm.
+# Capability: always. Runs: npm ci, format check, lint, type check, tests, build.
+# Use: include this file, then `extends: .af:verify-node` and set the variables below.
+# Build-time values come from job variables; secrets come only from masked, protected
+# project CI/CD variables, never from this file.
+# Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch
+# variable (set inconsistently); jobs use CI_COMMIT_REF_NAME and a static cache key.
+
+.af:verify-node:
+  # Pinned tag; pin by digest too (image@sha256:...) once recorded in assets/ci/PINS.md.
+  image: $AF_NODE_IMAGE
+  variables:
+    AF_NODE_IMAGE: node:24.21.0-trixie-slim
+    NODE_DIR: "."
+    TEST_CMD: npm test
+    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
+  interruptible: true
+  timeout: 20 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  cache:
+    key: af-npm-v1
+    paths:
+      - .cache/npm
+  script:
+    - cd "$NODE_DIR"
+    - npm ci --prefer-offline --no-audit --no-fund
+    - npm run format:check
+    - npm run lint
+    - npm run typecheck
+    - eval "$TEST_CMD"
+    - npm run build

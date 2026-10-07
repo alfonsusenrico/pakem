@@ -1,0 +1,23 @@
+schema: spec-driven
+
+context: |
+  Project: <name> - <one-line purpose>.
+  Capabilities: <list>.
+  Stack: <languages, frameworks, database>.
+  Sources of truth: <for example live frontend, ERD, client confirmations>.
+  Boundaries: <what this project owns and what it must not own>.
+  LLM boundary (if llm): deterministic code computes facts; the model interprets.
+
+rules:
+  proposal:
+    - State the Expected Outcome as an observable result for the user or owner.
+    - List Non-goals.
+    - State whether the change adds a project capability and which standards that requires.
+  design:
+    - Number each decision and record rejected alternatives with reasons.
+    - Describe data, API, and failure behaviour; include migration and rollback when data changes.
+  tasks:
+    - Group tasks in phases; end each phase with an "Expected Result" line.
+    - Every task names the evidence that proves it (command, test, HTTP or browser check).
+    - Track owner production confirmation in PROJECT_STATE.md, not as an open task.
+    - The final task pushes the branch and reports the compare link.

@@ -1,0 +1,113 @@
+# agent-framework CI template (GitLab): static security checks.
+# Capability: always (required by `deployed`). Hidden jobs: .af:secret-scan,
+# .af:python-audit, .af:node-audit, .af:shellcheck, .af:hadolint. Extend the ones that apply.
+# Validate .gitlab-ci.yml itself with the pipeline editor or `glab ci lint` (needs API access).
+# Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch
+# variable (set inconsistently); jobs use CI_COMMIT_REF_NAME.
+
+# The gitleaks CLI (MIT) scans merge request commits, or the full history on the default
+# branch. --redact keeps any finding's secret value out of the job log.
+.af:secret-scan:
+  image:
+    name: $AF_GITLEAKS_IMAGE
+    entrypoint: [""]
+  variables:
+    AF_GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1
+    GIT_DEPTH: "0"
+  interruptible: true
+  timeout: 10 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "merge_request_event" ]; then
+        gitleaks git --redact --no-banner --exit-code 1 \
+          --log-opts="${CI_MERGE_REQUEST_DIFF_BASE_SHA}..${CI_COMMIT_SHA}" .
+      else
+        gitleaks git --redact --no-banner --exit-code 1 .
+      fi
+
+# The export is fully pinned and hashed, so pip-audit can skip resolution (--disable-pip).
+.af:python-audit:
+  image: $AF_PYTHON_IMAGE
+  variables:
+    AF_PYTHON_IMAGE: ghcr.io/astral-sh/uv:0.12.23-python3.13-trixie-slim
+    PYTHON_DIR: "."
+    PIP_AUDIT_VERSION: "2.10.1"
+    UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
+  interruptible: true
+  timeout: 10 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  script:
+    - cd "$PYTHON_DIR"
+    - >-
+      uv export --frozen --format requirements-txt --all-groups
+      --no-emit-workspace --no-emit-local --output-file "$CI_PROJECT_DIR/requirements-audit.txt"
+    - >-
+      uvx "pip-audit@${PIP_AUDIT_VERSION}" --strict --require-hashes --disable-pip
+      -r "$CI_PROJECT_DIR/requirements-audit.txt"
+
+.af:node-audit:
+  image: $AF_NODE_IMAGE
+  variables:
+    AF_NODE_IMAGE: node:24.21.0-trixie-slim
+    NODE_DIR: "."
+  interruptible: true
+  timeout: 10 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  script:
+    - cd "$NODE_DIR"
+    - npm audit --audit-level=high
+
+.af:shellcheck:
+  image:
+    name: $AF_SHELLCHECK_IMAGE
+    entrypoint: [""]
+  variables:
+    AF_SHELLCHECK_IMAGE: koalaman/shellcheck-alpine:v0.11.0
+  interruptible: true
+  timeout: 10 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      exists:
+        - "**/*.sh"
+        - "**/*.bash"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+      exists:
+        - "**/*.sh"
+        - "**/*.bash"
+  script:
+    - >-
+      find . -type f \( -name '*.sh' -o -name '*.bash' \)
+      -not -path './.git/*' -not -path '*/node_modules/*' -not -path './.cache/*'
+      -exec shellcheck {} +
+
+.af:hadolint:
+  image:
+    name: $AF_HADOLINT_IMAGE
+    entrypoint: [""]
+  variables:
+    AF_HADOLINT_IMAGE: hadolint/hadolint:v2.15.1-debian
+  interruptible: true
+  timeout: 10 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      exists:
+        - "**/Dockerfile"
+        - "**/Dockerfile.*"
+        - "**/*.dockerfile"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+      exists:
+        - "**/Dockerfile"
+        - "**/Dockerfile.*"
+        - "**/*.dockerfile"
+  script:
+    - >-
+      find . -type f \( -name 'Dockerfile' -o -name 'Dockerfile.*' -o -name '*.dockerfile' \)
+      -not -path './.git/*' -not -path '*/node_modules/*'
+      -exec hadolint {} +

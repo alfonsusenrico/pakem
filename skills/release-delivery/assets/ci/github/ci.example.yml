@@ -1,0 +1,48 @@
+# Project caller for the agent-framework CI templates; save as .github/workflows/ci.yml.
+# Copied workflows: uses: ./.github/workflows/<name>.yml
+# Shared CI repository: uses: <owner>/<ci-repo>/.github/workflows/<name>.yml@<40-char-sha> # vX.Y.Z
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# One run per ref; a newer push cancels an older pull request run, while every main
+# commit keeps its own complete result.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Capability: always (Python service)
+  verify-python:
+    uses: ./.github/workflows/verify-python.yml
+    with:
+      python_dir: backend
+
+  # Capability: always (web frontend)
+  verify-node:
+    uses: ./.github/workflows/verify-node.yml
+    with:
+      node_dir: web
+      build_env: |
+        NEXT_PUBLIC_API_BASE_URL=https://api.example.invalid
+
+  # Capability: always; required before `deployed`
+  security:
+    uses: ./.github/workflows/security.yml
+    with:
+      python_dir: backend
+      node_dir: web
+
+  # Capability: database
+  database:
+    uses: ./.github/workflows/database.yml
+    with:
+      app_dir: backend
+      migrate_cmd: uv run python -m app.migrate
+      test_cmd: uv run pytest -m db

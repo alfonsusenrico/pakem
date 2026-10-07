@@ -1,0 +1,94 @@
+# agent-framework CI template: verify a Node or TypeScript project managed by npm.
+# Capability: always. Runs: npm ci, format check, lint, type check, tests, build.
+# Expects the npm scripts from the project-bootstrap skill assets/tooling/node (format:check, lint, typecheck, test, build).
+name: verify-node
+
+on:
+  workflow_call:
+    inputs:
+      node_dir:
+        description: Directory containing package.json and package-lock.json, relative to the repository root.
+        type: string
+        default: "."
+      node_version:
+        description: Node.js version; keep it equal to the version in the Dockerfile or .nvmrc.
+        type: string
+        default: "24"
+      build_env:
+        description: >-
+          Non-secret build-time variables, one NAME=value per line (for example public API base URLs).
+          Inputs are visible in logs; secrets never go here.
+        type: string
+        default: ""
+      test_cmd:
+        description: Test command.
+        type: string
+        default: npm test
+      runner:
+        description: Runner label.
+        type: string
+        default: ubuntu-24.04
+      timeout_minutes:
+        description: Job timeout in minutes.
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify-node
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.node_dir }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.node_dir }}/package-lock.json
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        env:
+          TEST_CMD: ${{ inputs.test_cmd }}
+        run: eval "$TEST_CMD"
+
+      - name: Build
+        env:
+          BUILD_ENV: ${{ inputs.build_env }}
+        run: |
+          while IFS= read -r line; do
+            if [[ -z "${line//[[:space:]]/}" ]]; then
+              continue
+            fi
+            if [[ ! "$line" =~ ^[A-Z_][A-Z0-9_]*= ]]; then
+              echo "::error::build_env lines must look like NAME=value"
+              exit 1
+            fi
+            export "${line?}"
+          done <<< "$BUILD_ENV"
+          npm run build

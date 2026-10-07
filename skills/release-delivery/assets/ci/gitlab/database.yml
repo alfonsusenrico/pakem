@@ -1,0 +1,70 @@
+# agent-framework CI template (GitLab): real-database checks.
+# Capability: database. Starts a disposable Postgres service, applies migrations, re-applies
+# them (must be a no-op), runs an optional drift check, then runs the database tests with
+# REQUIRE_DB=1 so they fail instead of skipping when the database is absent.
+# Use: include this file, then `extends: .af:database` and set MIGRATE_CMD and TEST_CMD.
+# Node projects also set AF_DATABASE_IMAGE to a Node image and INSTALL_CMD to `npm ci`.
+# Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch
+# variable (set inconsistently); jobs use CI_COMMIT_REF_NAME.
+
+.af:database:
+  image: $AF_DATABASE_IMAGE
+  services:
+    # Pin by digest too (postgres:17.9-trixie@sha256:...) and match the production major.
+    - name: $AF_POSTGRES_IMAGE
+      alias: postgres
+  variables:
+    AF_DATABASE_IMAGE: ghcr.io/astral-sh/uv:0.12.23-python3.13-trixie-slim
+    AF_POSTGRES_IMAGE: postgres:17.9-trixie
+    APP_DIR: "."
+    INSTALL_CMD: uv sync --locked
+    MIGRATE_CMD: ""
+    MIGRATE_CHECK_CMD: ""
+    TEST_CMD: ""
+    UV_CACHE_DIR: $CI_PROJECT_DIR/.cache/uv
+    # Disposable credentials for a service that exists only for this job.
+    POSTGRES_USER: app
+    POSTGRES_PASSWORD: app
+    POSTGRES_DB: app_test
+    REQUIRE_DB: "1"
+    TEST_DATABASE_URL: postgresql://app:app@postgres:5432/app_test
+    DATABASE_URL: postgresql://app:app@postgres:5432/app_test
+  interruptible: true
+  timeout: 20 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      if [ -z "$MIGRATE_CMD" ] || [ -z "$TEST_CMD" ]; then
+        echo "ERROR: set MIGRATE_CMD and TEST_CMD on the job that extends .af:database"
+        exit 1
+      fi
+    - cd "$APP_DIR"
+    - eval "$INSTALL_CMD"
+    - eval "$MIGRATE_CMD"
+    # pg_dump 17.6+ and 16.10+ write a random \restrict key into plain dumps; drop it so two
+    # dumps of the same schema compare equal. The client major must match the server.
+    - |
+      if command -v pg_dump > /dev/null 2>&1; then
+        pg_dump --schema-only --no-owner --no-privileges "$TEST_DATABASE_URL" \
+          | sed -E '/^\\(un)?restrict /d' > "$CI_PROJECT_DIR/schema-first.sql"
+      else
+        echo "WARNING: pg_dump is not in the job image; the re-apply below is verified by exit"
+        echo "WARNING: status only. Use an image with postgresql-client or set MIGRATE_CHECK_CMD."
+      fi
+    - eval "$MIGRATE_CMD"
+    - |
+      if [ -f "$CI_PROJECT_DIR/schema-first.sql" ]; then
+        pg_dump --schema-only --no-owner --no-privileges "$TEST_DATABASE_URL" \
+          | sed -E '/^\\(un)?restrict /d' > "$CI_PROJECT_DIR/schema-second.sql"
+        if ! diff -u "$CI_PROJECT_DIR/schema-first.sql" "$CI_PROJECT_DIR/schema-second.sql"; then
+          echo "ERROR: re-applying migrations changed the schema; migrations are not idempotent"
+          exit 1
+        fi
+      fi
+    - |
+      if [ -n "$MIGRATE_CHECK_CMD" ]; then
+        eval "$MIGRATE_CHECK_CMD"
+      fi
+    - eval "$TEST_CMD"

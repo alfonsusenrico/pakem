@@ -1,0 +1,16 @@
+{
+  "agent-framework-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|view_file|.*read.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.local/share/agent-framework/guard.py\" --host antigravity",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

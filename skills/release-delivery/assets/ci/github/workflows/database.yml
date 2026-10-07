@@ -1,0 +1,175 @@
+# agent-framework CI template: real-database checks.
+# Capability: database. Starts a disposable Postgres service, applies migrations, re-applies
+# them and proves the schema did not change, runs an optional drift check, then runs the
+# database tests with REQUIRE_DB=1 so they fail instead of skipping when the database is absent.
+name: database
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: Toolchain to set up, python (uv) or node (npm).
+        type: string
+        default: python
+      app_dir:
+        description: Directory the commands run in, relative to the repository root.
+        type: string
+        default: "."
+      python_version:
+        description: Python version for uv; empty uses .python-version or requires-python.
+        type: string
+        default: ""
+      uv_version:
+        description: Exact uv version.
+        type: string
+        default: "0.12.23"
+      node_version:
+        description: Node.js version.
+        type: string
+        default: "24"
+      install_cmd:
+        description: Install command; empty uses `uv sync --locked` (python) or `npm ci` (node).
+        type: string
+        default: ""
+      migrate_cmd:
+        description: Applies all pending migrations; must be idempotent.
+        type: string
+        required: true
+      migrate_check_cmd:
+        description: Optional drift check run after migrations (for example a schema or ORM diff).
+        type: string
+        default: ""
+      test_cmd:
+        description: Database test command.
+        type: string
+        required: true
+      # Prefer an exact version pinned by digest, for example
+      # postgres:17.9-trixie@sha256:<digest> (see assets/ci/PINS.md), matching production.
+      postgres_image:
+        description: Postgres service image.
+        type: string
+        default: postgres:17
+      runner:
+        description: Runner label (needs Docker for the service container).
+        type: string
+        default: ubuntu-24.04
+      timeout_minutes:
+        description: Job timeout in minutes.
+        type: number
+        default: 20
+
+permissions:
+  contents: read
+
+jobs:
+  database:
+    name: database
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.app_dir }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres_image }}
+        # Disposable credentials for a service that exists only for this job.
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      REQUIRE_DB: "1"
+      TEST_DATABASE_URL: postgresql://app:app@localhost:5432/app_test
+      DATABASE_URL: postgresql://app:app@localhost:5432/app_test
+      STACK: ${{ inputs.stack }}
+      MIGRATE_CMD: ${{ inputs.migrate_cmd }}
+    steps:
+      - name: Validate inputs
+        working-directory: .
+        run: |
+          case "$STACK" in
+            python | node) ;;
+            *)
+              echo "::error::stack must be python or node, got '$STACK'"
+              exit 1
+              ;;
+          esac
+
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        if: inputs.stack == 'python'
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ inputs.uv_version }}
+          python-version: ${{ inputs.python_version }}
+          working-directory: ${{ inputs.app_dir }}
+
+      - name: Set up Node.js
+        if: inputs.stack == 'node'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.app_dir }}/package-lock.json
+
+      - name: Install
+        env:
+          INSTALL_CMD: ${{ inputs.install_cmd }}
+        run: |
+          if [[ -z "$INSTALL_CMD" && "$STACK" == "python" ]]; then
+            INSTALL_CMD="uv sync --locked"
+          elif [[ -z "$INSTALL_CMD" ]]; then
+            INSTALL_CMD="npm ci"
+          fi
+          eval "$INSTALL_CMD"
+
+      - name: Apply migrations
+        run: eval "$MIGRATE_CMD"
+
+      # pg_dump 17.6+ and 16.10+ write a random \restrict key into plain dumps; drop it so
+      # two dumps of the same schema compare equal.
+      - name: Snapshot schema after first apply
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$PG_CONTAINER" pg_dump --schema-only --no-owner --no-privileges -U app -d app_test \
+            | sed -E '/^\\(un)?restrict /d' > "$RUNNER_TEMP/schema-first.sql"
+
+      - name: Re-apply migrations (must be a no-op)
+        run: eval "$MIGRATE_CMD"
+
+      - name: Verify the re-apply changed nothing
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$PG_CONTAINER" pg_dump --schema-only --no-owner --no-privileges -U app -d app_test \
+            | sed -E '/^\\(un)?restrict /d' > "$RUNNER_TEMP/schema-second.sql"
+          if ! diff -u "$RUNNER_TEMP/schema-first.sql" "$RUNNER_TEMP/schema-second.sql"; then
+            echo "::error::re-applying migrations changed the schema; migrations are not idempotent"
+            exit 1
+          fi
+
+      - name: Migration drift check
+        if: inputs.migrate_check_cmd != ''
+        env:
+          MIGRATE_CHECK_CMD: ${{ inputs.migrate_check_cmd }}
+        run: eval "$MIGRATE_CHECK_CMD"
+
+      - name: Database tests
+        env:
+          TEST_CMD: ${{ inputs.test_cmd }}
+        run: eval "$TEST_CMD"

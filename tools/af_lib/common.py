@@ -1,0 +1,230 @@
+"""Shared helpers: errors, hashing, home-relative paths, and reporting."""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+IGNORED_FILE_NAMES = frozenset({".DS_Store"})
+SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
+
+
+class AfError(Exception):
+    """A user-facing error that aborts the current command."""
+
+
+@dataclass
+class Report:
+    """Collects errors and warnings so a command can report them together."""
+
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def error(self, message: str) -> None:
+        self.errors.append(message)
+
+    def warn(self, message: str) -> None:
+        self.warnings.append(message)
+
+    def extend(self, other: "Report", prefix: str = "") -> None:
+        self.errors.extend(prefix + message for message in other.errors)
+        self.warnings.extend(prefix + message for message in other.warnings)
+
+    def print(self) -> None:
+        for message in self.errors:
+            print(f"ERROR: {message}")
+        for message in self.warnings:
+            print(f"WARNING: {message}")
+        print(f"{len(self.errors)} error(s), {len(self.warnings)} warning(s)")
+
+    @property
+    def exit_code(self) -> int:
+        if self.errors:
+            return 1
+        return 0
+
+
+def normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def sha256_text(text: str) -> str:
+    """Hex sha256 of text after LF normalization, encoded as UTF-8."""
+    return hashlib.sha256(normalize_newlines(text).encode("utf-8")).hexdigest()
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    return sha256_bytes(path.read_bytes())
+
+
+def read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise AfError(f"missing file: {path}") from exc
+    except UnicodeDecodeError as exc:
+        raise AfError(f"file is not valid UTF-8: {path}") from exc
+
+
+def home_dir() -> Path:
+    # Path.home() honours $HOME, which is what lets tests run against a temporary home.
+    return Path.home()
+
+
+def expand_user_path(raw: str) -> Path:
+    if raw == "~":
+        return home_dir()
+    if raw.startswith("~/"):
+        return home_dir() / raw[2:]
+    path = Path(raw)
+    if not path.is_absolute():
+        raise AfError(f"path must be absolute or start with ~/: {raw}")
+    return path
+
+
+def display_path(path: Path) -> str:
+    """Render a path as ~/... when it lives under HOME, otherwise absolute."""
+    home = home_dir()
+    try:
+        relative = path.relative_to(home)
+    except ValueError:
+        return str(path)
+    return "~/" + relative.as_posix()
+
+
+def tree_files(directory: Path) -> list[str]:
+    """Sorted POSIX relative paths of regular files under a directory."""
+    relative_paths: list[str] = []
+    for current_root, dir_names, file_names in os.walk(directory):
+        dir_names.sort()
+        for file_name in file_names:
+            if file_name in IGNORED_FILE_NAMES:
+                continue
+            absolute = Path(current_root) / file_name
+            relative_paths.append(absolute.relative_to(directory).as_posix())
+    relative_paths.sort()
+    return relative_paths
+
+
+def tree_sha(directory: Path) -> str:
+    """Hash of sorted relative paths plus contents; stable across copies."""
+    hasher = hashlib.sha256()
+    for relative in tree_files(directory):
+        content = (directory / relative).read_bytes()
+        hasher.update(f"{relative}\0{len(content)}\0".encode("utf-8"))
+        hasher.update(content)
+    return hasher.hexdigest()
+
+
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    completed = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+    )
+    if check and completed.returncode != 0:
+        raise AfError(f"git {' '.join(args)} failed in {repo}: {completed.stderr.strip()}")
+    return completed
+
+
+def is_git_work_tree(path: Path) -> bool:
+    completed = run_git(path, "rev-parse", "--is-inside-work-tree", check=False)
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+
+def write_text_atomically(path: Path, text: str, mode: int | None = None) -> None:
+    """Write via a sibling temp file and os.replace so a symlink at path is replaced, not followed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.af-tmp")
+    temporary.write_text(text, encoding="utf-8")
+    if mode is not None:
+        os.chmod(temporary, mode)
+    os.replace(temporary, path)
+
+
+def eprint(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+@dataclass(frozen=True)
+class Framework:
+    """Locations inside a framework checkout."""
+
+    root: Path
+
+    @property
+    def version_path(self) -> Path:
+        return self.root / "VERSION"
+
+    @property
+    def kernel_path(self) -> Path:
+        return self.root / "kernel" / "KERNEL.md"
+
+    @property
+    def digest_path(self) -> Path:
+        return self.root / "kernel" / "DIGEST.md"
+
+    @property
+    def targets_path(self) -> Path:
+        return self.root / "hosts" / "targets.toml"
+
+    @property
+    def skills_root(self) -> Path:
+        return self.root / "skills"
+
+    @property
+    def project_template_path(self) -> Path:
+        return self.root / "skills" / "project-bootstrap" / "assets" / "project" / "AGENTS.md.tmpl"
+
+    @property
+    def capabilities_path(self) -> Path:
+        return self.root / "standards" / "capabilities.toml"
+
+    @property
+    def banned_patterns_path(self) -> Path:
+        return self.root / "lint" / "banned.toml"
+
+    @property
+    def hooks_dir(self) -> Path:
+        return self.root / "hooks"
+
+    @property
+    def enforcement_dir(self) -> Path:
+        return self.root / "enforcement"
+
+    def version(self) -> str:
+        version = read_text(self.version_path).strip()
+        if not SEMVER_PATTERN.match(version):
+            raise AfError(f"VERSION is not semver: {version!r}")
+        return version
+
+
+def version_tuple(version: str) -> tuple[int, ...]:
+    """Numeric release part of a semver string, e.g. '0.1.0-rc1' -> (0, 1, 0)."""
+    release = re.split(r"[-+]", version, maxsplit=1)[0]
+    parts: list[int] = []
+    for piece in release.split("."):
+        if not piece.isdigit():
+            raise AfError(f"invalid version: {version!r}")
+        parts.append(int(piece))
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts)

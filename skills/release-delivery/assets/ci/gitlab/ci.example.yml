@@ -1,0 +1,71 @@
+# Project caller for the agent-framework GitLab CI templates; save as .gitlab-ci.yml.
+include:
+  # Shared CI project holding copies of the framework release-delivery assets/ci/gitlab files, pinned to a tag or SHA:
+  - project: my-group/agent-profile-ci
+    ref: v1.0.0
+    file:
+      - /gitlab/verify-python.yml
+      - /gitlab/verify-node.yml
+      - /gitlab/security.yml
+      - /gitlab/database.yml
+  # Or copies kept in this repository:
+  # - local: /ci/af/verify-python.yml
+
+# Merge request pipelines, plus default-branch pipelines; a branch with an open merge
+# request does not also get a duplicate branch pipeline.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+
+stages: [verify, security, database]
+
+default:
+  tags: [docker] # the runner tag this instance requires
+
+verify-python: # Capability: always (Python service)
+  extends: .af:verify-python
+  stage: verify
+  variables:
+    PYTHON_DIR: backend
+
+verify-node: # Capability: always (web frontend)
+  extends: .af:verify-node
+  stage: verify
+  variables:
+    NODE_DIR: web
+    NEXT_PUBLIC_API_BASE_URL: https://api.example.invalid
+
+secret-scan: # Capability: always; required before `deployed`
+  extends: .af:secret-scan
+  stage: security
+
+python-audit:
+  extends: .af:python-audit
+  stage: security
+  variables:
+    PYTHON_DIR: backend
+
+node-audit:
+  extends: .af:node-audit
+  stage: security
+  variables:
+    NODE_DIR: web
+
+shellcheck:
+  extends: .af:shellcheck
+  stage: security
+
+hadolint:
+  extends: .af:hadolint
+  stage: security
+
+database: # Capability: database
+  extends: .af:database
+  stage: database
+  variables:
+    APP_DIR: backend
+    MIGRATE_CMD: uv run python -m app.migrate
+    TEST_CMD: uv run pytest -m db

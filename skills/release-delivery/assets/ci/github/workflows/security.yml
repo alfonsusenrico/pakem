@@ -1,0 +1,219 @@
+# agent-framework CI template: static security checks.
+# Capability: always (required by `deployed`). Runs: gitleaks secret scan, dependency audits
+# (pip-audit for uv projects, npm audit for npm projects), and CI/shell/Dockerfile lint
+# (actionlint, shellcheck, hadolint) for files that exist.
+# Tools are downloaded at pinned versions and verified against SHA-256 checksums recorded in
+# assets/ci/PINS.md; the binaries are linux x86_64, so use an x86_64 runner.
+name: security
+
+on:
+  workflow_call:
+    inputs:
+      python_dir:
+        description: Directory with pyproject.toml and uv.lock to audit; empty skips the Python audit.
+        type: string
+        default: ""
+      node_dir:
+        description: Directory with package.json and package-lock.json to audit; empty skips the npm audit.
+        type: string
+        default: ""
+      uv_version:
+        description: Exact uv version used to export the locked requirements.
+        type: string
+        default: "0.12.23"
+      node_version:
+        description: Node.js version used for npm audit.
+        type: string
+        default: "24"
+      runner:
+        description: Runner label (x86_64).
+        type: string
+        default: ubuntu-24.04
+      timeout_minutes:
+        description: Timeout for each job in minutes.
+        type: number
+        default: 10
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: secret-scan
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The gitleaks CLI (MIT) is used instead of gitleaks-action, which needs a paid
+      # license for organization repositories.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP/bin" gitleaks
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # Pull requests scan only their own commits; pushes scan the full history.
+      # --redact keeps any finding's secret value out of the job log.
+      - name: Scan for secrets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            gitleaks git --redact --no-banner --exit-code 1 --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+          else
+            gitleaks git --redact --no-banner --exit-code 1 .
+          fi
+
+  python-audit:
+    name: python-audit
+    if: inputs.python_dir != ''
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.python_dir }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ inputs.uv_version }}
+          working-directory: ${{ inputs.python_dir }}
+
+      # The export is fully pinned and hashed, so pip-audit can skip resolution (--disable-pip).
+      # Workspace members and local path packages are project code, not dependencies.
+      - name: Audit locked Python dependencies
+        env:
+          PIP_AUDIT_VERSION: 2.10.1
+        run: |
+          requirements="$RUNNER_TEMP/requirements-audit.txt"
+          uv export --frozen --format requirements-txt --all-groups \
+            --no-emit-workspace --no-emit-local --output-file "$requirements"
+          uvx "pip-audit@${PIP_AUDIT_VERSION}" --strict --require-hashes --disable-pip -r "$requirements"
+
+  node-audit:
+    name: node-audit
+    if: inputs.node_dir != ''
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.node_dir }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          package-manager-cache: false
+
+      - name: Audit locked npm dependencies
+        run: npm audit --audit-level=high
+
+  ci-lint:
+    name: ci-lint
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint, shellcheck, and hadolint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+          HADOLINT_VERSION: 2.15.1
+          HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+        run: |
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          fetch() {
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/$2" "$1"
+            echo "$3  $RUNNER_TEMP/$2" | sha256sum --check --strict
+          }
+
+          actionlint_archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          fetch "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${actionlint_archive}" \
+            "$actionlint_archive" "$ACTIONLINT_SHA256"
+          tar -xzf "$RUNNER_TEMP/$actionlint_archive" -C "$bin" actionlint
+
+          shellcheck_archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          fetch "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${shellcheck_archive}" \
+            "$shellcheck_archive" "$SHELLCHECK_SHA256"
+          tar -xJf "$RUNNER_TEMP/$shellcheck_archive" -C "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" "$bin/shellcheck"
+
+          fetch "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64" \
+            hadolint "$HADOLINT_SHA256"
+          install -m 0755 "$RUNNER_TEMP/hadolint" "$bin/hadolint"
+
+          echo "$bin" >> "$GITHUB_PATH"
+
+      # actionlint also runs shellcheck on every `run:` block because shellcheck is on PATH.
+      - name: Lint GitHub workflows
+        run: |
+          if compgen -G ".github/workflows/*.y*ml" > /dev/null; then
+            actionlint
+          else
+            echo "No workflow files; nothing to lint."
+          fi
+
+      - name: Lint shell scripts
+        run: |
+          mapfile -t scripts < <(git ls-files -- '*.sh' '*.bash')
+          if (( ${#scripts[@]} > 0 )); then
+            shellcheck "${scripts[@]}"
+          else
+            echo "No shell scripts; nothing to lint."
+          fi
+
+      - name: Lint Dockerfiles
+        run: |
+          mapfile -t dockerfiles < <(git ls-files -- '*Dockerfile' '*Dockerfile.*' '*.dockerfile')
+          if (( ${#dockerfiles[@]} > 0 )); then
+            hadolint "${dockerfiles[@]}"
+          else
+            echo "No Dockerfiles; nothing to lint."
+          fi
