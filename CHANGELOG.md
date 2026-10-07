@@ -5,6 +5,8 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- OpenSpec gate is `openspec validate --all` (errors fail); `--strict` warnings are recorded as follow-up work (owner decision).
+
 - Adoption lessons from the first migrations: compare specs before deleting AGENTS.md text;
   commit only from the adoption worktree while hooks are unmerged; separate OpenSpec
   warnings from errors after CLI upgrades; no wrapper scenarios; gate commits on check
