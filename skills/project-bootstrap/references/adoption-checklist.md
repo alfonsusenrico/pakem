@@ -6,7 +6,8 @@ Last reviewed: 2026-10-07
 Review by: 2027-04-07
 Sources: framework review of owner repositories (2026-10-07)
 
-Do this as its own change on a `chore/adopt-agent-framework` branch.
+Do this as its own change on a `chore/adopt-agent-framework` branch, in a worktree next
+to the repository (`../<repo>-adopt`), never under `/tmp`, which the system cleans.
 
 1. Replace any legacy `<!-- owner-baseline:start -->` block with the pinned digest
    (`af project sync <repo> --replace-legacy --apply`).
@@ -19,7 +20,9 @@ Do this as its own change on a `chore/adopt-agent-framework` branch.
    `research/evidence/`. Target: project content under 8,000 characters.
 3. Add `Capabilities:` and `## Overrides` (only real deviations, each with a reason).
 4. Compact `PROJECT_STATE.md` to the template (under about 8 KB); move dated history to
-   `JOURNAL.md`.
+   `JOURNAL.md`. Both are untracked, so each checkout has its own copy: write them in the
+   owner's main checkout (or move them there before removing the adoption worktree), and
+   back up the original first.
 5. Create `research/`; move out-of-repo harnesses and prototypes into the repository
    (`tests/e2e/`, `scripts/verify/`, `research/prototypes/`).
 6. Fill `openspec/config.yaml` context and rules; run `openspec update`; triage open

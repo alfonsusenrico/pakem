@@ -128,6 +128,9 @@ structure only, never application correctness.
 ## 8. Sync and archive
 
 - Archive once the spec deltas are synced and the verification record is complete.
+- When archiving several older changes, archive them in dependency order, check each
+  command's exit status before the next, and write a real `## Purpose` for any main spec
+  created from them (archives of legacy deltas leave it empty).
 - Owner-side confirmation in production does not block archiving: record it under
   "Awaiting owner confirmation" in `PROJECT_STATE.md` with the date.
 - If production later disproves something, open a new corrective change; never edit
