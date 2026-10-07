@@ -5,6 +5,11 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- Design bases for tools: `owner-dashboard` and `owner-workbench` (both themes, measured
+  contrast, provenance), from the portfolio (primary), the finance tracker web UI, and
+  the office dashboard and workbench UIs. Status: Draft pending owner review.
+- Uppercase labels use +0.05 to +0.08em tracking (research-backed; Butterick).
+
 - Worktrees live next to the repository, never under `/tmp`; local state files are per
   checkout and belong in the owner's main checkout.
 - First push of a bootstrapped `main` is an owner action with `AF_ALLOW_PROTECTED_PUSH=1`.

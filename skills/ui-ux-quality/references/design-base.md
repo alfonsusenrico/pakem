@@ -33,7 +33,9 @@ Sources: owner Working Standard Profile section 8 (portfolio primary; office das
 - Uppercase only for table column headers and field labels, at least 11px and 4.5:1
   contrast; never as eyebrows on public pages.
 - Prose left-aligned (never justified), 60-78 characters per line, line height ~1.6.
-- Display headings may use slight negative tracking; UI text uses 0.
+- Display headings may use slight negative tracking; UI text uses 0; uppercase labels
+  use +0.05 to +0.08em (capitals look cramped without it; Butterick, Practical
+  Typography, "Letterspacing": 5-12% for all caps).
 - Relative units that respect user settings; fluid `clamp()` for display sizes.
 
 ## Fonts
