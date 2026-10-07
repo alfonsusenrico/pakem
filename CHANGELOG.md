@@ -5,6 +5,12 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- Worktrees live next to the repository, never under `/tmp`; local state files are per
+  checkout and belong in the owner's main checkout.
+- First push of a bootstrapped `main` is an owner action with `AF_ALLOW_PROTECTED_PUSH=1`.
+- Archive older OpenSpec changes in dependency order with per-command status checks and
+  real Purpose sections.
+
 - OpenSpec gate is `openspec validate --all` (errors fail); `--strict` warnings are recorded as follow-up work (owner decision).
 
 - Adoption lessons from the first migrations: compare specs before deleting AGENTS.md text;

@@ -48,8 +48,10 @@ capabilities, and stack. Record the decision in `research/notes/`.
     (`af hooks install <repo> --apply`) so commits stay Conventional and subject-only.
 11. **CI**: add CI from the `release-delivery` skill templates for the declared
     capabilities; CI exists before the first feature lands.
-12. **First commit**: `chore: bootstrap project` on `main` (documentation and
-    scaffolding only), then branch for the first change.
+12. **First commit**: `chore: bootstrap project` on `main`, then branch for the first
+    change. The pre-push hook lets only documentation reach `main`, so the first push of
+    a bootstrapped `main` that contains code is done once by the owner with
+    `AF_ALLOW_PROTECTED_PUSH=1 git push -u origin main` (agents cannot push to `main`).
 
 ## 3. Capabilities
 

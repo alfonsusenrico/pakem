@@ -18,7 +18,9 @@ description: Use when creating, updating, or compacting PROJECT_STATE.md or JOUR
 ## 2. PROJECT_STATE.md
 
 A local, untracked snapshot (listed in `.git/info/exclude`) built from the
-[template](assets/PROJECT_STATE.md.tmpl). Hard rules:
+[template](assets/PROJECT_STATE.md.tmpl). Untracked files are not shared between git
+worktrees: the owner's main checkout holds the real copy; never leave the only current
+version in a temporary worktree. Hard rules:
 
 - Under about 8,000 characters. When it grows, move dated detail to `JOURNAL.md`.
 - Fixed sections only; each entry is a current fact, not a story.
