@@ -23,5 +23,15 @@ Do this as its own change on a `chore/adopt-agent-framework` branch.
    changes (archive verified ones, record owner confirmations in `PROJECT_STATE.md`).
 7. Add the formatter and linter configuration and run them in one formatting-only
    commit.
-8. Install hooks; add or update CI from the templates for the declared capabilities.
+8. Install hooks (`af hooks install <repo> --apply`); add or update CI from the
+   templates for the declared capabilities.
+   - Integration branch other than `main` (for example `development`): add
+     `--protect development --protect main`; the list replaces the default
+     `main`/`master` set, so name every branch that stays protected.
+   - Client repository: add `--local-only` so `.githooks/` is listed in
+     `.git/info/exclude` and never committed to the client's repository.
+   - Worktrees: `core.hooksPath` applies to every worktree, but each worktree needs
+     its own `.githooks/`. Run the install in every existing worktree (local-only),
+     or expect no hooks in other worktrees until the branch adding `.githooks/` is
+     merged into theirs.
 9. Verify: `af project check <repo>`, the project's tests, lint, and build.

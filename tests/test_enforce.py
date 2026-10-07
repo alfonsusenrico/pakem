@@ -127,13 +127,25 @@ class EnforceTests(IsolatedTestCase):
         self.assert_fails(self.af("enforce", "install", "--host", "codex", "--apply"))
 
 
+CODEX_RULES = REPO_ROOT / "enforcement" / "codex" / "agent-framework.rules"
+PROTECTED_REFSPEC_FORMS = ("{}", "HEAD:{}", "+{}", ":{}", "refs/heads/{}", "HEAD:refs/heads/{}")
+
+
+class CodexRulesContentTests(unittest.TestCase):
+    def test_every_refspec_form_is_listed_for_each_protected_branch(self) -> None:
+        text = CODEX_RULES.read_text()
+        for branch in ("main", "master", "development"):
+            for form in PROTECTED_REFSPEC_FORMS:
+                with self.subTest(refspec=form.format(branch)):
+                    self.assertIn(f'"{form.format(branch)}",', text)
+
+
 @unittest.skipIf(shutil.which("codex") is None, "codex CLI not installed")
 class CodexRulesSyntaxTests(unittest.TestCase):
     def decision(self, *command: str):
-        rules = REPO_ROOT / "enforcement" / "codex" / "agent-framework.rules"
         with tempfile.TemporaryDirectory(prefix="af-codex-home-") as home:
             completed = subprocess.run(
-                ["codex", "execpolicy", "check", "--rules", str(rules), *command],
+                ["codex", "execpolicy", "check", "--rules", str(CODEX_RULES), *command],
                 capture_output=True,
                 text=True,
                 env=isolated_env(Path(home)),
@@ -148,6 +160,14 @@ class CodexRulesSyntaxTests(unittest.TestCase):
         self.assertEqual(self.decision("printenv"), "forbidden")
         self.assertIsNone(self.decision("git", "push", "origin", "feat/x"))
         self.assertIsNone(self.decision("git", "commit", "-m", "feat: x"))
+
+    def test_development_is_protected(self) -> None:
+        for form in PROTECTED_REFSPEC_FORMS:
+            refspec = form.format("development")
+            with self.subTest(refspec=refspec):
+                self.assertEqual(self.decision("git", "push", "origin", refspec), "forbidden")
+        self.assertIsNone(self.decision("git", "push", "origin", "development-docs"))
+        self.assertIsNone(self.decision("git", "push", "origin", "feat/x"))
 
 
 if __name__ == "__main__":

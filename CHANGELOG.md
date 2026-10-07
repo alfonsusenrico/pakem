@@ -5,6 +5,8 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- Project AGENTS.md template declares the project's own language rule (`Language:`); the framework and profiles set no language default.
+
 ### Added
 
 - Owner-approved Working Standard Profile (discovery across office, freelance, and
@@ -22,3 +24,19 @@ versioning as defined in `AGENTS.md`.
   `main` exception.
 - Enforcement fragments for Claude Code, Codex, and Antigravity CLI.
 - ADRs 0001-0005, host matrix, migration mapping, framework backlog.
+- Configurable protected branches: the multi-valued git config key
+  `agentframework.protectedBranch` (default `main`, `master`), set with
+  `af hooks install --protect BRANCH` (repeatable, replaces the set).
+- `af hooks install --local-only` adds `.githooks/` to `.git/info/exclude` so client
+  repositories never receive committed hook files.
+- `AF_ALLOW_PROTECTED_PUSH=1` as the documented pre-push override
+  (`AF_ALLOW_MAIN_PUSH=1` still works).
+
+### Changed
+
+- The pre-push documentation-only rule and the Claude Code / Antigravity guard now
+  protect the repository's configured branches instead of only `main`/`master`; the
+  guard reads the config in the push's working directory and falls back to
+  `main`/`master` when it cannot.
+- Codex execpolicy rules also forbid pushes to `development`, since static rules
+  cannot read per-repository config.

@@ -1,8 +1,11 @@
 #!/bin/sh
 # agent-framework pre-push hook: re-validate pushed commit messages and keep
-# main/master pushes to documentation-only changes.
+# pushes to protected branches to documentation-only changes.
 # Self-contained on purpose (it is copied into each repository's .githooks/).
-# Set AF_ALLOW_MAIN_PUSH=1 to bypass only the main/master documentation rule.
+# Protected branches come from the multi-valued git config key
+# agentframework.protectedBranch; when it is unset they are main and master.
+# Set AF_ALLOW_PROTECTED_PUSH=1 (or the older AF_ALLOW_MAIN_PUSH=1) to bypass only
+# the protected-branch documentation rule; commit messages are still checked.
 
 # Keep SUBJECT_PATTERN identical to the copy in hooks/commit-msg; tests assert it.
 SUBJECT_PATTERN='^(feat|fix|docs|refactor|test|chore|ci|perf|build|revert)(\([a-z0-9-]+\))?!?: [^ ].{0,71}$'
@@ -10,9 +13,38 @@ MAX_SUBJECT_LENGTH=72
 
 status=0
 
+# One branch name per line; git prints each configured value on its own line.
+protected_branches=$(git config --get-all agentframework.protectedBranch 2>/dev/null)
+if [ -z "$protected_branches" ]; then
+    protected_branches='main
+master'
+fi
+
 reject() {
     echo "pre-push: $1" >&2
     status=1
+}
+
+is_protected_branch() {
+    branch=$1
+    found=1
+    saved_ifs=$IFS
+    IFS='
+'
+    set -f
+    for candidate in $protected_branches; do
+        if [ "${candidate#refs/heads/}" = "$branch" ]; then
+            found=0
+            break
+        fi
+    done
+    set +f
+    IFS=$saved_ifs
+    return "$found"
+}
+
+protected_push_allowed() {
+    [ "${AF_ALLOW_PROTECTED_PUSH:-}" = "1" ] || [ "${AF_ALLOW_MAIN_PUSH:-}" = "1" ]
 }
 
 is_all_zeros() {
@@ -75,7 +107,7 @@ check_docs_only() {
         case "$path" in
             *.md | docs/*) ;;
             *)
-                reject "$short changes $path; only *.md and docs/** may be pushed to $2 (push a topic branch instead)"
+                reject "$short changes $path; only *.md and docs/** may be pushed to $2 (protected branch; push a topic branch instead)"
                 break
                 ;;
         esac
@@ -94,17 +126,19 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         commits=$(git rev-list "$remote_sha..$local_sha")
     fi
 
-    target_branch=""
+    protected_target=""
     case "$remote_ref" in
-        refs/heads/main | refs/heads/master)
-            target_branch=${remote_ref#refs/heads/}
+        refs/heads/*)
+            if is_protected_branch "${remote_ref#refs/heads/}"; then
+                protected_target=${remote_ref#refs/heads/}
+            fi
             ;;
     esac
 
     for commit in $commits; do
         check_message "$commit"
-        if [ -n "$target_branch" ] && [ "${AF_ALLOW_MAIN_PUSH:-}" != "1" ]; then
-            check_docs_only "$commit" "$target_branch"
+        if [ -n "$protected_target" ] && ! protected_push_allowed; then
+            check_docs_only "$commit" "$protected_target"
         fi
     done
 done
