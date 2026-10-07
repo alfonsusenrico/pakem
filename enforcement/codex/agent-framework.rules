@@ -3,35 +3,48 @@
 # Prefix rules only see leading argv tokens, so they cover the common spellings;
 # the git pre-push and commit-msg hooks remain the authoritative checks.
 
-MAIN_BRANCH_REFSPECS = [
+# Codex execpolicy rules are static and cannot read a repository's
+# agentframework.protectedBranch git config, so `development` (the usual
+# integration branch for repositories that do not merge straight into main) is
+# protected globally here; the guard and pre-push hook use the per-repository set.
+PROTECTED_BRANCH_REFSPECS = [
     "main",
     "master",
+    "development",
     "HEAD:main",
     "HEAD:master",
+    "HEAD:development",
     "+main",
     "+master",
+    "+development",
     ":main",
     ":master",
+    ":development",
     "refs/heads/main",
     "refs/heads/master",
+    "refs/heads/development",
     "HEAD:refs/heads/main",
     "HEAD:refs/heads/master",
+    "HEAD:refs/heads/development",
 ]
 
 FORCE_FLAGS = ["--force", "-f", "--force-with-lease", "--force-if-includes"]
 
 prefix_rule(
-    pattern = ["git", "push", ["origin", "upstream"], MAIN_BRANCH_REFSPECS],
+    pattern = ["git", "push", ["origin", "upstream"], PROTECTED_BRANCH_REFSPECS],
     decision = "forbidden",
-    justification = "Direct pushes to main/master are blocked; push a topic branch and let the owner merge.",
+    justification = "Direct pushes to main, master, or development are blocked; push a topic branch and let the owner merge.",
     match = [
         "git push origin main",
         "git push origin HEAD:main",
         "git push upstream master",
+        "git push origin development",
+        "git push origin HEAD:refs/heads/development",
     ],
     not_match = [
         "git push origin feat/x",
         "git push origin main-docs",
+        "git push origin development-docs",
     ],
 )
 

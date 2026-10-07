@@ -78,6 +78,20 @@ def build_parser() -> argparse.ArgumentParser:
     hooks_install = hooks_commands.add_parser("install", help="install commit-msg and pre-push hooks")
     hooks_install.add_argument("repo", nargs="?", help="repository directory (default: current directory)")
     hooks_install.add_argument("--force", action="store_true", help="replace differing hooks in .githooks/")
+    hooks_install.add_argument(
+        "--protect",
+        action="append",
+        metavar="BRANCH",
+        help=(
+            "protect this branch (repeatable); replaces the repository's protected set, "
+            "so list main too if it stays protected (default when never set: main, master)"
+        ),
+    )
+    hooks_install.add_argument(
+        "--local-only",
+        action="store_true",
+        help="add .githooks/ to .git/info/exclude so the hooks are never committed (client repositories)",
+    )
     _add_apply(hooks_install)
 
     enforce = commands.add_parser("enforce", help="install host-level guardrails")

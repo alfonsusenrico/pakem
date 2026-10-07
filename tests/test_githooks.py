@@ -119,6 +119,60 @@ class PrePushTests(IsolatedTestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("is not a conventional commit", rejected.stderr)
 
+    def test_bypass_alias_allows_code_push_to_main(self) -> None:
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        completed = self.push("main", extra_env={"AF_ALLOW_PROTECTED_PUSH": "1"})
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_unconfigured_repository_does_not_protect_other_branches(self) -> None:
+        git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        completed = self.push("development")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def protect(self, *branches: str) -> None:
+        for branch in branches:
+            git(self.repo, "config", "--add", "agentframework.protectedBranch", branch, home=self.home)
+
+    def test_configured_branch_rejects_code_push(self) -> None:
+        self.protect("development")
+        git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        for refspec in ("development", "HEAD:refs/heads/development"):
+            with self.subTest(refspec=refspec):
+                completed = self.push(refspec)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("only *.md and docs/** may be pushed to development", completed.stderr)
+
+    def test_configured_branch_accepts_docs_only_push(self) -> None:
+        self.protect("development")
+        git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
+        self.commit("docs/guide.md", "guide\n", "docs: add guide")
+        completed = self.push("development")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_configured_set_replaces_the_default(self) -> None:
+        self.protect("development")
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        completed = self.push("main")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_configured_set_can_keep_main(self) -> None:
+        self.protect("development", "main")
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        completed = self.push("main")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("may be pushed to main", completed.stderr)
+
+    def test_overrides_allow_code_push_to_configured_branch(self) -> None:
+        self.protect("development")
+        git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
+        for variable in ("AF_ALLOW_PROTECTED_PUSH", "AF_ALLOW_MAIN_PUSH"):
+            with self.subTest(variable=variable):
+                self.commit(f"src/{variable}.py", "x = 1\n", "feat: add module")
+                completed = self.push("development", extra_env={variable: "1"})
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_body_is_rejected(self) -> None:
         git(self.repo, "checkout", "-q", "-b", "feat/body", home=self.home)
         write(self.repo / "src" / "a.py", "a = 1\n")
@@ -180,6 +234,96 @@ class HooksInstallTests(IsolatedTestCase):
         self.assert_fails(completed)
         self.assertIn("core.hooksPath is already set", completed.stdout)
         self.assertFalse((self.repo / ".githooks").exists())
+
+    def protected_values(self, repo=None) -> list[str]:
+        completed = git(
+            repo or self.repo, "config", "--get-all", "agentframework.protectedBranch", home=self.home, check=False
+        )
+        return completed.stdout.splitlines()
+
+    def exclude_lines(self) -> list[str]:
+        exclude = self.repo / ".git" / "info" / "exclude"
+        if not exclude.exists():
+            return []
+        return exclude.read_text().splitlines()
+
+    def test_protect_dry_run_writes_nothing(self) -> None:
+        completed = self.af("hooks", "install", str(self.repo), "--protect", "development")
+        self.assert_ok(completed)
+        self.assertIn("agentframework.protectedBranch: development (currently unset, so main, master)", completed.stdout)
+        self.assertEqual(self.protected_values(), [])
+
+    def test_protect_is_idempotent_and_replaces_values(self) -> None:
+        arguments = ("hooks", "install", str(self.repo), "--protect", "development", "--protect", "main")
+        self.assert_ok(self.af(*arguments, "--apply"))
+        self.assertEqual(self.protected_values(), ["development", "main"])
+
+        again = self.af(*arguments, "--protect", "development", "--apply")
+        self.assert_ok(again)
+        self.assertIn("unchanged               git config agentframework.protectedBranch", again.stdout)
+        self.assertEqual(self.protected_values(), ["development", "main"])
+
+        narrowed = self.af("hooks", "install", str(self.repo), "--protect", "development", "--apply")
+        self.assert_ok(narrowed)
+        self.assertEqual(self.protected_values(), ["development"])
+
+    def test_protect_rejects_invalid_names(self) -> None:
+        for name in ("bad..name", "refs/heads/development", "-x"):
+            with self.subTest(name=name):
+                completed = self.af("hooks", "install", str(self.repo), f"--protect={name}", "--apply")
+                self.assert_fails(completed, code=2)
+                self.assertFalse((self.repo / ".githooks").exists())
+        self.assertEqual(self.protected_values(), [])
+
+    def test_without_protect_leaves_config_alone(self) -> None:
+        git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)
+        completed = self.af("hooks", "install", str(self.repo), "--apply")
+        self.assert_ok(completed)
+        self.assertNotIn("protectedBranch", completed.stdout)
+        self.assertEqual(self.protected_values(), ["development"])
+
+    def test_local_only_excludes_hooks_once(self) -> None:
+        dry_run = self.af("hooks", "install", str(self.repo), "--local-only")
+        self.assert_ok(dry_run)
+        self.assertIn(".githooks/ to .git/info/exclude", dry_run.stdout)
+        self.assertNotIn(".githooks/", self.exclude_lines())
+
+        self.assert_ok(self.af("hooks", "install", str(self.repo), "--local-only", "--apply"))
+        again = self.af("hooks", "install", str(self.repo), "--local-only", "--apply")
+        self.assert_ok(again)
+        self.assertIn(".git/info/exclude excludes .githooks/", again.stdout)
+        self.assertEqual(self.exclude_lines().count(".githooks/"), 1)
+        status = git(self.repo, "status", "--porcelain", "--untracked-files=all", home=self.home).stdout
+        self.assertNotIn(".githooks", status)
+
+    def test_local_only_appends_to_existing_exclude(self) -> None:
+        exclude = self.repo / ".git" / "info" / "exclude"
+        exclude.write_text("# local\n*.log")
+        self.assert_ok(self.af("hooks", "install", str(self.repo), "--local-only", "--apply"))
+        self.assertEqual(exclude.read_text(), "# local\n*.log\n.githooks/\n")
+
+    def test_local_only_shares_exclude_with_linked_worktree(self) -> None:
+        write(self.repo / "README.md", "seed\n")
+        git(self.repo, "add", "README.md", home=self.home)
+        git(self.repo, "commit", "-q", "-m", "docs: seed", home=self.home)
+        worktree = self.base / "app-feature"
+        git(self.repo, "worktree", "add", "-q", "-b", "feat/x", str(worktree), home=self.home)
+
+        self.assert_ok(self.af("hooks", "install", str(self.repo), "--local-only", "--apply"))
+        self.assert_ok(self.af("hooks", "install", str(worktree), "--local-only", "--apply"))
+        self.assertTrue((worktree / ".githooks" / "pre-push").exists())
+        self.assertEqual(self.exclude_lines().count(".githooks/"), 1)
+        status = git(worktree, "status", "--porcelain", "--untracked-files=all", home=self.home).stdout
+        self.assertNotIn(".githooks", status)
+
+    def test_local_only_refuses_tracked_hooks(self) -> None:
+        write(self.repo / ".githooks" / "pre-push", "#!/bin/sh\n", mode=0o755)
+        git(self.repo, "add", ".githooks/pre-push", home=self.home)
+        completed = self.af("hooks", "install", str(self.repo), "--local-only", "--force", "--apply")
+        self.assert_fails(completed)
+        self.assertIn(".githooks/ is tracked", completed.stdout)
+        self.assertNotIn(".githooks/", self.exclude_lines())
+        self.assertEqual((self.repo / ".githooks" / "pre-push").read_text(), "#!/bin/sh\n")
 
     def build_framework(self, root, **target_options):
         root = super().build_framework(root, **target_options)

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import GUARD, IsolatedTestCase, init_repo, isolated_env
+from support import GUARD, IsolatedTestCase, git, init_repo, isolated_env
 
 DENY = "deny"
 ASK = "ask"
@@ -101,7 +101,7 @@ def tearDownModule() -> None:
         shutil.rmtree(GUARD_HOME)
 
 
-def run_guard(host: str, payload: object) -> subprocess.CompletedProcess:
+def run_guard(host: str, payload: object, cwd: Path | None = None) -> subprocess.CompletedProcess:
     raw = payload if isinstance(payload, str) else json.dumps(payload)
     return subprocess.run(
         [sys.executable, str(GUARD), "--host", host],
@@ -109,6 +109,7 @@ def run_guard(host: str, payload: object) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         env=isolated_env(GUARD_HOME),
+        cwd=str(cwd) if cwd else None,
     )
 
 
@@ -168,6 +169,80 @@ class GuardShellTests(IsolatedTestCase):
         self.assertEqual(claude_decision(run_guard("claude", head_on_main)), DENY)
         outside_repo = {"tool_name": "Bash", "tool_input": {"command": "git push"}, "cwd": str(self.base)}
         self.assertEqual(claude_decision(run_guard("claude", outside_repo)), ASK)
+
+
+CONFIGURED_PUSH_CASES = [
+    # Repository protects exactly development and main.
+    ("git push origin development", DENY),
+    ("git push origin HEAD:development", DENY),
+    ("git push origin HEAD:refs/heads/development", DENY),
+    ("git push origin +development", DENY),
+    ("git push origin :development", DENY),
+    ("git push origin refs/heads/development", DENY),
+    ("git push -f origin development", DENY),
+    ("git push origin main", DENY),
+    ("git push origin master", ALLOW),
+    ("git push origin feat/x", ALLOW),
+    ("git push origin development-docs", ALLOW),
+    ("git push --force origin feat/x", ASK),
+    ("git push --all origin", DENY),
+]
+
+
+class GuardProtectedBranchConfigTests(IsolatedTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = init_repo(self.base / "client", self.home, branch="feat/topic")
+        for branch in ("development", "main"):
+            git(self.repo, "config", "--add", "agentframework.protectedBranch", branch, home=self.home)
+
+    def claude_push(self, command: str, cwd: Path) -> str | None:
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
+        return claude_decision(run_guard("claude", payload))
+
+    def test_claude_uses_configured_branches_from_cwd(self) -> None:
+        for command, expected in CONFIGURED_PUSH_CASES:
+            with self.subTest(command=command):
+                self.assertEqual(self.claude_push(command, self.repo), expected)
+
+    def test_antigravity_uses_configured_branches(self) -> None:
+        for command, expected in CONFIGURED_PUSH_CASES:
+            with self.subTest(command=command, source="workspace"):
+                payload = {
+                    "toolCall": {"name": "run_command", "args": {"CommandLine": command}},
+                    "workspacePaths": [str(self.repo)],
+                }
+                self.assertEqual(antigravity_decision(run_guard("antigravity", payload)), expected)
+            with self.subTest(command=command, source="process cwd"):
+                payload = {"toolCall": {"name": "run_command", "args": {"CommandLine": command}}}
+                decision = antigravity_decision(run_guard("antigravity", payload, cwd=self.repo))
+                self.assertEqual(decision, expected)
+
+    def test_reason_names_the_branch(self) -> None:
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git push origin development"}, "cwd": str(self.repo)}
+        output = json.loads(run_guard("claude", payload).stdout)
+        self.assertIn("protected branch development", output["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_bare_push_on_configured_branch(self) -> None:
+        git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
+        self.assertEqual(self.claude_push("git push", self.repo), DENY)
+        self.assertEqual(self.claude_push("git push origin HEAD", self.repo), DENY)
+
+    def test_directory_changes_select_the_repository(self) -> None:
+        self.assertEqual(self.claude_push("cd client && git push origin development", self.base), DENY)
+        self.assertEqual(self.claude_push(f"git -C {self.repo} push origin development", self.base), DENY)
+
+    def test_falls_back_to_main_and_master_outside_a_repository(self) -> None:
+        self.assertEqual(self.claude_push("git push origin main", self.base), DENY)
+        self.assertEqual(self.claude_push("git push origin master", self.base), DENY)
+        self.assertIsNone(self.claude_push("git push origin development", self.base))
+        missing = self.base / "does-not-exist"
+        self.assertEqual(self.claude_push("git push origin main", missing), DENY)
+
+    def test_unconfigured_repository_protects_main_and_master_only(self) -> None:
+        plain = init_repo(self.base / "plain", self.home, branch="feat/topic")
+        self.assertEqual(self.claude_push("git push origin master", plain), DENY)
+        self.assertIsNone(self.claude_push("git push origin development", plain))
 
 
 class GuardFileToolTests(unittest.TestCase):

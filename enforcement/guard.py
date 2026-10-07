@@ -12,6 +12,13 @@ objection nothing is printed, because {"decision": "allow"} would auto-approve
 the tool call and bypass the user's normal permission prompts.
 
 The guard never prints file contents; it only inspects command text and paths.
+
+Protected branches: for a push, the guard runs
+`git config --get-all agentframework.protectedBranch` in the directory the push
+runs in (the hook's cwd, adjusted for `cd` and `git -C`). When the key is unset,
+or git cannot answer (not a repository, git missing, timeout), the protected set
+is main and master. Pushes to a protected branch are denied, force pushes
+elsewhere ask, and a push whose target cannot be determined asks.
 """
 
 from __future__ import annotations
@@ -30,7 +37,8 @@ ASK = "ask"
 SEVERITY = {None: 0, ASK: 1, DENY: 2}
 MAX_NESTING = 5
 
-MAIN_BRANCHES = {"main", "master"}
+DEFAULT_PROTECTED_BRANCHES = frozenset({"main", "master"})
+PROTECTED_BRANCH_CONFIG_KEY = "agentframework.protectedBranch"
 SEPARATORS = {"&&", "||", ";", "|", "&", "|&", ";;", "(", ")", ";&", ";;&"}
 REDIRECTIONS = {">", ">>", ">&", "&>", "&>>", ">|", "<", "<<", "<<<", "<&", "<>", "<<-"}
 READ_COMMANDS = {
@@ -105,16 +113,19 @@ HEREDOC_SUBSTITUTION = re.compile(
     r"^\$\(\s*cat\s+<<-?\s*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n[ \t]*\2[ \t]*\n?\s*\)\s*$", re.DOTALL
 )
 
-REASON_PUSH_MAIN = "direct push to main is blocked; push a topic branch"
+REASON_PUSH_PROTECTED = "direct push to protected branch {branch} is blocked; push a topic branch"
+REASON_PUSH_ALL = "pushing every branch includes the protected branches ({branches}); push a topic branch"
 REASON_FORCE = "force push rewrites remote history; confirm with the owner first"
-REASON_UNKNOWN_BRANCH = "could not determine which branch this push targets; confirm it is not main"
+REASON_UNKNOWN_BRANCH = "could not determine which branch this push targets; confirm it is not a protected branch"
 REASON_NO_VERIFY = "--no-verify bypasses the repository hooks; fix the reported problem instead"
 REASON_SUBJECT_ONLY = "subject-only commits: one -m with a single-line conventional subject, no body or trailers (including Co-Authored-By)"
 SECRET_HINT = "use skills/sensitive-operations/scripts/env_keys.py to list variable names"
 REASON_SECRET_READ = f"reading secret files is blocked; {SECRET_HINT}"
 REASON_ENV_DUMP = "environment dumps can expose secrets; inspect only the variable names you need"
 
-# Last-resort patterns, used only when the structured analysis itself fails.
+# Last-resort patterns, used only when the structured analysis itself fails. The
+# working directory is unknown then, so per-repository protected branches cannot be
+# read and only the default main/master are matched.
 FALLBACK_DENY_PATTERNS = (
     re.compile(r"git\s+push\b[^\n]*\b(main|master)\b"),
     re.compile(r"--no-verify"),
@@ -465,6 +476,29 @@ def current_branch(cwd: str) -> str | None:
     return completed.stdout.strip() or None
 
 
+def protected_branches(cwd: str) -> frozenset[str]:
+    """Branches protected in the repository at cwd; main/master when unset or unreadable."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", cwd, "config", "--get-all", PROTECTED_BRANCH_CONFIG_KEY],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return DEFAULT_PROTECTED_BRANCHES
+    if completed.returncode != 0:
+        return DEFAULT_PROTECTED_BRANCHES
+    configured = set()
+    for line in completed.stdout.splitlines():
+        branch = line.strip().removeprefix("refs/heads/")
+        if branch:
+            configured.add(branch)
+    if not configured:
+        return DEFAULT_PROTECTED_BRANCHES
+    return frozenset(configured)
+
+
 def refspec_destination(refspec: str, cwd: str) -> str | None:
     spec = refspec.lstrip("+")
     destination = spec.rsplit(":", 1)[-1] if ":" in spec else spec
@@ -507,8 +541,13 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
             positional.append(argument)
         index += 1
 
+    protected = protected_branches(cwd)
+    if pushes_all_branches:
+        listed = ", ".join(sorted(protected))
+        return Decision(DENY, REASON_PUSH_ALL.format(branches=listed))
+
     refspecs = positional[1:]
-    targets_main = pushes_all_branches
+    protected_target = None
     unknown_target = False
     for refspec in refspecs:
         if refspec.startswith("+"):
@@ -516,17 +555,17 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
         destination = refspec_destination(refspec, cwd)
         if destination is None:
             unknown_target = True
-        elif destination in MAIN_BRANCHES:
-            targets_main = True
-    if not refspecs and not pushes_all_branches:
+        elif destination in protected:
+            protected_target = destination
+    if not refspecs:
         branch = current_branch(cwd)
         if branch is None:
             unknown_target = True
-        elif branch in MAIN_BRANCHES:
-            targets_main = True
+        elif branch in protected:
+            protected_target = branch
 
-    if targets_main:
-        return Decision(DENY, REASON_PUSH_MAIN)
+    if protected_target is not None:
+        return Decision(DENY, REASON_PUSH_PROTECTED.format(branch=protected_target))
     if force:
         decision = decision.stronger(Decision(ASK, REASON_FORCE))
     if unknown_target:
