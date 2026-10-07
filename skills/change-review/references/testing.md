@@ -22,3 +22,7 @@ Sources: owner Working Standard Profile section 9
   data.
 - Test isolation: reset process-level caches and environment between tests; tests
   never depend on the developer's environment variables.
+- Gate on exit status, not on output: never chain a check through a pipe (`| tail`,
+  `| grep`) and then `&&` into a commit or push, because the pipe's status hides the
+  check's failure. Run the check, capture its status, and stop on non-zero (or use
+  `set -o pipefail`).

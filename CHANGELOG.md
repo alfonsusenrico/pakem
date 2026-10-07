@@ -5,6 +5,11 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- Adoption lessons from the first migrations: compare specs before deleting AGENTS.md text;
+  commit only from the adoption worktree while hooks are unmerged; separate OpenSpec
+  warnings from errors after CLI upgrades; no wrapper scenarios; gate commits on check
+  exit status, never on piped output.
+
 - Project AGENTS.md template declares the project's own language rule (`Language:`); the framework and profiles set no language default.
 
 ### Added
