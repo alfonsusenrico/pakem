@@ -81,6 +81,9 @@ versioning as defined in `AGENTS.md`.
   repositories never receive committed hook files.
 - `AF_ALLOW_PROTECTED_PUSH=1` as the documented pre-push override
   (`AF_ALLOW_MAIN_PUSH=1` still works).
+- Profile `personal` 0.1.0 in `profiles/personal/`: digest for personal and freelance
+  repositories, skills `freelance-delivery` and `client-engagement`, and the personal
+  workspace map (profile ADR 0001; its own `CHANGELOG.md`).
 
 ### Changed
 

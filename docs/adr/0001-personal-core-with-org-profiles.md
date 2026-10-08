@@ -17,6 +17,11 @@ repository (`agent-framework`). Organization- or client-specific platform how-to
 live in separate profile repositories owned by that organization, which declare
 the framework versions they support. The core never contains organization content.
 
+Amended 2026-10-08 (owner decision): the owner's own `personal` profile (personal
+workspace map, freelance delivery lifecycle, client engagement rules) lives inside
+this repository under `profiles/personal/`, because it travels with the owner like
+the core. Organization and client profiles still live in separate repositories.
+
 ## Consequences
 
 The core can follow the owner across employers and clients. Each profile needs its
