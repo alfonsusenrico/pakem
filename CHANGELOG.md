@@ -5,6 +5,17 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- `af report [--config FILE] [--output-dir DIR] [--keep N]` writes a read-only Markdown
+  drift report: framework source (branch, commit, match with the local `origin/main` ref,
+  no fetch), `af lint`, `af doctor` installed state, and `af project check` per repository
+  from a TOML config (`repos_dirs`, `repos`, `profiles`, `keep`; template
+  `docs/report.example.toml`). It writes `YYYY-MM-DD-HHMM.md` and `latest.md` under
+  `~/.local/state/agent-framework/reports/`, prunes dated reports beyond `keep`, records
+  findings only (never file contents), and exits 0 whenever the report was written.
+- `af schedule install|uninstall|status` (macOS only) manages a launchd agent
+  (`com.agentframework.drift-report`) that runs `af report` weekly (default Monday 08:00).
+  Dry run by default; `--apply` writes the plist and runs `launchctl bootstrap`/`bootout`.
+  The plist is recorded in the manifest, so uninstall removes only an unedited plist af wrote.
 - Design bases for tools: `owner-dashboard` and `owner-workbench` (both themes, measured
   contrast, provenance), from the portfolio (primary), the finance tracker web UI, and
   the office dashboard and workbench UIs. Status: Draft pending owner review.
