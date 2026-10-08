@@ -33,7 +33,21 @@ tools/af install --apply            # install kernel and skills (owner approval)
 tools/af project sync <repo>        # preview pinned blocks for a project
 tools/af hooks install <repo>       # preview commit-msg / pre-push hooks
 tools/af doctor --repos <dir>       # drift, duplicate, and orphaned-skill report
+tools/af report                     # read-only Markdown drift report (config: docs/report.example.toml)
+tools/af schedule install           # preview the weekly launchd job for af report (macOS)
+tools/af schedule install --apply   # write the plist and load it with launchctl (owner approval)
+tools/af schedule status            # plist and launchd state (read-only)
+tools/af schedule uninstall --apply # unload and remove the plist af wrote
 ```
+
+`af report` reads `~/.config/agent-framework/report.toml` (template:
+`docs/report.example.toml`), runs the `af lint`, `af doctor`, and per-repository
+`af project check` checks without fetching or changing anything, and writes
+`YYYY-MM-DD-HHMM.md` plus `latest.md` to `~/.local/state/agent-framework/reports/`,
+keeping the newest `keep` dated reports (default 12). It exits 0 whenever the report
+was written; problems are in the report. `af schedule install --apply` runs it weekly
+(default Monday 08:00, `--weekday/--hour/--minute`) from the checkout that installed
+it, so install the schedule from the main checkout.
 
 `af install --apply` installs from merged `main` only: the checkout must be on `main`,
 clean, and, when an `origin` remote exists, at the same commit as the local

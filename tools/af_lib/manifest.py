@@ -21,6 +21,10 @@ def manifest_path() -> Path:
     return state_dir() / "manifest.json"
 
 
+def reports_dir() -> Path:
+    return state_dir() / "reports"
+
+
 def shared_data_dir() -> Path:
     return home_dir() / ".local" / "share" / "agent-framework"
 
@@ -33,6 +37,7 @@ def empty_manifest() -> dict:
         "entries": [],
         "backups": [],
         "enforcement": {},
+        "schedule": {},
     }
 
 

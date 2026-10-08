@@ -129,37 +129,51 @@ def discover_repos(directories: list[str]) -> list[Path]:
     return repos
 
 
+def unusable_repo_message(repo: Path) -> str:
+    return f"{repo}: has .git but is not a usable work tree"
+
+
+def repo_status(repo_report: Report) -> str:
+    if repo_report.errors:
+        return "ERRORS"
+    if repo_report.warnings:
+        return "warnings"
+    return "ok"
+
+
 def check_repos(framework: Framework, directories: list[str], report: Report) -> None:
     repos = discover_repos(directories)
     print(f"Project repos ({len(repos)}):")
     for repo in repos:
         if not is_git_work_tree(repo):
-            report.warn(f"{repo}: has .git but is not a usable work tree")
+            report.warn(unusable_repo_message(repo))
             continue
         repo_report = check_repo(framework, repo)
-        status = "ok"
-        if repo_report.errors:
-            status = "ERRORS"
-        elif repo_report.warnings:
-            status = "warnings"
         print(
-            f"  {status:8}  {repo}  ({len(repo_report.errors)} error(s), {len(repo_report.warnings)} warning(s))"
+            f"  {repo_status(repo_report):8}  {repo}  "
+            f"({len(repo_report.errors)} error(s), {len(repo_report.warnings)} warning(s))"
         )
         report.extend(repo_report, prefix=f"{repo.name}: ")
 
 
-def run_doctor(args) -> int:
-    framework = Framework(Path(args.root))
+def installed_state_report(framework: Framework, profile_dirs: list[str] | None) -> Report:
+    """Everything `af doctor` checks except project repositories."""
     report = Report()
     check_manifest(framework, report)
     hosts = list(load_targets(framework.targets_path).values())
     for host in hosts:
         check_global_instruction_files(host, report)
         check_duplicate_skills(host, report)
-    profiles = load_profiles(args.profile, framework.version())
+    profiles = load_profiles(profile_dirs, framework.version())
     check_orphaned_skills(framework, profiles, report)
     if profiles:
         check_profile_skills(profiles, hosts, report)
+    return report
+
+
+def run_doctor(args) -> int:
+    framework = Framework(Path(args.root))
+    report = installed_state_report(framework, args.profile)
     if args.repos:
         check_repos(framework, args.repos, report)
     print("af doctor")

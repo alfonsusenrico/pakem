@@ -5,6 +5,17 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- `af report [--config FILE] [--output-dir DIR] [--keep N]` writes a read-only Markdown
+  drift report: framework source (branch, commit, match with the local `origin/main` ref,
+  no fetch), `af lint`, `af doctor` installed state, and `af project check` per repository
+  from a TOML config (`repos_dirs`, `repos`, `profiles`, `keep`; template
+  `docs/report.example.toml`). It writes `YYYY-MM-DD-HHMM.md` and `latest.md` under
+  `~/.local/state/agent-framework/reports/`, prunes dated reports beyond `keep`, records
+  findings only (never file contents), and exits 0 whenever the report was written.
+- `af schedule install|uninstall|status` (macOS only) manages a launchd agent
+  (`com.agentframework.drift-report`) that runs `af report` weekly (default Monday 08:00).
+  Dry run by default; `--apply` writes the plist and runs `launchctl bootstrap`/`bootout`.
+  The plist is recorded in the manifest, so uninstall removes only an unedited plist af wrote.
 - `af install --apply` installs from merged `main` only: it refuses a checkout on another
   branch or a detached HEAD, or one whose HEAD differs from the local `origin/main` ref
   (no fetch; the message says to fetch to refresh), unless `--allow-unmerged` is given.

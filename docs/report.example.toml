@@ -1,0 +1,15 @@
+# Template for `af report` (copy to ~/.config/agent-framework/report.toml and edit).
+# Paths must be absolute or start with ~/. The report is read-only: no fetch, no changes.
+
+# Directories whose direct child git repositories are checked; a directory that is
+# itself a git repository is checked too. Required; may be an empty list.
+repos_dirs = ["~/projects/org"]
+
+# Optional: individual repositories outside those directories.
+repos = ["~/projects/personal-site"]
+
+# Optional: profile directories passed to the lint and doctor checks.
+profiles = ["~/projects/org/agent-profile-org"]
+
+# Optional: how many dated reports to keep in the output directory (default 12).
+keep = 12

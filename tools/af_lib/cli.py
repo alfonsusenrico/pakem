@@ -7,11 +7,13 @@ from pathlib import Path
 
 from .common import AfError, eprint
 from .doctor import run_doctor
+from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
 from .enforce import run_enforce
 from .githooks import run_hooks_install
 from .installer import run_install, run_uninstall
 from .lint import run_lint
 from .project import run_check, run_sync
+from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, run_schedule
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent
 ENFORCE_HOSTS = ("claude", "codex", "antigravity")
@@ -19,6 +21,19 @@ ENFORCE_HOSTS = ("claude", "codex", "antigravity")
 
 def _add_apply(parser: argparse.ArgumentParser, verb: str = "write") -> None:
     parser.add_argument("--apply", action="store_true", help=f"{verb} changes (default is a dry run)")
+
+
+def _bounded_int(low: int, high: int):
+    def parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"expected a whole number, got {raw!r}") from exc
+        if not low <= value <= high:
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}, got {value}")
+        return value
+
+    return parse
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -88,6 +103,41 @@ def build_parser() -> argparse.ArgumentParser:
     )
     check.add_argument("repo", nargs="?", help="repository directory (default: current directory)")
 
+    report = commands.add_parser("report", help="write a read-only Markdown drift report")
+    report.add_argument("--config", metavar="FILE", help=f"report config (default: {DEFAULT_CONFIG})")
+    report.add_argument(
+        "--output-dir",
+        metavar="DIR",
+        help="where reports are written (default: ~/.local/state/agent-framework/reports)",
+    )
+    report.add_argument(
+        "--keep",
+        type=_bounded_int(1, 10_000),
+        metavar="N",
+        help=f"dated reports to keep (default: the config's keep, else {DEFAULT_KEEP})",
+    )
+
+    schedule = commands.add_parser("schedule", help="run af report weekly through launchd (macOS)")
+    schedule_commands = schedule.add_subparsers(dest="schedule_command", required=True)
+    schedule_install = schedule_commands.add_parser("install", help="install the weekly launchd agent")
+    schedule_install.add_argument(
+        "--weekday",
+        type=_bounded_int(0, 7),
+        default=DEFAULT_WEEKDAY,
+        metavar="N",
+        help="launchd weekday, 0 and 7 are Sunday (default: 1, Monday)",
+    )
+    schedule_install.add_argument(
+        "--hour", type=_bounded_int(0, 23), default=DEFAULT_HOUR, metavar="H", help="hour (default: 8)"
+    )
+    schedule_install.add_argument(
+        "--minute", type=_bounded_int(0, 59), default=DEFAULT_MINUTE, metavar="M", help="minute (default: 0)"
+    )
+    _add_apply(schedule_install)
+    schedule_uninstall = schedule_commands.add_parser("uninstall", help="unload and remove the launchd agent")
+    _add_apply(schedule_uninstall, "remove")
+    schedule_commands.add_parser("status", help="show the plist and launchd state (read-only)")
+
     hooks = commands.add_parser("hooks", help="manage repository git hooks")
     hooks_commands = hooks.add_subparsers(dest="hooks_command", required=True)
     hooks_install = hooks_commands.add_parser("install", help="install commit-msg and pre-push hooks")
@@ -131,6 +181,10 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_sync(args)
     if args.command == "project" and args.project_command == "check":
         return run_check(args)
+    if args.command == "report":
+        return run_report(args)
+    if args.command == "schedule":
+        return run_schedule(args)
     if args.command == "hooks":
         return run_hooks_install(args)
     if args.command == "enforce":
