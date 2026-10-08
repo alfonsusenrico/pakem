@@ -7,6 +7,7 @@ import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NoReturn
 
 from .common import (
     AfError,
@@ -15,8 +16,6 @@ from .common import (
     display_path,
     expand_user_path,
     home_dir,
-    is_git_work_tree,
-    run_git,
     sha256_bytes,
     sha256_file,
     tree_sha,
@@ -26,7 +25,9 @@ from .common import (
 from .hosts import HostTarget, load_targets, select_hosts
 from .kernel import render_kernel, size_violations
 from .manifest import BackupSession, entries_by_path, load_manifest, save_manifest
-from .profiles import load_profiles
+from .profiles import Profile, load_profiles
+from .source import WAIVER_DIRTY, WAIVER_UNMERGED, framework_source_status, profile_source_findings
+from .transaction import WriteJournal
 
 KIND_INSTRUCTIONS = "instructions"
 KIND_SKILL = "skill"
@@ -41,6 +42,8 @@ BLOCKED_EDITED = "BLOCKED-locally-edited"
 BLOCKED_UNMANAGED = "BLOCKED-unmanaged-skill"
 BLOCKED_SKILL_LOCK = "BLOCKED-skill-lock"
 BLOCKED_NOT_A_FILE = "BLOCKED-not-a-file"
+REMOVE_MANAGED = "remove-managed"
+KEPT = "kept"
 
 REMOVE = "remove"
 BACKUP_AND_REMOVE = "backup-and-remove-edited"
@@ -53,6 +56,7 @@ BACKUP_REASON_SYMLINK = "symlink"
 BACKUP_REASON_EDITED = "locally-edited"
 
 SKILL_LOCK_RELATIVE = ".agents/.skill-lock.json"
+PROFILE_SOURCE_PREFIX = "profile:"
 
 
 @dataclass
@@ -83,6 +87,7 @@ class SkillSource:
 class InstallPlan:
     items: list[InstallItem] = field(default_factory=list)
     report: Report = field(default_factory=Report)
+    profiles: list[Profile] = field(default_factory=list)
 
 
 def installed_sha(path: Path, kind: str) -> str:
@@ -116,7 +121,7 @@ def profile_skill_sources(profiles, report: Report) -> list[SkillSource]:
             if not (directory / "SKILL.md").is_file():
                 report.warn(f"profile {profile.name}: {directory.name} has no SKILL.md; not installed")
                 continue
-            label = f"profile:{profile.name}/{directory.name}"
+            label = f"{PROFILE_SOURCE_PREFIX}{profile.name}/{directory.name}"
             sources.append(SkillSource(directory.name, directory, label))
     return sources
 
@@ -216,6 +221,94 @@ def _decide_skill_action(
         item.detail = "skill differs from what af installed; use --force to back up and replace"
 
 
+def profile_of_source(source: str) -> str | None:
+    """Profile name in a manifest source label such as 'profile:work/skill'; None for framework skills."""
+    if not source.startswith(PROFILE_SOURCE_PREFIX):
+        return None
+    return source[len(PROFILE_SOURCE_PREFIX) :].split("/", 1)[0]
+
+
+def split_orphaned_skill_entries(
+    entries: list[dict], available_sources: set[str], given_profiles: set[str]
+) -> tuple[list[dict], list[dict]]:
+    """Skill entries whose recorded source no longer exists, as (orphaned, kept).
+
+    A profile skill counts as orphaned only when its profile was given; otherwise its
+    source cannot be checked and the entry is kept.
+    """
+    orphaned: list[dict] = []
+    kept: list[dict] = []
+    for entry in entries:
+        if entry.get("kind") != KIND_SKILL or entry.get("source") in available_sources:
+            continue
+        profile = profile_of_source(entry.get("source", ""))
+        if profile is not None and profile not in given_profiles:
+            kept.append(entry)
+        else:
+            orphaned.append(entry)
+    return orphaned, kept
+
+
+def _orphan_item(entry: dict, action: str, detail: str) -> InstallItem:
+    return InstallItem(
+        kind=KIND_SKILL,
+        path=expand_user_path(entry["path"]),
+        hosts=entry.get("host", "").split(","),
+        source=entry.get("source", "unknown"),
+        desired_sha=entry.get("sha256", ""),
+        action=action,
+        detail=detail,
+    )
+
+
+def _plan_orphan_removal(entry: dict, force: bool) -> InstallItem:
+    item = _orphan_item(entry, REMOVE_MANAGED, "source no longer exists")
+    path = item.path
+    if not path.exists() and not path.is_symlink():
+        item.action = ALREADY_ABSENT
+        item.detail = "source no longer exists; the manifest entry is dropped"
+    elif path.is_symlink():
+        item.action = BLOCKED_EDITED
+        item.detail = "source no longer exists, but the installed skill was replaced by a symlink"
+    elif not path.is_dir():
+        item.action = BLOCKED_EDITED
+        item.detail = "source no longer exists, but the installed skill is no longer a directory"
+    elif installed_sha(path, KIND_SKILL) != entry.get("sha256"):
+        if force:
+            item.action = BACKUP_AND_REMOVE
+            item.detail = "source no longer exists; the edited copy is backed up first"
+        else:
+            item.action = BLOCKED_EDITED
+            item.detail = (
+                "source no longer exists, but the installed copy was edited since install; "
+                "use --force to back up and remove"
+            )
+    return item
+
+
+def _plan_orphans(
+    plan: InstallPlan,
+    manifest_entries: dict[str, dict],
+    target_dirs: set[Path],
+    skill_sources: list[SkillSource],
+    force: bool,
+) -> None:
+    """Remove skills af installed whose source is gone; only in the selected hosts' skills dirs."""
+    planned = {display_path(item.path) for item in plan.items}
+    candidates = [
+        entry
+        for path, entry in manifest_entries.items()
+        if path not in planned and expand_user_path(path).parent in target_dirs
+    ]
+    available = {source.label for source in skill_sources}
+    given_profiles = {profile.name for profile in plan.profiles}
+    orphaned, kept = split_orphaned_skill_entries(candidates, available, given_profiles)
+    for entry in orphaned:
+        plan.items.append(_plan_orphan_removal(entry, force))
+    for entry in kept:
+        plan.items.append(_orphan_item(entry, KEPT, "profile not given"))
+
+
 def _skill_targets(hosts: list[HostTarget]) -> dict[Path, list[str]]:
     """Map each distinct skills directory to the hosts that read it."""
     directories: dict[Path, list[str]] = {}
@@ -263,13 +356,14 @@ def build_install_plan(
         _decide_instruction_action(item, manifest_entries.get(display_path(path)), force)
         plan.items.append(item)
 
-    profiles = load_profiles(profile_dirs, version)
+    plan.profiles = load_profiles(profile_dirs, version)
     skill_sources = framework_skill_sources(framework, plan.report)
-    skill_sources += profile_skill_sources(profiles, plan.report)
+    skill_sources += profile_skill_sources(plan.profiles, plan.report)
     _reject_duplicate_skill_names(skill_sources)
     locked_names = read_skill_lock_names(plan.report)
 
-    for directory, host_ids in _skill_targets(hosts).items():
+    skill_targets = _skill_targets(hosts)
+    for directory, host_ids in skill_targets.items():
         for source in skill_sources:
             item = InstallItem(
                 kind=KIND_SKILL,
@@ -282,6 +376,8 @@ def build_install_plan(
             entry = manifest_entries.get(display_path(item.path))
             _decide_skill_action(item, source.name, entry, force, locked_names)
             plan.items.append(item)
+
+    _plan_orphans(plan, manifest_entries, set(skill_targets), skill_sources, force)
     return plan
 
 
@@ -295,24 +391,41 @@ def _reject_duplicate_skill_names(sources: list[SkillSource]) -> None:
         seen[source.name] = source.label
 
 
-def check_framework_clean(framework: Framework, allow_dirty: bool, apply: bool, report: Report) -> None:
-    if not is_git_work_tree(framework.root):
-        message = f"framework root {framework.root} is not a git work tree; cleanliness not verified"
-        if apply and not allow_dirty:
-            raise AfError(message + " (pass --allow-dirty to proceed)")
-        report.warn(message)
-        return
-    status = run_git(framework.root, "status", "--porcelain").stdout
-    if not status.strip():
-        return
-    message = "framework git tree has uncommitted changes; installed content would not match a commit"
-    if apply and not allow_dirty:
-        raise AfError(message + " (commit first or pass --allow-dirty)")
-    report.warn(message)
+def check_install_sources(plan: InstallPlan, framework: Framework, args) -> str:
+    """Refuse --apply from an unmerged or dirty source unless waived; a dry run only warns.
+
+    The rules and waivers are described in source.py. Returns a one-line source summary.
+    """
+    status = framework_source_status(framework.root)
+    waived = {WAIVER_DIRTY: args.allow_dirty, WAIVER_UNMERGED: args.allow_unmerged}
+    refusals: list[str] = []
+    for finding in status.findings:
+        if waived[finding.waiver]:
+            plan.report.warn(f"{finding.message} (allowed by {finding.waiver})")
+        elif args.apply:
+            refusals.append(f"{finding.message} (pass {finding.waiver} to install anyway)")
+        else:
+            plan.report.warn(f"{finding.message}; --apply would refuse without {finding.waiver}")
+
+    for profile in plan.profiles:
+        for finding in profile_source_findings(profile.name, profile.root):
+            if not args.strict_source:
+                plan.report.warn(finding.message)
+            elif args.apply:
+                refusals.append(f"{finding.message} (--strict-source)")
+            else:
+                plan.report.warn(f"{finding.message}; --apply would refuse because of --strict-source")
+
+    if refusals:
+        listed = "\n  ".join(refusals)
+        raise AfError(f"refusing to install from this source:\n  {listed}")
+    return f"framework {status.summary}"
 
 
-def print_plan(title: str, items: list[InstallItem]) -> None:
+def print_plan(title: str, items: list[InstallItem], note: str | None = None) -> None:
     print(title)
+    if note:
+        print(f"Source: {note}")
     if not items:
         print("  (nothing to do)")
     width = max((len(item.action) for item in items), default=0)
@@ -334,47 +447,109 @@ def _write_skill(item: InstallItem) -> None:
     staging = item.path.with_name(f".{item.path.name}.af-staging")
     if staging.exists():
         shutil.rmtree(staging)
-    shutil.copytree(item.source_dir, staging, ignore=shutil.ignore_patterns(".DS_Store"))
-    if item.path.exists() or item.path.is_symlink():
-        shutil.rmtree(item.path)
-    os.replace(staging, item.path)
+    try:
+        shutil.copytree(item.source_dir, staging, ignore=shutil.ignore_patterns(".DS_Store"))
+        os.replace(staging, item.path)
+    except OSError:
+        if staging.exists():
+            shutil.rmtree(staging)
+        raise
 
 
 BACKUP_REASONS = {
     BACKUP_UNMANAGED: BACKUP_REASON_UNMANAGED,
     BACKUP_SYMLINK: BACKUP_REASON_SYMLINK,
     BACKUP_EDITED: BACKUP_REASON_EDITED,
+    BACKUP_AND_REMOVE: BACKUP_REASON_EDITED,
 }
+REMOVAL_ACTIONS = {REMOVE_MANAGED, BACKUP_AND_REMOVE, ALREADY_ABSENT}
+NO_WRITE_ACTIONS = {UNCHANGED, KEPT, ALREADY_ABSENT}
 
 
-def apply_install_plan(framework: Framework, plan: InstallPlan) -> None:
+def _manifest_entry(item: InstallItem) -> dict:
+    return {
+        "path": display_path(item.path),
+        "kind": item.kind,
+        "sha256": item.desired_sha,
+        "host": ",".join(item.hosts),
+        "source": item.source,
+    }
+
+
+def _apply_item(
+    item: InstallItem, backups: BackupSession, journal: WriteJournal, new_backups: list[dict]
+) -> None:
+    if item.action in BACKUP_REASONS:
+        new_backups.append(backups.back_up(item.path, BACKUP_REASONS[item.action]))
+    journal.prepare(item.path)
+    if item.action in REMOVAL_ACTIONS:
+        return
+    if item.kind == KIND_INSTRUCTIONS:
+        _write_instruction(item)
+    else:
+        _write_skill(item)
+
+
+def _roll_back_and_raise(
+    journal: WriteJournal, backups: BackupSession, failed: InstallItem | None, exc: Exception
+) -> NoReturn:
+    done, problems = journal.roll_back()
+    where = display_path(failed.path) if failed is not None else "the manifest"
+    print(f"Install failed while writing {where}: {type(exc).__name__}: {exc}")
+    print("Rolled back:")
+    if not done and not problems:
+        print("  (nothing had been written)")
+    for line in done:
+        print(f"  {line}")
+    for problem in problems:
+        print(f"  ROLLBACK FAILED: {problem}")
+    if backups.directory is not None:
+        print(
+            f"Backups taken in this run remain in {display_path(backups.directory)} "
+            "(not recorded in the manifest)."
+        )
+    print("Manifest unchanged.")
+    if problems:
+        outcome = f"rollback incomplete ({len(problems)} problem(s) listed above)"
+    else:
+        outcome = f"rolled back {len(done)} change(s)"
+    raise AfError(
+        f"install failed while writing {where} ({type(exc).__name__}); {outcome}; manifest unchanged"
+    ) from exc
+
+
+def apply_install_plan(framework: Framework, plan: InstallPlan) -> list[str]:
+    """Apply the plan as one transaction; returns set-aside originals that could not be deleted.
+
+    If any write fails, every target written in this run is restored and the manifest
+    is left as it was.
+    """
     manifest = load_manifest()
     entries = entries_by_path(manifest)
     backups = BackupSession()
-
-    for item in plan.items:
-        if item.action in BACKUP_REASONS:
-            record = backups.back_up(item.path, BACKUP_REASONS[item.action])
-            manifest["backups"].append(record)
-            if item.path.is_symlink() or item.path.is_file():
-                item.path.unlink()
-        if item.action != UNCHANGED:
-            if item.kind == KIND_INSTRUCTIONS:
-                _write_instruction(item)
+    journal = WriteJournal()
+    new_backups: list[dict] = []
+    current: InstallItem | None = None
+    try:
+        for item in plan.items:
+            if item.action == KEPT:
+                continue
+            current = item
+            if item.action not in NO_WRITE_ACTIONS:
+                _apply_item(item, backups, journal, new_backups)
+            if item.action in REMOVAL_ACTIONS:
+                entries.pop(display_path(item.path), None)
             else:
-                _write_skill(item)
-        entries[display_path(item.path)] = {
-            "path": display_path(item.path),
-            "kind": item.kind,
-            "sha256": item.desired_sha,
-            "host": ",".join(item.hosts),
-            "source": item.source,
-        }
-
-    manifest["entries"] = list(entries.values())
-    manifest["framework_version"] = framework.version()
-    manifest["installed_at"] = utc_now_iso()
-    save_manifest(manifest)
+                entries[display_path(item.path)] = _manifest_entry(item)
+        current = None
+        manifest["entries"] = list(entries.values())
+        manifest["backups"].extend(new_backups)
+        manifest["framework_version"] = framework.version()
+        manifest["installed_at"] = utc_now_iso()
+        save_manifest(manifest)
+    except (OSError, AfError) as exc:
+        _roll_back_and_raise(journal, backups, current, exc)
+    return journal.commit()
 
 
 def run_install(args) -> int:
@@ -382,10 +557,10 @@ def run_install(args) -> int:
     targets = load_targets(framework.targets_path)
     hosts = select_hosts(targets, args.hosts)
     plan = build_install_plan(framework, hosts, args.profile, args.force)
-    check_framework_clean(framework, args.allow_dirty, args.apply, plan.report)
+    source_summary = check_install_sources(plan, framework, args)
 
     mode = "apply" if args.apply else "dry-run"
-    print_plan(f"af install ({mode}) framework v{framework.version()}", plan.items)
+    print_plan(f"af install ({mode}) framework v{framework.version()}", plan.items, source_summary)
 
     blocked = [item for item in plan.items if item.blocked]
     for item in blocked:
@@ -401,10 +576,14 @@ def run_install(args) -> int:
         print("Dry run: nothing written. Re-run with --apply to write.")
         return 0
 
-    apply_install_plan(framework, plan)
+    leftovers = apply_install_plan(framework, plan)
+    for leftover in leftovers:
+        plan.report.warn(f"could not delete the set-aside original {leftover}; remove it by hand")
     plan.report.print()
-    changed = [item for item in plan.items if item.action != UNCHANGED]
-    print(f"Applied: {len(changed)} change(s), {len(plan.items) - len(changed)} unchanged.")
+    unchanged = [item for item in plan.items if item.action == UNCHANGED]
+    kept = [item for item in plan.items if item.action == KEPT]
+    changed = len(plan.items) - len(unchanged) - len(kept)
+    print(f"Applied: {changed} change(s), {len(unchanged)} unchanged, {len(kept)} kept.")
     return 0
 
 

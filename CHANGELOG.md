@@ -5,6 +5,28 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- `af install --apply` installs from merged `main` only: it refuses a checkout on another
+  branch or a detached HEAD, or one whose HEAD differs from the local `origin/main` ref
+  (no fetch; the message says to fetch to refresh), unless `--allow-unmerged` is given.
+  `--allow-dirty` still covers uncommitted changes and non-git roots; the two waivers
+  are independent. A dry run prints the same findings as warnings. Git profiles given
+  with `--profile` are checked for a clean `main` as warnings, or refusals with the new
+  `--strict-source`.
+- `af install` prunes skills it installed whose framework or profile source no longer
+  exists (`remove-managed`; an edited copy blocks unless `--force` backs it up). Skills
+  of profiles not passed with `--profile` are kept and listed as `kept`. Only the
+  selected hosts' skills directories are pruned. `af doctor` warns about orphaned
+  managed skills.
+- `af install --apply` is transactional: when a write or the manifest save fails, every
+  target written in the run is restored (originals are set aside, not deleted, until the
+  run succeeds), newly created files and directories are removed, the manifest is left
+  unchanged, and the rollback is reported.
+- Guard (Claude Code, Antigravity) denies secret reads through `git show REV:PATH`,
+  `git show REV -- PATH`, `git cat-file ... REV:PATH`, interpreter one-liners (python -c,
+  node -e/--eval/-p, ruby -e, perl -e, php -r, deno eval, bun -e) that name a secret path
+  in a string literal or argument, and secret paths assigned to a shell variable and
+  read through `$VAR` later in the same command line.
+
 - Worktrees live next to the repository, never under `/tmp`; local state files are per
   checkout and belong in the owner's main checkout.
 - First push of a bootstrapped `main` is an owner action with `AF_ALLOW_PROTECTED_PUSH=1`.

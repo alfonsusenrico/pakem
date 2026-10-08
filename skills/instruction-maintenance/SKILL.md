@@ -68,5 +68,8 @@ or recommending skills, plugins, or tools.
 
 The framework repository records decisions as ADRs, every release in `CHANGELOG.md`,
 and versions per semantic versioning (MAJOR for floor, marker, or skill-name
-changes). Run its lint and tests before any commit, then `af install` (with owner
-approval) and `af project sync` in adopted repositories.
+changes). Run its lint and tests before any commit. Install only from merged `main`:
+fetch, check that the checkout is clean and equal to `origin/main`, then run
+`af install --apply` with owner approval, and `af project sync` in adopted
+repositories. `--allow-unmerged` and `--allow-dirty` are for deliberately testing a
+branch, never for a routine install.

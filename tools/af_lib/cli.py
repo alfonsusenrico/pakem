@@ -37,7 +37,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--force", action="store_true", help="back up and replace locally edited managed files"
     )
     install.add_argument(
-        "--allow-dirty", action="store_true", help="install from an uncommitted framework tree"
+        "--allow-dirty",
+        action="store_true",
+        help="install from a framework tree with uncommitted changes, or one that is not a git work tree",
+    )
+    install.add_argument(
+        "--allow-unmerged",
+        action="store_true",
+        help=(
+            "install from a framework checkout that is not on main or differs from origin/main; "
+            "independent of --allow-dirty (testing a dirty branch needs both)"
+        ),
+    )
+    install.add_argument(
+        "--strict-source",
+        action="store_true",
+        help="refuse --apply when a --profile git checkout is not on a clean main (default: warn)",
     )
     _add_apply(install)
 
