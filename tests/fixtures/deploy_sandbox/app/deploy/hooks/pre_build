@@ -1,0 +1,3 @@
+#!/bin/sh
+# Sandbox hook: records that it ran.
+echo "$(basename "$0") $AF_RELEASE_SHA" >> "$AF_BASE/hooks.log"

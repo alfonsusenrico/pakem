@@ -1,14 +1,14 @@
 # Deploy design (Phase 2b)
 
-Status: Draft, Phase 2b. Not approved for implementation; no deploy workflow or release
-script exists yet.
-Last reviewed: 2026-10-07
+Status: Active (Phase 2b implemented; deviations in section 9)
+Last reviewed: 2026-10-08
 Sources: Working Standard Profile, section 10; the owner's local CI study of 2026-10-07
-(three GitLab and two GitHub Actions pipelines: best-of-breed choices, gaps, template design).
+(three GitLab and two GitHub Actions pipelines: best-of-breed choices, gaps, template design);
+owner decisions for Phase 2b (2026-10-08).
 
-This document captures the intended design for the `deployed` capability so the Phase 2b
-change can start from it. The verify, security, and database templates in this folder are
-Phase 2a and already exist.
+This document is the design for the `deployed` capability. The verify, security, and
+database templates in this folder are Phase 2a; the deploy templates (Phase 2b) are
+`github/workflows/deploy.yml`, `gitlab/deploy.yml`, and [`../deploy/`](../deploy/README.md).
 
 ## 1. Environment model
 
@@ -20,7 +20,8 @@ Phase 2a and already exist.
 | Manual run with a release SHA input | rollback of any environment, production included | same approval as a deploy |
 
 - One deploy per environment at a time: GitHub `concurrency: deploy-<env>` with
-  `cancel-in-progress: false`; GitLab `resource_group: <env>`; plus a host-side `flock`.
+  `cancel-in-progress: false`; plus a host-side `flock` (GitLab relies on the host lock
+  alone, see section 9).
 - Environments carry their public URL so the platform links each deployment.
 - Branch protection makes the verify and security checks required before merge.
 
@@ -111,3 +112,59 @@ deploy keys shared between projects; SHA images never pruned.
 - Tests in `tests/test_ci_templates.py` extended to the deploy templates (pins, permissions,
   `concurrency`/`resource_group`, no secrets in scripts).
 - Recorded evidence per gate in the change's `verification.md`.
+
+## 9. Implementation (Phase 2b) and deviations
+
+Implemented as designed: deploy from a commit (`git archive`), immutable release per full
+SHA verified by tree digest, safe extraction, host `flock` lock, in-image preflight,
+isolated candidate check, pre-migration backup in production, migrations as a separate step
+before `up`, activation with automatic restore, revision-matching health check locally then
+publicly, cleanup after the public smoke (keep 3 staging, 6 production; images of deleted
+releases removed, never running ones), manual rollback for every environment, runtime from
+committed defaults plus a manifest (required, optional, pairs, formats, host-generated,
+production assertions), host-generated secrets kept on the host, both owner modes (`root`,
+`self`), Tailscale plus SSH with a pinned `known_hosts`, no hardcoded hosts, and a
+`deployment.json` record.
+
+Deviations from sections 1 to 8, by owner decision or recorded as open work:
+
+1. **Serialization on GitLab.** No `resource_group` (the org instance lacks it); the host
+   lock serializes deployments and a second deploy waits `AF_LOCK_WAIT_SECONDS`, then
+   fails with exit 75.
+2. **Build.** Images are built on the host once per commit (owner decision; a registry is
+   later work), tagged `<app>-<environment>/<name>:<sha>`, and verified by the image id
+   recorded at build time plus the revision and app labels. The same digest is therefore
+   not promoted from staging to production; each environment builds the same commit.
+3. **Not implemented yet:** image scan and SBOM (step 2; open decisions 2 and 3),
+   notifications (step 6; open decision 5), the tunnel configuration script (the
+   `post_promote` hook is the extension point), and Dependabot or Renovate configuration.
+4. **Backup.** A project `deploy/hooks/backup` hook writes into a per-deploy
+   `AF_BACKUP_DIR`; it is required in production whenever migrations are configured, and
+   its location is recorded. Backup retention and encryption stay open (decision 4).
+5. **Public check failure.** A failed promote or public smoke also restores the previous
+   release automatically, not only a failed activation or local check.
+6. **Rollback.** Rollback re-runs the deploy steps for the earlier commit but skips the
+   backup and migrations; there is no automatic detection of schema changes across the
+   rollback boundary (documented as an owner decision per case). On GitLab a rollback is a
+   pipeline run with `AF_ROLLBACK_ENVIRONMENT` and `AF_ROLLBACK_SHA` rather than a manual
+   job in every pipeline, so ordinary pipelines are never left blocked; production
+   rollback still needs a protected ref and a manual start. Production rollback targets
+   must be `v*`-tagged commits on the release branch.
+7. **Production gate.** The `v*` tag and ancestor-of-`main` checks run in
+   `deploy_remote.sh` for every environment in `AF_PROTECTED_ENVIRONMENTS` (default
+   `production`) on both platforms, in addition to the platform gates.
+8. **Preflight.** The preflight command is project-defined in `deploy/release.toml`
+   (projects pass their own `--require-restricted-environment`); `[]` disables it with a
+   warning.
+9. **Runtime format.** Runtime files are `NAME='value'` lines, which Compose reads
+   literally; values containing a single quote, a line break, or edge whitespace are
+   refused. `.env*` files in the archive are skipped, not extracted.
+10. **Records.** `deployment.json` plus an append-only `deployments.jsonl` on the host;
+    copying the outcome into `PROJECT_STATE.md` stays a manual step. Framework changes
+    record evidence in the CHANGELOG and the deploy README instead of a `verification.md`
+    (ADR 0005).
+11. **Verification gates (section 8).** The templates were verified with unit tests and a
+    local Docker sandbox (sshd plus Docker in Docker on loopback: staging in `self` mode,
+    production in `root` mode, forced failure with automatic restore, manual rollback,
+    retention, the lock). The pilot run on a real GitHub runner and GitLab instance is
+    still open.

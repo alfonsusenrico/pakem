@@ -1,0 +1,9 @@
+required = ["APP_SECRET"]
+host_generated = ["APP_SIGNING_KEY"]
+
+[defaults]
+staging = "deploy/runtime/staging.env"
+production = "deploy/runtime/production.env"
+
+[prod_assert]
+APP_DEBUG = "false"

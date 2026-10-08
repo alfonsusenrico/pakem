@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: projects with the `deployed` capability on hosts we or our pipeline control
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-08
 Review by: 2027-04-07
 Sources: owner release pipelines (2026); comparison of five owner pipelines (2026-10-07)
 
@@ -39,3 +39,7 @@ Sources: owner release pipelines (2026); comparison of five owner pipelines (202
 Ingress through a tunnel (for example Cloudflare Tunnel) binds services to loopback
 only; tunnel configuration changes are validated, backed up, applied only when
 changed, and checked publicly.
+
+Templates: this skill's `assets/deploy/` (`deploy_remote.sh`, `release_host.py`,
+`materialize_runtime.py`, `smoke.py`, adoption and host setup in its `README.md`) with
+the CI jobs in `assets/ci/`.

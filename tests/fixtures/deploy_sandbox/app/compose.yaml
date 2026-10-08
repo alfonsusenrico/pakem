@@ -1,0 +1,7 @@
+services:
+  web:
+    image: ${AF_IMAGE_WEB:?set by release_host.py}
+    env_file: ${AF_RUNTIME_FILE:?set by release_host.py}
+    ports:
+      - "127.0.0.1:${HTTP_PORT:?HTTP_PORT is required}:8000"
+    restart: unless-stopped

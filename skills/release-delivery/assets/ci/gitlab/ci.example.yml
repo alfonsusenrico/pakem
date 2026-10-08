@@ -8,19 +8,23 @@ include:
       - /gitlab/verify-node.yml
       - /gitlab/security.yml
       - /gitlab/database.yml
+      - /gitlab/deploy.yml
   # Or copies kept in this repository:
   # - local: /ci/af/verify-python.yml
 
-# Merge request pipelines, plus default-branch pipelines; a branch with an open merge
-# request does not also get a duplicate branch pipeline.
+# Merge request pipelines, default-branch pipelines, release tags, and pipelines run by
+# hand (rollback); a branch with an open merge request does not also get a duplicate
+# branch pipeline.
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_OPEN_MERGE_REQUESTS
       when: never
     - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    - if: $CI_PIPELINE_SOURCE == "web"
 
-stages: [verify, security, database]
+stages: [verify, security, database, deploy, smoke]
 
 default:
   tags: [docker] # the runner tag this instance requires
@@ -69,3 +73,55 @@ database: # Capability: database
     APP_DIR: backend
     MIGRATE_CMD: uv run python -m app.migrate
     TEST_CMD: uv run pytest -m db
+
+# Capability: deployed. Deploy scripts are copied into deploy/af/ (AF_TOOLS_DIR);
+# variables per environment are listed in the deploy README. Make production a
+# protected environment with approval, and v* tags protected.
+deploy-staging:
+  extends: .af:deploy
+  stage: deploy
+  variables:
+    AF_DEPLOY_ENVIRONMENT: staging
+
+deploy-production:
+  extends: .af:deploy
+  stage: deploy
+  variables:
+    AF_DEPLOY_ENVIRONMENT: production
+
+# Run pipeline with AF_ROLLBACK_ENVIRONMENT and AF_ROLLBACK_SHA to roll back.
+rollback-staging:
+  extends: .af:rollback
+  stage: deploy
+  variables:
+    AF_DEPLOY_ENVIRONMENT: staging
+
+rollback-production:
+  extends: .af:rollback
+  stage: deploy
+  variables:
+    AF_DEPLOY_ENVIRONMENT: production
+
+smoke-staging:
+  extends: .af:smoke
+  stage: smoke
+  needs:
+    - job: deploy-staging
+      optional: true
+    - job: rollback-staging
+      optional: true
+  variables:
+    AF_DEPLOY_ENVIRONMENT: staging
+    AF_SMOKE_PATHS: /health/ready
+
+smoke-production:
+  extends: .af:smoke
+  stage: smoke
+  needs:
+    - job: deploy-production
+      optional: true
+    - job: rollback-production
+      optional: true
+  variables:
+    AF_DEPLOY_ENVIRONMENT: production
+    AF_SMOKE_PATHS: /health/ready

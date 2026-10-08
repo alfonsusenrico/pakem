@@ -1,0 +1,154 @@
+# agent-framework CI template: deploy or roll back one commit to one environment.
+# Capability: deployed. Runs the framework deploy scripts copied into the project
+# (tools_dir, default deploy/af; release-delivery assets/deploy): Tailscale for private
+# network access, SSH with a pinned host key and a project deploy key, the runtime from
+# the commit's deploy/runtime.manifest.toml plus this environment's variables and secrets.
+# Callers pass `secrets: inherit`; secrets reach scripts only through env. Production
+# approval comes from the GitHub environment's required reviewers.
+name: deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment and deploy target (for example staging or production).
+        type: string
+        required: true
+      sha:
+        description: Full commit SHA to deploy, or to roll back to.
+        type: string
+        required: true
+      mode:
+        description: deploy, or rollback (activates an earlier commit without backup or migrations).
+        type: string
+        default: deploy
+      tools_dir:
+        description: Directory holding deploy_remote.sh, release_host.py, materialize_runtime.py, smoke.py.
+        type: string
+        default: deploy/af
+      release_ref:
+        description: Ref that commits for protected environments must be ancestors of.
+        type: string
+        default: origin/main
+      protected_environments:
+        description: Space-separated environments that deploy only v* tags on release_ref.
+        type: string
+        default: production
+      smoke_paths:
+        description: Space-separated read-only paths that must answer 2xx after the revision check.
+        type: string
+        default: ""
+      tailscale:
+        description: Join the tailnet with the TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET OAuth client.
+        type: boolean
+        default: true
+      tailscale_tags:
+        description: Tags the OAuth client assigns to the runner node.
+        type: string
+        default: tag:ci
+      runner:
+        description: Runner label.
+        type: string
+        default: ubuntu-24.04
+      timeout_minutes:
+        description: Job timeout in minutes.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: ${{ inputs.mode }} ${{ inputs.environment }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.DEPLOY_PUBLIC_URL }}
+    # One deployment per environment; a newer run waits instead of cancelling this one.
+    # release_host.py also holds a lock on the host.
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Validate inputs
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          SHA: ${{ inputs.sha }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [[ ! "$ENVIRONMENT" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
+            echo "::error::environment must match [a-z][a-z0-9-]{0,31}"
+            exit 1
+          fi
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be a full 40-character commit SHA"
+            exit 1
+          fi
+          if [[ "$MODE" != deploy && "$MODE" != rollback ]]; then
+            echo "::error::mode must be deploy or rollback"
+            exit 1
+          fi
+
+      # Full history and tags: the archive may be an older commit, and protected
+      # environments check the v* tag and the ancestor of release_ref.
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Connect to the tailnet
+        if: inputs.tailscale
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ inputs.tailscale_tags }}
+
+      - name: Write the deploy key and the pinned host key
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [[ -z "$DEPLOY_SSH_PRIVATE_KEY" || -z "$DEPLOY_KNOWN_HOSTS" ]]; then
+            echo "::error::set the DEPLOY_SSH_PRIVATE_KEY secret and the DEPLOY_KNOWN_HOSTS variable on the environment"
+            exit 1
+          fi
+          install -d -m 0700 "$RUNNER_TEMP/af-deploy"
+          (umask 077 && printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/af-deploy/id_deploy")
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$RUNNER_TEMP/af-deploy/known_hosts"
+
+      - name: Deploy
+        env:
+          AF_DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          AF_DEPLOY_SHA: ${{ inputs.sha }}
+          AF_DEPLOY_MODE: ${{ inputs.mode }}
+          AF_DEPLOY_ACTOR: ${{ github.actor }}
+          AF_PIPELINE_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AF_RELEASE_REF: ${{ inputs.release_ref }}
+          AF_PROTECTED_ENVIRONMENTS: ${{ inputs.protected_environments }}
+          AF_SMOKE_PATHS: ${{ inputs.smoke_paths }}
+          TOOLS_DIR: ${{ inputs.tools_dir }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_SSH_PORT: ${{ vars.DEPLOY_SSH_PORT }}
+          DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT }}
+          DEPLOY_OWNER: ${{ vars.DEPLOY_OWNER }}
+          DEPLOY_HOST_TOOL: ${{ vars.DEPLOY_HOST_TOOL }}
+          DEPLOY_REMOTE_PYTHON: ${{ vars.DEPLOY_REMOTE_PYTHON }}
+          DEPLOY_PUBLIC_URL: ${{ vars.DEPLOY_PUBLIC_URL }}
+          # materialize_runtime.py reads only the names deploy/runtime.manifest.toml lists.
+          AF_RUNTIME_VARS_JSON: ${{ toJSON(vars) }}
+          AF_RUNTIME_SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          export DEPLOY_SSH_KEY_FILE="$RUNNER_TEMP/af-deploy/id_deploy"
+          export DEPLOY_KNOWN_HOSTS_FILE="$RUNNER_TEMP/af-deploy/known_hosts"
+          sh "$TOOLS_DIR/deploy_remote.sh"
+
+      - name: Remove the deploy key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/af-deploy"

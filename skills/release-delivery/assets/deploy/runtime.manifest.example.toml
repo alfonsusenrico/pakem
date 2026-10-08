@@ -1,0 +1,36 @@
+# deploy/runtime.manifest.toml: which runtime variables a release needs and where each
+# comes from. materialize_runtime.py reads it from the commit being deployed.
+# TOML assigns keys to the table above them, so the plain lists come first.
+
+# Secrets and per-environment values CI must supply (masked, protected CI variables or
+# GitHub environment secrets); a missing or empty value fails the deploy.
+required = ["DATABASE_URL", "SESSION_SECRET"]
+
+# Values CI may supply; a CI value overrides a committed default.
+optional = ["SENTRY_DSN", "SMTP_USER", "SMTP_PASSWORD"]
+
+# Optional variables that must be set together or not at all.
+pairs = [["SMTP_USER", "SMTP_PASSWORD"]]
+
+# Generated once on the host (stored in <base>/shared/host-generated.env, 0600) and
+# never supplied by or sent back to CI.
+host_generated = ["APP_SIGNING_KEY"]
+
+# Environments the [prod_assert] table applies to (default ["production"]).
+production_environments = ["production"]
+
+# Committed, non-secret defaults per environment: NAME=value lines without quotes,
+# inline comments, or secrets.
+[defaults]
+staging = "deploy/runtime/staging.env"
+production = "deploy/runtime/production.env"
+
+# Single-line format rules (full match) checked against the final values.
+[formats]
+DATABASE_URL = "postgresql://\\S+"
+APP_BASE_URL = "https://[a-z0-9.-]+(/\\S*)?"
+
+# Exact values every production environment must end up with.
+[prod_assert]
+SESSION_COOKIE_SECURE = "true"
+APP_DEBUG = "false"

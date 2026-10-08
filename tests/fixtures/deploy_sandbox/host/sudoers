@@ -1,0 +1,2 @@
+Defaults:deploy !requiretty
+deploy ALL=(root) NOPASSWD: /usr/bin/python3 /usr/local/libexec/af-deploy/release_host.py *

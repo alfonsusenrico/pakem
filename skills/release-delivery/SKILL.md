@@ -19,7 +19,8 @@ capabilities.
 For servers you or your pipeline control, follow [deployment](references/deployment.md):
 deploy from a commit only, immutable release per commit, preflight, migrate, activate
 with automatic restore, revision-matching health check, rollback for every
-environment, one deploy per environment at a time.
+environment, one deploy per environment at a time. Use the
+[deploy templates](assets/deploy/README.md).
 
 For client-operated hosting, build a versioned handoff package from a tagged commit
 ([handover](references/handover.md)). Never deploy loose files or zips of

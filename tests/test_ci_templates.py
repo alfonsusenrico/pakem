@@ -17,6 +17,12 @@ CI_ROOT = REPO_ROOT / "skills" / "release-delivery" / "assets" / "ci"
 GITHUB_ROOT = CI_ROOT / "github"
 GITLAB_ROOT = CI_ROOT / "gitlab"
 PINS = CI_ROOT / "PINS.md"
+DEPLOY_ROOT = REPO_ROOT / "skills" / "release-delivery" / "assets" / "deploy"
+DEPLOY_TEMPLATES = [
+    GITHUB_ROOT / "workflows" / "deploy.yml",
+    GITHUB_ROOT / "deploy.example.yml",
+    GITLAB_ROOT / "deploy.yml",
+]
 
 USES_LINE = re.compile(r"^\s*(?:-\s+)?uses:\s*(\S+)(.*)$")
 PINNED_ACTION = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@([0-9a-f]{40})$")
@@ -26,10 +32,13 @@ TOP_LEVEL_KEY = re.compile(r"^([A-Za-z0-9_.:-]+):")
 JOB_KEY = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 SHA256_ENV = re.compile(r"^\s+[A-Z_]+_SHA256:\s*([0-9a-f]{64})\s*$")
 IMAGE_VARIABLE = re.compile(r"^\s+AF_[A-Z_]+_IMAGE:\s*(\S+)\s*$")
+SECRET_REFERENCE = re.compile(r"^\s+[A-Za-z_-]+: \$\{\{ (secrets\.[A-Z_]+|toJSON\(secrets\)) \}\}$")
+IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 
 
 def github_workflow_files() -> list[Path]:
-    return sorted((GITHUB_ROOT / "workflows").glob("*.yml")) + [GITHUB_ROOT / "ci.example.yml"]
+    examples = [GITHUB_ROOT / "ci.example.yml", GITHUB_ROOT / "deploy.example.yml"]
+    return sorted((GITHUB_ROOT / "workflows").glob("*.yml")) + examples
 
 
 def all_github_files() -> list[Path]:
@@ -105,8 +114,9 @@ def job_blocks(workflow_text: str) -> dict[str, str]:
 class GitHubTemplateTests(unittest.TestCase):
     def test_expected_templates_exist(self) -> None:
         names = {path.name for path in (GITHUB_ROOT / "workflows").glob("*.yml")}
-        self.assertEqual(names, {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml"})
+        self.assertEqual(names, {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml"})
         self.assertTrue((GITHUB_ROOT / "ci.example.yml").is_file())
+        self.assertTrue((GITHUB_ROOT / "deploy.example.yml").is_file())
 
     def test_third_party_actions_are_pinned_to_full_commit_sha(self) -> None:
         checked = 0
@@ -194,7 +204,7 @@ class GitLabTemplateTests(unittest.TestCase):
         names = {path.name for path in gitlab_files()}
         self.assertEqual(
             names,
-            {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "ci.example.yml"},
+            {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml", "ci.example.yml"},
         )
 
     def test_avoids_constructs_the_org_instance_rejects(self) -> None:
@@ -208,7 +218,8 @@ class GitLabTemplateTests(unittest.TestCase):
     def test_hidden_jobs_are_interruptible_bounded_and_ruled(self) -> None:
         hidden_count = 0
         for path in gitlab_files():
-            if path.name == "ci.example.yml":
+            # Deploy jobs are never interruptible and have their own rules (DeployTemplateTests).
+            if path.name in ("ci.example.yml", "deploy.yml"):
                 continue
             blocks = top_level_blocks(path.read_text())
             hidden = {name: body for name, body in blocks.items() if name.startswith(".af:")}
@@ -253,6 +264,103 @@ class GitLabTemplateTests(unittest.TestCase):
             hidden.update(name for name in top_level_blocks(path.read_text()) if name.startswith(".af:"))
         extended = set(re.findall(r"extends: (\.af:[a-z-]+)", text))
         self.assertEqual(extended, hidden)
+
+
+class DeployTemplateTests(unittest.TestCase):
+    """The deploy workflow, the GitLab deploy jobs, and the deploy scripts."""
+
+    def test_github_deploy_takes_environment_sha_and_mode(self) -> None:
+        text = (GITHUB_ROOT / "workflows" / "deploy.yml").read_text()
+        inputs = top_level_blocks(text)["on"]
+        for name in ("environment", "sha", "mode"):
+            self.assertRegex(inputs, rf"(?m)^      {name}:$")
+        self.assertIn("default: deploy", inputs)
+
+    def test_github_deploy_is_serialized_per_environment(self) -> None:
+        body = job_blocks((GITHUB_ROOT / "workflows" / "deploy.yml").read_text())["deploy"]
+        concurrency = "    concurrency:\n      group: deploy-${{ inputs.environment }}\n      cancel-in-progress: false"
+        self.assertIn(concurrency, body)
+        self.assertIn("    environment:\n      name: ${{ inputs.environment }}", body)
+        self.assertIn("fetch-depth: 0", body)
+
+    def test_github_deploy_secrets_arrive_only_through_env_or_with(self) -> None:
+        text = (GITHUB_ROOT / "workflows" / "deploy.yml").read_text()
+        references = [line for line in text.splitlines() if "secrets" in line and not is_comment(line)]
+        self.assertTrue(references)
+        for line in references:
+            with self.subTest(line=line.strip()):
+                self.assertRegex(line, SECRET_REFERENCE)
+
+    def test_github_deploy_example_wires_staging_production_and_rollback(self) -> None:
+        jobs = job_blocks((GITHUB_ROOT / "deploy.example.yml").read_text())
+        self.assertEqual(set(jobs), {"staging", "production", "rollback"})
+        for name, body in jobs.items():
+            with self.subTest(job=name):
+                self.assertIn("uses: ./.github/workflows/deploy.yml", body)
+                self.assertIn("secrets: inherit", body)
+        self.assertIn("github.ref == 'refs/heads/main'", jobs["staging"])
+        self.assertIn("startsWith(github.ref, 'refs/tags/v')", jobs["production"])
+        self.assertIn("mode: rollback", jobs["rollback"])
+
+    def test_gitlab_deploy_hidden_jobs(self) -> None:
+        blocks = top_level_blocks((GITLAB_ROOT / "deploy.yml").read_text())
+        hidden = {name: body for name, body in blocks.items() if name.startswith(".af:")}
+        self.assertEqual(set(hidden), {".af:deploy", ".af:rollback", ".af:smoke"})
+        self.assertRegex(hidden[".af:deploy"], r"(?m)^  interruptible: false$")
+        self.assertRegex(hidden[".af:smoke"], r"(?m)^  interruptible: true$")
+        # .af:rollback inherits image, script, interruptible, and timeout from .af:deploy.
+        self.assertIn("extends: .af:deploy", hidden[".af:rollback"])
+        for name in (".af:deploy", ".af:smoke"):
+            self.assertRegex(hidden[name], r"(?m)^  timeout: \d+ minutes$", name)
+        for name, body in hidden.items():
+            self.assertRegex(body, r"(?m)^  rules:$", name)
+
+    def test_gitlab_production_needs_a_protected_tag_and_a_manual_start(self) -> None:
+        blocks = top_level_blocks((GITLAB_ROOT / "deploy.yml").read_text())
+        deploy = blocks[".af:deploy"]
+        gate = (
+            '    - if: $AF_DEPLOY_ENVIRONMENT == "production" && $CI_COMMIT_TAG =~ /^v\\d+\\.\\d+\\.\\d+$/'
+            ' && $CI_COMMIT_REF_PROTECTED == "true"\n      when: manual\n      allow_failure: false\n'
+            '    - if: $AF_DEPLOY_ENVIRONMENT == "production"\n      when: never'
+        )
+        self.assertIn(gate, deploy)
+        rollback = blocks[".af:rollback"]
+        manual = (
+            '$AF_DEPLOY_ENVIRONMENT == "production" && $CI_PIPELINE_SOURCE == "web"'
+            ' && $CI_COMMIT_REF_PROTECTED == "true"\n      when: manual'
+        )
+        self.assertIn(manual, rollback)
+        self.assertIn('    - if: $AF_DEPLOY_ENVIRONMENT == "production"\n      when: never', rollback)
+
+    def test_gitlab_deploy_relies_on_the_host_lock(self) -> None:
+        for path in (GITLAB_ROOT / "deploy.yml", GITLAB_ROOT / "ci.example.yml"):
+            with self.subTest(path=path.name):
+                self.assertNotRegex(path.read_text(), r"(?m)^\s+resource_group:")
+
+    def test_deploy_templates_pin_hosts_and_name_no_servers(self) -> None:
+        scripts = [path for path in sorted(DEPLOY_ROOT.iterdir()) if path.suffix in (".py", ".sh", ".md", ".toml")]
+        self.assertEqual(len(scripts), 7)
+        for path in DEPLOY_TEMPLATES + scripts:
+            text = path.read_text()
+            with self.subTest(path=path.name):
+                self.assertNotIn("accept-new", text.replace("never `accept-new`", ""))
+                self.assertNotIn("StrictHostKeyChecking=no", text)
+                addresses = set(IPV4.findall(text)) - {"127.0.0.1", "0.0.0.0"}
+                self.assertEqual(addresses, set())
+
+    def test_deploy_driver_connects_only_with_pinned_keys_and_its_own_identity(self) -> None:
+        text = (DEPLOY_ROOT / "deploy_remote.sh").read_text()
+        options = (
+            "-F /dev/null",
+            "StrictHostKeyChecking=yes",
+            "IdentitiesOnly=yes",
+            "IdentityAgent=none",
+            "BatchMode=yes",
+        )
+        for option in options:
+            self.assertIn(option, text)
+        self.assertIn('ssh-keygen -F "$known_name"', text)
+        self.assertTrue(text.startswith("#!/bin/sh\n"))
 
 
 if __name__ == "__main__":

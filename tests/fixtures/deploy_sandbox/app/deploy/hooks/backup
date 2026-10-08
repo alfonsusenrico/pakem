@@ -1,0 +1,4 @@
+#!/bin/sh
+# Sandbox backup hook: a real project dumps its database into AF_BACKUP_DIR.
+set -eu
+echo "backup of $AF_COMPOSE_PROJECT before $AF_RELEASE_SHA" > "$AF_BACKUP_DIR/marker.txt"
