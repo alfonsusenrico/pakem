@@ -296,7 +296,7 @@ def _check_blocks(framework: Framework, document, report: Report) -> None:
             report.warn("digest block content differs from the framework DIGEST.md (run af project sync)")
 
 
-def _declared_capabilities(document) -> list[tuple[int, list[str]]]:
+def declared_capabilities(document) -> list[tuple[int, list[str]]]:
     """(line index, values) for every `Capabilities:` line outside pinned blocks."""
     declarations = []
     for index, line in _lines_outside_blocks(document):
@@ -313,7 +313,7 @@ def _declared_capabilities(document) -> list[tuple[int, list[str]]]:
 
 
 def _check_capabilities(framework: Framework, document, report: Report) -> None:
-    declarations = _declared_capabilities(document)
+    declarations = declared_capabilities(document)
     if not declarations:
         report.warn(
             "AGENTS.md has no 'Capabilities:' line; declare project capabilities "

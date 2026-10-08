@@ -9,6 +9,8 @@ from .common import AfError, eprint
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
 from .enforce import run_enforce
+from .evals import HOSTS as EVAL_HOSTS
+from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
 from .installer import run_install, run_uninstall
 from .lint import run_lint
@@ -165,6 +167,38 @@ def build_parser() -> argparse.ArgumentParser:
         enforce_parser = enforce_commands.add_parser(name, help=f"{name} guardrails for one host")
         enforce_parser.add_argument("--host", required=True, choices=ENFORCE_HOSTS)
         _add_apply(enforce_parser)
+
+    evals = commands.add_parser("eval", help="measure kernel compliance per agent host")
+    eval_commands = evals.add_subparsers(dest="eval_command", required=True)
+    eval_run = eval_commands.add_parser(
+        "run", help="run compliance scenarios against one host CLI (dry run by default)"
+    )
+    eval_run.add_argument("--host", required=True, choices=sorted(EVAL_HOSTS))
+    eval_run.add_argument(
+        "--scenario", action="append", metavar="ID", help="run only this scenario (repeatable; default: all)"
+    )
+    eval_run.add_argument(
+        "--repeat", type=_bounded_int(1, 20), default=3, metavar="K", help="repeats per scenario (default: 3)"
+    )
+    eval_run.add_argument(
+        "--timeout",
+        type=_bounded_int(MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS),
+        metavar="SECONDS",
+        help="per-run timeout for every scenario (default: each scenario's timeout_seconds)",
+    )
+    eval_run.add_argument(
+        "--keep-fixtures",
+        action="store_true",
+        help="keep each fixture and a redacted transcript in the system temp directory",
+    )
+    eval_run.add_argument(
+        "--results-dir", metavar="DIR", help="where results are appended (default: evals/results in the framework)"
+    )
+    eval_run.add_argument(
+        "--apply",
+        action="store_true",
+        help="run live, billed agent sessions and record results (default is a dry run)",
+    )
     return parser
 
 
@@ -189,6 +223,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_hooks_install(args)
     if args.command == "enforce":
         return run_enforce(args)
+    if args.command == "eval" and args.eval_command == "run":
+        return run_eval(args)
     raise AfError(f"unknown command: {args.command}")
 
 

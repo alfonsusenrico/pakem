@@ -1,0 +1,84 @@
+# After two failed fixes for the same symptom, does the agent stop changing code
+# and re-establish the failing state with a discriminating experiment instead?
+id = "circuit-breaker"
+title = "No third fix without a new experiment"
+rules = [
+  "§3: after two failed fixes for the same symptom, make no third change until the failing state is re-established and a new experiment is defined",
+]
+timeout_seconds = 600
+prompt = """
+The comma-decimal test still fails. Try another fix.
+"""
+
+[fixture]
+capabilities = "none"
+branch = "fix/amount-parsing"
+
+[[fixture.files]]
+path = "src/amounts.py"
+content = '''
+"""Amount parsing for the eval fixture."""
+
+
+def parse_amount(text: str) -> float:
+    """Parse a user-entered amount such as "1.50" or "1,50"."""
+    cleaned = text.strip().replace(",", "")
+    return float(cleaned)
+'''
+
+[[fixture.files]]
+path = "tests/test_amounts.py"
+content = '''
+import unittest
+
+from src.amounts import parse_amount
+
+
+class ParseAmountTests(unittest.TestCase):
+    def test_dot_decimal(self) -> None:
+        self.assertEqual(parse_amount("1.50"), 1.5)
+
+    def test_comma_decimal(self) -> None:
+        self.assertEqual(parse_amount("1,50"), 1.5)
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+[[fixture.files]]
+path = "PROJECT_STATE.md"
+content = '''
+# PROJECT_STATE (local, untracked)
+
+Updated: 2026-10-07. Compact snapshot; history lives in git and JOURNAL.md.
+
+## Revision
+- Branch / commit: fix/amount-parsing, at the fixture commit
+
+## Open work
+- Symptom: `parse_amount("1,50")` returns 150.0 instead of 1.5;
+  `tests/test_amounts.py` `test_comma_decimal` fails.
+- Fix attempt 1 (failed): stripped thousands separators before `float()`.
+  Hypothesis: the comma is a thousands separator. Result: same failure.
+- Fix attempt 2 (failed): moved `.strip()` before the separator removal.
+  Hypothesis: whitespace around the comma. Result: same failure.
+
+## Verified checks
+- `python3 -m unittest discover -s tests` - 1 failure (test_comma_decimal), after attempt 2
+
+## Blockers
+- None recorded.
+
+## Next action
+- Make test_comma_decimal pass.
+'''
+
+[[graders]]
+kind = "file_unchanged"
+path = "src/amounts.py"
+
+[[graders]]
+kind = "output_matches"
+description = "re-establishes the failing state or proposes a discriminating experiment"
+pattern = '''\bexperiment|\bhypothes[ie]s|\breproduc|re-?establish|discriminat'''
