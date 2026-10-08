@@ -13,6 +13,22 @@ the tool call and bypass the user's normal permission prompts.
 
 The guard never prints file contents; it only inspects command text and paths.
 
+Secret reads: a path is secret when it matches the patterns in is_secret_path
+(.env and .env.* except .env.example/.sample/.template, SSH private keys and the
+~/.ssh directory, credential files, key and certificate files, secrets/*secret*).
+Within a shell command the guard denies:
+- reader commands (cat, grep, cp, source, ...) and `<` redirections on a secret path;
+- `git show REV:PATH`, `git show REV -- PATH`, and `git cat-file ... REV:PATH` on a
+  secret path;
+- interpreter one-liners (python -c, node -e/--eval/-p, ruby -e, perl -e/-E, php -r,
+  deno eval, bun -e/--eval/-p) whose code contains a string literal naming a secret
+  path, or whose remaining arguments are secret paths;
+- simple variable indirection in one command line: an assignment of a secret path
+  (`VAR=...`, `export VAR=...`, `declare`/`local`/`readonly`/`typeset`) is expanded in
+  later `$VAR`/`${VAR}` uses of the same command line before they are checked.
+This is a guardrail against accidents, not a sandbox: scripts on disk, string
+concatenation, or encoded paths are not detected.
+
 Protected branches: for a push, the guard runs
 `git config --get-all agentframework.protectedBranch` in the directory the push
 runs in (the hook's cwd, adjusted for `cd` and `git -C`). When the key is unset,
@@ -107,6 +123,9 @@ SECRET_BASENAMES = {
 SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".runtime.env")
 SSH_NON_SECRET_NAMES = {"known_hosts", "known_hosts.old", "config", "authorized_keys"}
 REMOTE_PREFIX = re.compile(r"^[\w.@-]+:(?=[~/.])")
+ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
+ASSIGNMENT_BUILTINS = {"export", "declare", "typeset", "local", "readonly"}
+VARIABLE_REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
 GLOB_CHARS = set("*?[")
 TRAILER_PATTERN = re.compile(r"(?i)co-authored-by|generated with")
 HEREDOC_SUBSTITUTION = re.compile(
@@ -150,12 +169,14 @@ NO_OBJECTION = Decision()
 
 
 class Context:
-    def __init__(self, cwd: str | None, depth: int = 0) -> None:
+    def __init__(self, cwd: str | None, depth: int = 0, variables: dict[str, str] | None = None) -> None:
         self.cwd = cwd or os.getcwd()
         self.depth = depth
+        # Shell variables assigned a secret path earlier in the same command line.
+        self.secret_variables: dict[str, str] = dict(variables or {})
 
     def nested(self) -> "Context":
-        return Context(self.cwd, self.depth + 1)
+        return Context(self.cwd, self.depth + 1, self.secret_variables)
 
 
 def expand_path(text: str, cwd: str | None) -> Path:
@@ -315,16 +336,51 @@ def substitutions_in(token: str) -> list[str]:
     return [text for text in inner if not re.match(r"^\s*cat\s+<<", text)]
 
 
+def expand_secret_variables(tokens: list[str], variables: dict[str, str]) -> list[str]:
+    if not variables:
+        return tokens
+
+    def replace(match: re.Match) -> str:
+        name = match.group(1) or match.group(2)
+        return variables.get(name, match.group(0))
+
+    return [VARIABLE_REFERENCE.sub(replace, token) for token in tokens]
+
+
+def record_secret_assignments(tokens: list[str], context: Context) -> None:
+    """Remember `VAR=<secret path>` from a bare assignment or an export/declare-style builtin."""
+    if not tokens:
+        return
+    if tokens[0] in ASSIGNMENT_BUILTINS:
+        candidates = [token for token in tokens[1:] if not token.startswith("-")]
+    elif all(ASSIGNMENT.match(token) for token in tokens):
+        candidates = tokens
+    else:
+        # `VAR=value command` sets VAR only in that command's environment.
+        return
+    for token in candidates:
+        match = ASSIGNMENT.match(token)
+        if match is None:
+            continue
+        name, value = match.group(1), token[match.end() :]
+        if is_secret_path(value, context.cwd):
+            context.secret_variables[name] = value
+        else:
+            context.secret_variables.pop(name, None)
+
+
 def analyze_command(command: str, context: Context) -> Decision:
     decision = NO_OBJECTION
     if context.depth > MAX_NESTING:
         return decision
-    for segment in split_segments(tokenize(command)):
+    for raw_segment in split_segments(tokenize(command)):
+        segment = expand_secret_variables(raw_segment, context.secret_variables)
         for token in segment:
             if "$(" in token or "`" in token:
                 for inner in substitutions_in(token):
                     decision = decision.stronger(analyze_command(inner, context.nested()))
         decision = decision.stronger(analyze_segment(segment, context))
+        record_secret_assignments(segment, context)
     return decision
 
 
@@ -353,7 +409,7 @@ def strip_redirections(tokens: list[str]) -> tuple[list[str], list[str]]:
 
 def strip_assignments(arguments: list[str]) -> list[str]:
     index = 0
-    while index < len(arguments) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", arguments[index]):
+    while index < len(arguments) and ASSIGNMENT.match(arguments[index]):
         index += 1
     return arguments[index:]
 
@@ -392,6 +448,11 @@ def analyze_segment(tokens: list[str], context: Context) -> Decision:
         return analyze_git(rest, context)
     if program in READ_COMMANDS:
         return analyze_read_command(rest, context)
+    interpreter = interpreter_spec(program)
+    if interpreter is not None:
+        return analyze_interpreter(interpreter, rest, context)
+    if program == "deno" and rest[:1] == ["eval"]:
+        return analyze_interpreter(DENO_EVAL, rest[1:], context)
     return analyze_environment_listing(program, rest)
 
 
@@ -458,6 +519,122 @@ def analyze_git(arguments: list[str], context: Context) -> Decision:
         return analyze_push(subcommand_arguments, git_cwd)
     if subcommand == "commit":
         return analyze_commit(subcommand_arguments)
+    if subcommand in ("show", "cat-file"):
+        return analyze_git_object_read(subcommand_arguments, git_cwd)
+    return NO_OBJECTION
+
+
+def analyze_git_object_read(arguments: list[str], cwd: str) -> Decision:
+    """`git show REV:PATH`, `git show REV -- PATH`, `git cat-file -p REV:PATH` print file contents."""
+    after_double_dash = False
+    for argument in arguments:
+        if after_double_dash:
+            candidate = argument
+        elif argument == "--":
+            after_double_dash = True
+            continue
+        elif argument.startswith("-") or ":" not in argument:
+            continue
+        else:
+            # REV:PATH; an empty REV (":PATH") names the index.
+            candidate = argument.split(":", 1)[1]
+        if is_secret_path(candidate, cwd):
+            return Decision(DENY, REASON_SECRET_READ)
+    return NO_OBJECTION
+
+
+class InterpreterSpec:
+    """How to find the inline code of an interpreter one-liner."""
+
+    def __init__(
+        self,
+        code_options: set[str],
+        cluster_letters: str = "",
+        value_options: set[str] | None = None,
+        code_is_first_argument: bool = False,
+    ) -> None:
+        self.code_options = code_options
+        self.cluster_letters = cluster_letters
+        self.value_options = value_options or set()
+        self.code_is_first_argument = code_is_first_argument
+
+
+PYTHON_SPEC = InterpreterSpec({"-c"}, cluster_letters="c", value_options={"-W", "-X"})
+NODE_SPEC = InterpreterSpec(
+    {"-e", "--eval", "-p", "--print"},
+    value_options={"-r", "--require", "--import", "--loader", "--experimental-loader", "-C", "--conditions"},
+)
+INTERPRETERS = {
+    "node": NODE_SPEC,
+    "nodejs": NODE_SPEC,
+    "bun": InterpreterSpec({"-e", "--eval", "-p", "--print"}, value_options={"-r", "--preload"}),
+    "ruby": InterpreterSpec({"-e"}, cluster_letters="e", value_options={"-I", "-r", "-C"}),
+    "perl": InterpreterSpec({"-e", "-E"}, cluster_letters="eE", value_options={"-I", "-M", "-m"}),
+    "php": InterpreterSpec({"-r"}, value_options={"-c", "-d", "-z"}),
+}
+DENO_EVAL = InterpreterSpec(set(), code_is_first_argument=True)
+PYTHON_PROGRAM = re.compile(r"^python(\d+(\.\d+)*)?$")
+STRING_LITERAL = re.compile(r"""(['"`])((?:\\.|(?!\1).)*?)\1""", re.DOTALL)
+LITERAL_WORD_SEPARATORS = re.compile(r"[\s,;=()<>|&]+")
+
+
+def interpreter_spec(program: str) -> InterpreterSpec | None:
+    if PYTHON_PROGRAM.match(program):
+        return PYTHON_SPEC
+    return INTERPRETERS.get(program)
+
+
+def inline_code(spec: InterpreterSpec, arguments: list[str]) -> tuple[str, list[str]] | None:
+    """The one-liner code and the arguments after it, or None when no inline code is given."""
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        following = arguments[index + 1 :]
+        if argument in spec.code_options:
+            return (following[0], following[1:]) if following else None
+        for option in spec.code_options:
+            if option.startswith("--") and argument.startswith(option + "="):
+                return argument.split("=", 1)[1], following
+        is_cluster = (
+            spec.cluster_letters
+            and re.fullmatch(r"-[A-Za-z]+", argument)
+            and argument[-1] in spec.cluster_letters
+        )
+        if is_cluster:
+            return (following[0], following[1:]) if following else None
+        if argument in spec.value_options:
+            index += 2
+            continue
+        if argument.startswith("-"):
+            index += 1
+            continue
+        if spec.code_is_first_argument:
+            return argument, following
+        # A script path: not a one-liner.
+        return None
+    return None
+
+
+def code_mentions_secret_path(code: str, cwd: str) -> bool:
+    """True when a string literal in the code names a secret path (identifiers are ignored)."""
+    for match in STRING_LITERAL.finditer(code):
+        literal = match.group(2)
+        words = [literal, *LITERAL_WORD_SEPARATORS.split(literal)]
+        if any(is_secret_path(word, cwd) for word in words if word):
+            return True
+    return False
+
+
+def analyze_interpreter(spec: InterpreterSpec, arguments: list[str], context: Context) -> Decision:
+    found = inline_code(spec, arguments)
+    if found is None:
+        return NO_OBJECTION
+    code, remaining = found
+    if code_mentions_secret_path(code, context.cwd):
+        return Decision(DENY, REASON_SECRET_READ)
+    for argument in remaining:
+        if is_secret_path(argument, context.cwd):
+            return Decision(DENY, REASON_SECRET_READ)
     return NO_OBJECTION
 
 

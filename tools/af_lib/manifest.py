@@ -67,6 +67,11 @@ class BackupSession:
         self._directory: Path | None = None
         self._index: list[dict] = []
 
+    @property
+    def directory(self) -> Path | None:
+        """The backup directory of this run, or None when nothing was backed up."""
+        return self._directory
+
     def _ensure_directory(self) -> Path:
         if self._directory is not None:
             return self._directory

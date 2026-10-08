@@ -15,9 +15,15 @@ from .common import (
     version_tuple,
 )
 from .hosts import HostTarget, load_targets
-from .installer import KIND_INSTRUCTIONS, installed_sha, profile_skill_sources
+from .installer import (
+    KIND_INSTRUCTIONS,
+    framework_skill_sources,
+    installed_sha,
+    profile_skill_sources,
+    split_orphaned_skill_entries,
+)
 from .manifest import entries_by_path, load_manifest
-from .profiles import load_profiles
+from .profiles import Profile, load_profiles
 from .project import check_repo
 
 
@@ -74,11 +80,8 @@ def check_duplicate_skills(host: HostTarget, report: Report) -> None:
             report.error(f"{host.host_id}: skill '{name}' is present in more than one skills dir: {listed}")
 
 
-def check_profile_skills(
-    framework: Framework, profile_dirs: list[str], hosts: list[HostTarget], report: Report
-) -> None:
+def check_profile_skills(profiles: list[Profile], hosts: list[HostTarget], report: Report) -> None:
     """Every skill of the given profiles is installed, per the manifest, in every host skills dir."""
-    profiles = load_profiles(profile_dirs, framework.version())
     entries = entries_by_path(load_manifest())
     skills_dirs: list[Path] = []
     for host in hosts:
@@ -94,6 +97,22 @@ def check_profile_skills(
                 report.error(f"not installed: {source.label} at {installed_path} (run af install --profile)")
             elif entry.get("sha256") != source_sha:
                 report.warn(f"outdated: {installed_path} differs from {source.label} (run af install --profile)")
+
+
+def check_orphaned_skills(framework: Framework, profiles: list[Profile], report: Report) -> None:
+    """Skills af installed whose source is gone; profile skills only for the given profiles."""
+    # Problems with the sources themselves are af lint's job, so they are not repeated here.
+    source_report = Report()
+    sources = framework_skill_sources(framework, source_report)
+    sources += profile_skill_sources(profiles, source_report)
+    available = {source.label for source in sources}
+    given = {profile.name for profile in profiles}
+    orphaned, _ = split_orphaned_skill_entries(load_manifest().get("entries", []), available, given)
+    for entry in orphaned:
+        report.warn(
+            f"orphaned: {entry['path']} was installed from {entry.get('source')}, which no longer exists "
+            "(af install removes it)"
+        )
 
 
 def discover_repos(directories: list[str]) -> list[Path]:
@@ -137,8 +156,10 @@ def run_doctor(args) -> int:
     for host in hosts:
         check_global_instruction_files(host, report)
         check_duplicate_skills(host, report)
-    if args.profile:
-        check_profile_skills(framework, args.profile, hosts, report)
+    profiles = load_profiles(args.profile, framework.version())
+    check_orphaned_skills(framework, profiles, report)
+    if profiles:
+        check_profile_skills(profiles, hosts, report)
     if args.repos:
         check_repos(framework, args.repos, report)
     print("af doctor")

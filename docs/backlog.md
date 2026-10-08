@@ -11,5 +11,4 @@ Candidates waiting for owner review or a later phase (see
 | Personal/freelance profile and workspace map | owner workspaces | `profiles/personal` | Phase 5 |
 | Shared versioned platform client for an organization hub | duplicated drifting copies across repositories | organization profile follow-up | tracked in that profile |
 | Compliance eval scenarios per host (commit format, secret read, second failed fix, state update, UI review) | factorial study on instruction adherence | `evals/` | Phase 2 |
-| Guard gaps: `git show HEAD:.env`, interpreter file reads, variable indirection | tooling review | `enforcement/guard.py` | open |
-| `af install` prune of skills removed from the framework; install transaction | tooling review | `tools/af_lib/installer.py` | open |
+| Guard does not see secret reads through `git diff`/`git log -p` of a secret file, scripts on disk, or string concatenation | af hardening review 2026-10-08 | `enforcement/guard.py` (best effort; harness permissions remain the primary control) | open |
