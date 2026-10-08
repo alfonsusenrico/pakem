@@ -1,0 +1,6 @@
+# Personal and freelance profile for agent-framework (contract: tools/af_lib/profiles.py).
+name = "personal"
+version = "0.1.0"
+requires_framework = ">=0.1,<2.0"
+digest = "digest.md"
+skills_dir = "skills"

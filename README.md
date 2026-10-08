@@ -10,7 +10,7 @@ to the same standard, whatever the employer, client, or host tool.
 | Kernel | `kernel/KERNEL.md` | Always, installed into each host's global instructions |
 | Skills | `skills/<name>/` | On demand, when a task matches a skill description |
 | Standards | `skills/*/references/`, indexed in `standards/` | When a skill points to them |
-| Profiles | separate repositories (`profile.toml`) | Organization or client how-tos, opt-in |
+| Profiles | `profiles/personal/` (freelance practice); organization profiles in separate repositories (`profile.toml`) | Organization, client, or freelance how-tos, opt-in |
 | Project | each repository's `AGENTS.md` | Pinned digest block plus project facts |
 
 Precedence: host and system rules > owner instruction > approved specs > project
