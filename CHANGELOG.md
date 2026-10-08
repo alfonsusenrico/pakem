@@ -5,6 +5,10 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- Design bases for tools: `owner-dashboard` and `owner-workbench` (both themes, measured
+  contrast, provenance), from the portfolio (primary), the finance tracker web UI, and
+  the office dashboard and workbench UIs. Status: Draft pending owner review.
+- Uppercase labels use +0.05 to +0.08em tracking (research-backed; Butterick).
 - `af install --apply` installs from merged `main` only: it refuses a checkout on another
   branch or a detached HEAD, or one whose HEAD differs from the local `origin/main` ref
   (no fetch; the message says to fetch to refresh), unless `--allow-unmerged` is given.

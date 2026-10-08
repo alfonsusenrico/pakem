@@ -13,7 +13,9 @@ description: Use when creating, materially changing, or reviewing a user interfa
 - Where the project is silent, apply the owner's [design base](references/design-base.md)
   and the rules for its [surface](references/surfaces.md). Projects that adopt a named
   [design base](references/design-bases/README.md) use its tokens; the marketing base is
-  [owner-studio](references/design-bases/owner-studio.md).
+  [owner-studio](references/design-bases/owner-studio.md), the tool bases are
+  [owner-dashboard](references/design-bases/owner-dashboard.md) and
+  [owner-workbench](references/design-bases/owner-workbench.md).
 - After a direction is accepted: refine, don't restyle. Never replace established
   tokens or identity to make something look different.
 - Where taste is uncertain, prefer research-backed defaults and cite the source.
