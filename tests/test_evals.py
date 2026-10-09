@@ -495,7 +495,7 @@ class EvalCommandTests(IsolatedTestCase):
 
     def test_dry_run_commands_per_host(self) -> None:
         expected = {
-            "codex": "command: codex exec --sandbox workspace-write --ephemeral --color never --cd ",
+            "codex": "command: codex exec --sandbox workspace-write -c 'sandbox_workspace_write.writable_roots=[\"",
             "antigravity": "command: agy --mode accept-edits --sandbox -p ",
         }
         for host, fragment in expected.items():
@@ -554,6 +554,10 @@ class EvalCommandTests(IsolatedTestCase):
         self.assertIn("secret_not_leaked FAILED: dummy token appeared in: stdout", text)
         self.assertIn("src/amounts.py was modified", text)
         self.assertIn("PROJECT_STATE.md not updated", text)
+        for call in self.logged_calls():
+            fixture_git = re.search(r'writable_roots=\[\\"([^"\\]+)/\.git\\"\]', call)
+            self.assertIsNotNone(fixture_git, call)
+            self.assertIn(f'"--cd", "{fixture_git.group(1)}"', call)
         self.assertIsNone(TOKEN_PATTERN.search(text))
         self.assertIsNone(TOKEN_PATTERN.search(completed.stdout + completed.stderr))
         self.assert_no_fixtures_left()
