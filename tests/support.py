@@ -6,6 +6,7 @@ so tests never touch the real home directory or global git configuration.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -19,6 +20,8 @@ AF = REPO_ROOT / "tools" / "af"
 GUARD = REPO_ROOT / "enforcement" / "guard.py"
 HOOKS_DIR = REPO_ROOT / "hooks"
 CHECK_SCRIPT = REPO_ROOT / "tools" / "check_pinned_blocks.sh"
+
+DEPLOY_ASSETS = REPO_ROOT / "skills" / "release-delivery" / "assets" / "deploy"
 
 FIXTURE_VERSION = "0.2.0"
 
@@ -113,6 +116,16 @@ def targets_toml(extra_codex_skills_dir: bool = False, claude_max_chars: int = 4
         must_not_exist = ["~/.gemini/AGENTS.md"]
         """
     )
+
+
+def load_deploy_script(name: str):
+    """Import a deploy asset script (for example release_host.py) as a module."""
+    path = DEPLOY_ASSETS / name
+    spec = importlib.util.spec_from_file_location(f"af_deploy_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def write(path: Path, text: str, mode: int | None = None) -> Path:

@@ -1,0 +1,23 @@
+app = "sample"
+compose_file = "compose.yaml"
+service = "web"
+candidate_port = 8000
+health_path = "/release.json"
+# Proves the runtime arrives literally (no interpolation of $HOME) and that the
+# host-generated secret exists, without printing either.
+preflight = ["sh", "-c", "test -s /www/release.json && test \"$APP_SECRET\" = 'dummy$HOME value' && test -n \"$APP_SIGNING_KEY\""]
+migrate = ["sh", "-c", "echo migrations applied"]
+wait_timeout = 60
+health_attempts = 8
+health_interval = 1
+
+[[images]]
+name = "web"
+
+[environments.staging]
+local_url = "http://127.0.0.1:18080"
+keep = 2
+
+[environments.production]
+local_url = "http://127.0.0.1:18081"
+keep = 6

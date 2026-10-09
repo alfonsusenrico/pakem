@@ -1,0 +1,112 @@
+# agent-framework CI template (GitLab): deploy, roll back, and smoke-check one environment.
+# Capability: deployed. The jobs run the framework deploy scripts copied into the project
+# (AF_TOOLS_DIR, default deploy/af; release-delivery assets/deploy). The runner must reach
+# the host's private address (for example a runner on the tailnet). SSH uses the File-type
+# variables DEPLOY_SSH_PRIVATE_KEY and DEPLOY_KNOWN_HOSTS; all variables are listed in
+# assets/deploy/README.md.
+# Use: include this file, then on each job `extends:` one hidden job and set
+# AF_DEPLOY_ENVIRONMENT (staging, production, ...).
+# - Staging deploys pushes to the default branch; production deploys only protected v*
+#   tags, manually (make the production environment protected, with approval).
+# - Rollback: run a pipeline (Build > Pipelines > Run pipeline) with AF_ROLLBACK_ENVIRONMENT
+#   and AF_ROLLBACK_SHA (the full SHA of an earlier release); production waits for a manual
+#   start on a protected ref.
+# - resource_group is not used: the org instance lacks it. release_host.py's host lock
+#   serializes deployments per environment; a second deploy waits up to
+#   AF_LOCK_WAIT_SECONDS and then fails.
+# Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch
+# variable (set inconsistently); jobs use CI_COMMIT_REF_NAME.
+
+.af:deploy:
+  image: $AF_DEPLOY_IMAGE
+  variables:
+    AF_DEPLOY_IMAGE: python:3.13.16-alpine3.24
+    AF_TOOLS_DIR: deploy/af
+    AF_DEPLOY_ENVIRONMENT: ""
+    AF_DEPLOY_MODE: deploy
+    AF_DEPLOY_SHA: $CI_COMMIT_SHA
+    AF_PROTECTED_ENVIRONMENTS: production
+    AF_SMOKE_PATHS: ""
+    AF_LOCK_WAIT_SECONDS: "600"
+    GIT_DEPTH: "0"
+  environment:
+    name: $AF_DEPLOY_ENVIRONMENT
+    url: $DEPLOY_PUBLIC_URL
+  # A deployment must never be cancelled halfway; the host restores on failure instead.
+  interruptible: false
+  timeout: 30 minutes
+  rules:
+    - if: $AF_ROLLBACK_SHA
+      when: never
+    - if: $AF_DEPLOY_ENVIRONMENT == "production" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $CI_COMMIT_REF_PROTECTED == "true"
+      when: manual
+      allow_failure: false
+    - if: $AF_DEPLOY_ENVIRONMENT == "production"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  before_script:
+    - apk add --no-cache git openssh-client-default openssh-keygen
+  script:
+    - |
+      if [ -z "$AF_DEPLOY_ENVIRONMENT" ]; then
+        echo "ERROR: set AF_DEPLOY_ENVIRONMENT on the job that extends .af:deploy or .af:rollback"
+        exit 1
+      fi
+    # The default branch and tags back the production ancestor and tag checks.
+    - git fetch --quiet --tags origin "+refs/heads/$CI_DEFAULT_BRANCH:refs/remotes/origin/$CI_DEFAULT_BRANCH"
+    - chmod 600 "$DEPLOY_SSH_PRIVATE_KEY"
+    - export DEPLOY_SSH_KEY_FILE="$DEPLOY_SSH_PRIVATE_KEY"
+    - export DEPLOY_KNOWN_HOSTS_FILE="$DEPLOY_KNOWN_HOSTS"
+    - export AF_RELEASE_REF="origin/$CI_DEFAULT_BRANCH"
+    - export AF_DEPLOY_ACTOR="$GITLAB_USER_LOGIN"
+    - export AF_PIPELINE_URL="$CI_PIPELINE_URL"
+    - sh "$AF_TOOLS_DIR/deploy_remote.sh"
+
+.af:rollback:
+  extends: .af:deploy
+  # A rollback must not wait for checks of the (possibly broken) current branch head.
+  needs: []
+  variables:
+    AF_DEPLOY_MODE: rollback
+    AF_DEPLOY_SHA: $AF_ROLLBACK_SHA
+  rules:
+    - if: $AF_ROLLBACK_SHA !~ /^[0-9a-f]{40}$/
+      when: never
+    - if: $AF_ROLLBACK_ENVIRONMENT != $AF_DEPLOY_ENVIRONMENT
+      when: never
+    - if: $AF_DEPLOY_ENVIRONMENT == "production" && $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_PROTECTED == "true"
+      when: manual
+      allow_failure: false
+    - if: $AF_DEPLOY_ENVIRONMENT == "production"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_REF_PROTECTED == "true"
+
+# Read-only functional checks against the public URL after a deploy or rollback; put it
+# in a later stage with `needs:` on the matching deploy job.
+.af:smoke:
+  image: $AF_DEPLOY_IMAGE
+  variables:
+    AF_DEPLOY_IMAGE: python:3.13.16-alpine3.24
+    AF_TOOLS_DIR: deploy/af
+    AF_DEPLOY_ENVIRONMENT: ""
+    AF_SMOKE_REVISION: $CI_COMMIT_SHA
+    AF_SMOKE_PATHS: ""
+  interruptible: true
+  timeout: 10 minutes
+  rules:
+    - if: $AF_ROLLBACK_SHA =~ /^[0-9a-f]{40}$/ && $AF_ROLLBACK_ENVIRONMENT == $AF_DEPLOY_ENVIRONMENT
+      variables:
+        AF_SMOKE_REVISION: $AF_ROLLBACK_SHA
+    - if: $AF_ROLLBACK_SHA
+      when: never
+    - if: $AF_DEPLOY_ENVIRONMENT == "production" && $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $CI_COMMIT_REF_PROTECTED == "true"
+    - if: $AF_DEPLOY_ENVIRONMENT == "production"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      set -- --base-url "$DEPLOY_PUBLIC_URL" --revision "$AF_SMOKE_REVISION" --release-config deploy/release.toml
+      for path in $AF_SMOKE_PATHS; do
+        set -- "$@" --path "$path"
+      done
+      python3 "$AF_TOOLS_DIR/smoke.py" "$@"

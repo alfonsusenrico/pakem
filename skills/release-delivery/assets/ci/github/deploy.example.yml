@@ -1,0 +1,53 @@
+# Project caller for the agent-framework deploy workflow; save as .github/workflows/release.yml
+# next to a copy of workflows/deploy.yml (.github/workflows/deploy.yml) and copy the
+# release-delivery assets/deploy scripts into deploy/af/.
+# Staging deploys every push to main; protect main so only commits whose checks passed
+# arrive there. Production deploys v* tags behind the production environment's required
+# reviewers. Rollback is a manual run with an earlier release's full SHA.
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back
+        type: choice
+        options: [staging, production]
+      sha:
+        description: Full commit SHA of the release to return to
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      sha: ${{ github.sha }}
+      smoke_paths: /health/ready
+    secrets: inherit
+
+  production:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      sha: ${{ github.sha }}
+      smoke_paths: /health/ready
+    secrets: inherit
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: ${{ inputs.environment }}
+      sha: ${{ inputs.sha }}
+      mode: rollback
+    secrets: inherit

@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-08
 Review by: 2027-04-07
 Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard Profile section 10
 
@@ -29,12 +29,12 @@ Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard
   with the release.
 - `main` deploys to staging; a `v*` tag that is an ancestor of `main` deploys to
   production behind a manual approval.
-- One deployment per environment at a time (concurrency group / resource group plus a
-  host lock).
+- One deployment per environment at a time (concurrency group, or resource group where
+  the instance supports it, plus a host lock).
 - Post-deploy smoke checks the revision locally and publicly; notifications carry
   environment, revision, and job link only.
 
 The CI templates ship in this skill's `assets/ci/` (GitHub Actions reusable workflows,
-GitLab CI hidden jobs, a project example for each, `README.md` for adoption, and
-`PINS.md` for pinned versions). Deployment pipeline templates are planned
-(`assets/ci/DEPLOY_DESIGN.md`).
+GitLab CI hidden jobs, project examples, `README.md` for adoption, and `PINS.md` for
+pinned versions). The deploy jobs drive the scripts in `assets/deploy/` (design and
+deviations: `assets/ci/DEPLOY_DESIGN.md`).

@@ -5,6 +5,26 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+- Deploy templates (Phase 2b) in `skills/release-delivery/assets/deploy/`:
+  `deploy_remote.sh` (CI, POSIX sh: validates every input before SSH, archives the exact
+  commit, pinned `known_hosts`, own key only, host sequence under the environment lock,
+  public smoke, automatic restore on a failed promote or smoke), `release_host.py` (host:
+  `prepare | secure-file | lock | activate | promote | rollback | cleanup | record |
+  status`; owner modes `root` and `self`; safe extraction; immutable releases verified by
+  tree digest; per-commit image build verified by image id and OCI revision label;
+  preflight, isolated candidate check, production backup hook, migrations before `up`,
+  local revision check, automatic restore; retention 3/6 without touching running
+  releases; `deployment.json` record), `materialize_runtime.py` (manifest-driven 0600
+  runtime: per-environment defaults, required, optional, pairs, formats, host-generated,
+  production assertions; values never printed), `smoke.py`, a README, and example
+  `release.toml` and `runtime.manifest.toml`. CI: GitHub reusable workflow
+  `deploy.yml` (environment, sha, mode; per-environment concurrency; Tailscale action
+  pinned at v4.2.0 by SHA) with `deploy.example.yml`; GitLab hidden jobs `.af:deploy`,
+  `.af:rollback`, `.af:smoke` (no `resource_group`; production only on protected `v*`
+  tags with `when: manual`), wired into `gitlab/ci.example.yml`. `DEPLOY_DESIGN.md` is
+  Active with its deviations recorded. Tests: `tests/test_deploy_*.py`, deploy checks in
+  `tests/test_ci_templates.py`, and an opt-in Docker sandbox
+  (`AF_SANDBOX=1 python3 -m unittest tests.test_deploy_sandbox`).
 - `af eval run --host claude|codex|antigravity [--scenario ID ...] [--repeat K]
   [--timeout S] [--apply] [--keep-fixtures] [--results-dir DIR]` measures kernel
   compliance per host with five scenarios in `evals/scenarios/` (commit-format,

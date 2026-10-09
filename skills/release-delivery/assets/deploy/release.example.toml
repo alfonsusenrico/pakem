@@ -1,0 +1,45 @@
+# deploy/release.toml: how release_host.py builds, checks, and starts this project.
+# Committed with the code; release_host.py reads it from the release being deployed.
+
+# Compose project "<app>-<environment>"; images "<app>-<environment>/<name>:<sha>".
+app = "example"
+compose_file = "compose.yaml"
+
+# Service checked as the candidate and used for the preflight.
+service = "web"
+# Container port the service listens on (candidate check only; live ports come from
+# compose.yaml, bound to 127.0.0.1).
+candidate_port = 8000
+
+# Answers 200 with JSON whose revision_key equals the full commit SHA; the image gets
+# the build argument AF_REVISION=<sha> to bake it in (see README.md).
+health_path = "/health/release"
+revision_key = "revision"
+
+# In-image configuration check run with the release's runtime before anything changes;
+# it must print names, never values. [] disables it (a warning is logged).
+preflight = ["python", "-m", "app.preflight", "--require-restricted-environment"]
+
+# Migrations run in a one-off container after the production backup and before the new
+# release starts; [] when the project has no database.
+migrate = ["python", "-m", "app.migrate"]
+migrate_service = "web"
+
+# Optional tuning (defaults shown).
+# candidate = true          # isolated candidate check before switching
+# wait_timeout = 180        # seconds for `docker compose up --wait`
+# health_attempts = 30      # local health attempts
+# health_interval = 2       # seconds between attempts
+
+[[images]]
+name = "web"                # compose.yaml uses image: ${AF_IMAGE_WEB}
+dockerfile = "Dockerfile"
+context = "."
+
+[environments.staging]
+local_url = "http://127.0.0.1:18080"
+keep = 3
+
+[environments.production]
+local_url = "http://127.0.0.1:18081"
+keep = 6
