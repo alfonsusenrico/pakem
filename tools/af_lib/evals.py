@@ -139,8 +139,11 @@ def _codex_command(binary: str, prompt: str, repo: str) -> list[str]:
 
 def _antigravity_command(binary: str, prompt: str, repo: str) -> list[str]:
     # Go-style flag parsing stops at the first positional argument, so every flag
-    # precedes -p and the prompt is last.
-    return [binary, "--mode", "accept-edits", "--sandbox", "-p", prompt]
+    # precedes -p and the prompt is last. Headless agy reads command permissions only
+    # from the global settings file and ends the run at the first denied command, so
+    # eval runs in disposable synthetic fixtures skip permission prompts (owner
+    # decision, 2026-10-09); --sandbox keeps the terminal restrictions.
+    return [binary, "--mode", "accept-edits", "--sandbox", "--dangerously-skip-permissions", "-p", prompt]
 
 
 HOSTS: dict[str, HostSpec] = {
