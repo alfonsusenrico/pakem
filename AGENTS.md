@@ -28,8 +28,11 @@ it is installed into each host by `tools/af install`, not loaded from here.
   characters, body under 500 lines, references one level deep, each reference
   starting with a status header.
 - Instruction text drafted by an agent needs owner review before it is merged.
-- Record decisions as ADRs in `docs/adr/` and every release in `CHANGELOG.md`;
-  bump `VERSION` per semver (MAJOR: floor, marker, or skill-name changes).
+- Record decisions as ADRs in `docs/adr/`. Record each change as a fragment
+  `changes/<type>-<kebab-topic>.md` (`changes/README.md`); never edit `CHANGELOG.md`
+  on a branch. A release runs `tools/af changelog --release X.Y.Z --apply`, which
+  writes `CHANGELOG.md` and `VERSION`; choose X.Y.Z per semver (MAJOR: floor,
+  marker, or skill-name changes).
 - `archive/` holds legacy sources verbatim; never edit or install from it.
 
 ## Overrides

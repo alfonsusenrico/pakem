@@ -31,6 +31,7 @@ tools/af lint --profile <dir>       # also check a profile directory (repeatable
 tools/af install                    # preview what would be installed
 tools/af install --apply            # install kernel and skills (owner approval)
 tools/af project sync <repo>        # preview pinned blocks for a project
+tools/af changelog                  # pending changes/ fragments; --release X.Y.Z [--apply] releases them
 tools/af hooks install <repo>       # preview commit-msg / pre-push hooks
 tools/af doctor --repos <dir>       # drift, duplicate, and orphaned-skill report
 tools/af report                     # read-only Markdown drift report (config: docs/report.example.toml)
@@ -74,4 +75,5 @@ the install unless `--force` backs it up first. Skills from a profile that is no
 passed with `--profile` are kept. If any write fails, the run restores every target
 it had already written and leaves the manifest unchanged.
 
-Decisions live in `docs/adr/`; changes in `CHANGELOG.md`.
+Decisions live in `docs/adr/`; changes in `changes/` fragments until a release
+moves them into `CHANGELOG.md` (`changes/README.md`).

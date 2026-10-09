@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from .capabilities import registry_problems
+from .changelog import UNRELEASED_HEADING, load_fragments, unreleased_bullet_lines
 from .common import AfError, Framework, Report, read_text
 from .frontmatter import parse_frontmatter
 from .hosts import load_targets
@@ -301,6 +302,8 @@ class Linter:
         self.check_markdown_links()
         self.check_banned_patterns()
         self.check_template()
+        self.check_changelog()
+        self.check_change_fragments()
         self.check_profiles()
         return self.report
 
@@ -473,6 +476,26 @@ class Linter:
                 f"skills/project-bootstrap/assets/project/AGENTS.md.tmpl is {char_count} chars (warning above {TEMPLATE_WARN_CHARS})"
             )
 
+    def check_changelog(self) -> None:
+        path = self.framework.changelog_path
+        if not path.is_file():
+            return
+        try:
+            bullets = unreleased_bullet_lines(read_text(path))
+        except AfError as exc:
+            self.report.error(str(exc))
+            return
+        if bullets:
+            self.report.error(
+                f"CHANGELOG.md line {bullets[0]}: bullet entry under {UNRELEASED_HEADING} "
+                f"({len(bullets)} in total); record changes as fragments in changes/; "
+                "only `af changelog --release` edits CHANGELOG.md"
+            )
+
+    def check_change_fragments(self) -> None:
+        _, problems = load_fragments(self.framework.changes_dir)
+        for problem in problems:
+            self.report.error(problem)
 
     def check_profiles(self) -> None:
         if not self.profile_dirs:

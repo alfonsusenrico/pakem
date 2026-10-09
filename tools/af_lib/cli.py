@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .changelog import run_changelog
 from .common import AfError, eprint
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
@@ -92,6 +93,17 @@ def build_parser() -> argparse.ArgumentParser:
     lint.add_argument(
         "--profile", action="append", metavar="DIR", help="also lint this profile directory (repeatable)"
     )
+
+    changelog = commands.add_parser(
+        "changelog", help="show pending changes/ fragments or release them into CHANGELOG.md"
+    )
+    changelog.add_argument(
+        "--release", metavar="X.Y.Z", help="build the release section for this version (dry run by default)"
+    )
+    changelog.add_argument(
+        "--date", metavar="YYYY-MM-DD", help="release date (default: today; requires --release)"
+    )
+    _add_apply(changelog)
 
     project = commands.add_parser("project", help="manage a project's AGENTS.md")
     project_commands = project.add_subparsers(dest="project_command", required=True)
@@ -211,6 +223,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_doctor(args)
     if args.command == "lint":
         return run_lint(args)
+    if args.command == "changelog":
+        return run_changelog(args)
     if args.command == "project" and args.project_command == "sync":
         return run_sync(args)
     if args.command == "project" and args.project_command == "check":

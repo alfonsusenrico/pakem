@@ -66,10 +66,11 @@ or recommending skills, plugins, or tools.
 
 ## 7. Changing the framework itself
 
-The framework repository records decisions as ADRs, every release in `CHANGELOG.md`,
-and versions per semantic versioning (MAJOR for floor, marker, or skill-name
-changes). Run its lint and tests before any commit. Install only from merged `main`:
-fetch, check that the checkout is clean and equal to `origin/main`, then run
-`af install --apply` with owner approval, and `af project sync` in adopted
-repositories. `--allow-unmerged` and `--allow-dirty` are for deliberately testing a
-branch, never for a routine install.
+The framework repository records decisions as ADRs and each change as a fragment in
+`changes/` (never a direct `CHANGELOG.md` edit); a release runs
+`af changelog --release X.Y.Z --apply`, versioned per semantic versioning (MAJOR for
+floor, marker, or skill-name changes). Run its lint and tests before any commit.
+Install only from merged `main`: fetch, check that the checkout is clean and equal
+to `origin/main`, then run `af install --apply` with owner approval, and
+`af project sync` in adopted repositories. `--allow-unmerged` and `--allow-dirty` are
+for deliberately testing a branch, never for a routine install.

@@ -19,4 +19,4 @@ allow_paths = []
 id = "retired-skill-names"
 regex = '(?i)\b(caveman|ponytail|hallmark)\b'
 message = "retired compression/style skill names belong only in ADRs and the changelog"
-allow_paths = ["docs/adr/**", "docs/discovery/**", "CHANGELOG.md"]
+allow_paths = ["docs/adr/**", "docs/discovery/**", "CHANGELOG.md", "changes/**"]

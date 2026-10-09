@@ -215,6 +215,14 @@ class Framework:
     def enforcement_dir(self) -> Path:
         return self.root / "enforcement"
 
+    @property
+    def changelog_path(self) -> Path:
+        return self.root / "CHANGELOG.md"
+
+    @property
+    def changes_dir(self) -> Path:
+        return self.root / "changes"
+
     def version(self) -> str:
         version = read_text(self.version_path).strip()
         if not SEMVER_PATTERN.match(version):

@@ -284,16 +284,17 @@ def _check_blocks(framework: Framework, document, report: Report) -> None:
             continue
         block_version = block.attributes.get("version", "")
         try:
-            older = version_tuple(block_version) < version_tuple(framework_version)
+            version_tuple(block_version)
         except AfError:
             report.error(f"digest block has an invalid version: {block_version!r}")
             continue
-        if older:
+        # Staleness is judged by content only: a release that leaves DIGEST.md unchanged
+        # must not make every adopted repository warn about the version attribute.
+        if block.integrity_ok() and block.body != current_digest:
             report.warn(
-                f"digest block version {block_version} is older than framework {framework_version} (run af project sync)"
+                f"digest block (version {block_version}) differs from the framework {framework_version} "
+                "DIGEST.md (run af project sync)"
             )
-        elif block.integrity_ok() and block.body != current_digest:
-            report.warn("digest block content differs from the framework DIGEST.md (run af project sync)")
 
 
 def declared_capabilities(document) -> list[tuple[int, list[str]]]:
