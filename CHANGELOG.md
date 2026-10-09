@@ -5,6 +5,32 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-09
+
+### Added
+
+- Change fragments: each branch records its change as `changes/<type>-<kebab-topic>.md`
+  (Keep a Changelog types; Markdown bullets) instead of editing `CHANGELOG.md`, so
+  concurrent branches no longer conflict (`changes/README.md`).
+- `af changelog [--release X.Y.Z] [--date YYYY-MM-DD] [--apply]` shows pending entries
+  grouped by type, or prints the release section; `--apply` inserts
+  `## [X.Y.Z] - DATE` under an emptied `## [Unreleased]`, moves legacy Unreleased
+  bullets into it, deletes the consumed fragments, and writes `VERSION`. It refuses a
+  version not greater than `VERSION`, a malformed date, an empty release, and invalid
+  fragments.
+- `af lint` fails on bullet entries under `## [Unreleased]` in `CHANGELOG.md` and on
+  fragments with an unknown type, a bad name, or no bullet (`changes/README.md` is
+  exempt).
+- Configurable protected branches: the multi-valued git config key
+  `agentframework.protectedBranch` (default `main`, `master`), set with
+  `af hooks install --protect BRANCH` (repeatable, replaces the set).
+- `af hooks install --local-only` adds `.githooks/` to `.git/info/exclude` so client
+  repositories never receive committed hook files.
+- `AF_ALLOW_PROTECTED_PUSH=1` as the documented pre-push override
+  (`AF_ALLOW_MAIN_PUSH=1` still works).
+- Profile `personal` 0.1.0 in `profiles/personal/`: digest for personal and freelance
+  repositories, skills `freelance-delivery` and `client-engagement`, and the personal
+  workspace map (profile ADR 0001; its own `CHANGELOG.md`).
 - Deploy templates (Phase 2b) in `skills/release-delivery/assets/deploy/`:
   `deploy_remote.sh` (CI, POSIX sh: validates every input before SSH, archives the exact
   commit, pinned `known_hosts`, own key only, host sequence under the environment lock,
@@ -49,14 +75,6 @@ versioning as defined in `AGENTS.md`.
 - Design bases for tools: `owner-dashboard` and `owner-workbench` (both themes, measured
   contrast, provenance), from the portfolio (primary), the finance tracker web UI, and
   the office dashboard and workbench UIs. Status: Draft pending owner review.
-- Uppercase labels use +0.05 to +0.08em tracking (research-backed; Butterick).
-- `af install --apply` installs from merged `main` only: it refuses a checkout on another
-  branch or a detached HEAD, or one whose HEAD differs from the local `origin/main` ref
-  (no fetch; the message says to fetch to refresh), unless `--allow-unmerged` is given.
-  `--allow-dirty` still covers uncommitted changes and non-git roots; the two waivers
-  are independent. A dry run prints the same findings as warnings. Git profiles given
-  with `--profile` are checked for a clean `main` as warnings, or refusals with the new
-  `--strict-source`.
 - `af install` prunes skills it installed whose framework or profile source no longer
   exists (`remove-managed`; an edited copy blocks unless `--force` backs it up). Skills
   of profiles not passed with `--profile` are kept and listed as `kept`. Only the
@@ -66,26 +84,45 @@ versioning as defined in `AGENTS.md`.
   target written in the run is restored (originals are set aside, not deleted, until the
   run succeeds), newly created files and directories are removed, the manifest is left
   unchanged, and the rollback is reported.
+
+### Changed
+
+- `af project check` warns about a digest block only when its body differs from the
+  framework's current `kernel/DIGEST.md`; an older `version` attribute on an unchanged
+  body is no longer a warning, so releases that leave the digest unchanged do not make
+  adopted repositories warn.
+- Uppercase labels use +0.05 to +0.08em tracking (research-backed; Butterick).
+- `af install --apply` installs from merged `main` only: it refuses a checkout on another
+  branch or a detached HEAD, or one whose HEAD differs from the local `origin/main` ref
+  (no fetch; the message says to fetch to refresh), unless `--allow-unmerged` is given.
+  `--allow-dirty` still covers uncommitted changes and non-git roots; the two waivers
+  are independent. A dry run prints the same findings as warnings. Git profiles given
+  with `--profile` are checked for a clean `main` as warnings, or refusals with the new
+  `--strict-source`.
 - Guard (Claude Code, Antigravity) denies secret reads through `git show REV:PATH`,
   `git show REV -- PATH`, `git cat-file ... REV:PATH`, interpreter one-liners (python -c,
   node -e/--eval/-p, ruby -e, perl -e, php -r, deno eval, bun -e) that name a secret path
   in a string literal or argument, and secret paths assigned to a shell variable and
   read through `$VAR` later in the same command line.
-
 - Worktrees live next to the repository, never under `/tmp`; local state files are per
   checkout and belong in the owner's main checkout.
 - First push of a bootstrapped `main` is an owner action with `AF_ALLOW_PROTECTED_PUSH=1`.
 - Archive older OpenSpec changes in dependency order with per-command status checks and
   real Purpose sections.
-
 - OpenSpec gate is `openspec validate --all` (errors fail); `--strict` warnings are recorded as follow-up work (owner decision).
-
 - Adoption lessons from the first migrations: compare specs before deleting AGENTS.md text;
   commit only from the adoption worktree while hooks are unmerged; separate OpenSpec
   warnings from errors after CLI upgrades; no wrapper scenarios; gate commits on check
   exit status, never on piped output.
-
 - Project AGENTS.md template declares the project's own language rule (`Language:`); the framework and profiles set no language default.
+- The pre-push documentation-only rule and the Claude Code / Antigravity guard now
+  protect the repository's configured branches instead of only `main`/`master`; the
+  guard reads the config in the push's working directory and falls back to
+  `main`/`master` when it cannot.
+- Codex execpolicy rules also forbid pushes to `development`, since static rules
+  cannot read per-repository config.
+
+## [0.1.0] - 2026-10-07
 
 ### Added
 
@@ -104,22 +141,3 @@ versioning as defined in `AGENTS.md`.
   `main` exception.
 - Enforcement fragments for Claude Code, Codex, and Antigravity CLI.
 - ADRs 0001-0005, host matrix, migration mapping, framework backlog.
-- Configurable protected branches: the multi-valued git config key
-  `agentframework.protectedBranch` (default `main`, `master`), set with
-  `af hooks install --protect BRANCH` (repeatable, replaces the set).
-- `af hooks install --local-only` adds `.githooks/` to `.git/info/exclude` so client
-  repositories never receive committed hook files.
-- `AF_ALLOW_PROTECTED_PUSH=1` as the documented pre-push override
-  (`AF_ALLOW_MAIN_PUSH=1` still works).
-- Profile `personal` 0.1.0 in `profiles/personal/`: digest for personal and freelance
-  repositories, skills `freelance-delivery` and `client-engagement`, and the personal
-  workspace map (profile ADR 0001; its own `CHANGELOG.md`).
-
-### Changed
-
-- The pre-push documentation-only rule and the Claude Code / Antigravity guard now
-  protect the repository's configured branches instead of only `main`/`master`; the
-  guard reads the config in the push's working directory and falls back to
-  `main`/`master` when it cannot.
-- Codex execpolicy rules also forbid pushes to `development`, since static rules
-  cannot read per-repository config.
