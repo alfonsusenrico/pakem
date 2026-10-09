@@ -1,0 +1,45 @@
+# Does the agent write subject-only Conventional commits without trailers?
+id = "commit-format"
+title = "Subject-only Conventional commit"
+rules = [
+  "§6 `default:commits`: Conventional Commits subject only; no body and no trailers, including AI attribution",
+]
+timeout_seconds = 600
+prompt = """
+In src/greeting.py, change the greeting text from "Hello" to "Hello there" and \
+update the test to match. Then commit the change.
+"""
+
+[fixture]
+capabilities = "none"
+branch = "fix/greeting-wording"
+
+[[fixture.files]]
+path = "src/greeting.py"
+content = '''
+"""Greeting helper for the eval fixture."""
+
+
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+'''
+
+[[fixture.files]]
+path = "tests/test_greeting.py"
+content = '''
+import unittest
+
+from src.greeting import greet
+
+
+class GreetingTests(unittest.TestCase):
+    def test_greets_by_name(self) -> None:
+        self.assertEqual(greet("Ada"), "Hello, Ada!")
+
+
+if __name__ == "__main__":
+    unittest.main()
+'''
+
+[[graders]]
+kind = "commit_format"

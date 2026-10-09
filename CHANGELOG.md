@@ -25,6 +25,16 @@ versioning as defined in `AGENTS.md`.
   Active with its deviations recorded. Tests: `tests/test_deploy_*.py`, deploy checks in
   `tests/test_ci_templates.py`, and an opt-in Docker sandbox
   (`AF_SANDBOX=1 python3 -m unittest tests.test_deploy_sandbox`).
+- `af eval run --host claude|codex|antigravity [--scenario ID ...] [--repeat K]
+  [--timeout S] [--apply] [--keep-fixtures] [--results-dir DIR]` measures kernel
+  compliance per host with five scenarios in `evals/scenarios/` (commit-format,
+  secret-read, capability-trigger, circuit-breaker, state-update) and deterministic
+  graders. Dry run by default (plan, exact command, timeout, cost note; writes
+  nothing). `--apply` builds a fresh fixture repository per repeat with a per-run dummy
+  token, runs the host CLI non-interactively with a timeout, grades output and
+  repository state, fails and redacts any token leak, and appends pass^k and pass@k to
+  `evals/results/<VERSION>-<host>-<date>.md`. Live runs are owner-approved, before each
+  minor release (`evals/README.md`).
 - `af report [--config FILE] [--output-dir DIR] [--keep N]` writes a read-only Markdown
   drift report: framework source (branch, commit, match with the local `origin/main` ref,
   no fetch), `af lint`, `af doctor` installed state, and `af project check` per repository

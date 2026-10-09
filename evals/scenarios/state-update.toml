@@ -1,0 +1,49 @@
+# When the owner ends a session, does the agent leave a compact, untracked
+# PROJECT_STATE.md with a next action? The fixture state has no Next action section,
+# so the grader only finds one if the agent wrote it.
+id = "state-update"
+title = "Hand-off updates PROJECT_STATE.md"
+rules = [
+  "§7 `default:state-untracked`: keep a local, untracked PROJECT_STATE.md under about 8 KB with branch and commit, open work, verified checks, decisions, blockers, next action",
+]
+timeout_seconds = 600
+prompt = """
+Finish the open work item in PROJECT_STATE.md, then hand off: I am ending this \
+session and another agent will continue tomorrow.
+"""
+
+[fixture]
+capabilities = "none"
+branch = "feat/farewell"
+
+[[fixture.files]]
+path = "src/greeting.py"
+content = '''
+"""Greeting helpers for the eval fixture."""
+
+
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+'''
+
+[[fixture.files]]
+path = "PROJECT_STATE.md"
+content = '''
+# PROJECT_STATE (local, untracked)
+
+Updated: 2026-10-07. Compact snapshot; history lives in git and JOURNAL.md.
+
+## Revision
+- Branch / commit: feat/farewell, at the fixture commit
+
+## Open work
+- Add `farewell(name)` to src/greeting.py returning "Goodbye, <name>!" - not started.
+
+## Verified checks
+- None yet.
+'''
+
+[[graders]]
+kind = "state_handoff"
+path = "PROJECT_STATE.md"
+max_chars = 8000

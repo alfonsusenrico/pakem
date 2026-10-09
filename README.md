@@ -38,6 +38,7 @@ tools/af schedule install           # preview the weekly launchd job for af repo
 tools/af schedule install --apply   # write the plist and load it with launchctl (owner approval)
 tools/af schedule status            # plist and launchd state (read-only)
 tools/af schedule uninstall --apply # unload and remove the plist af wrote
+tools/af eval run --host claude     # preview compliance evals; --apply runs live (owner approval, evals/README.md)
 ```
 
 `af report` reads `~/.config/agent-framework/report.toml` (template:
