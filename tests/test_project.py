@@ -61,9 +61,11 @@ class ProjectSyncTests(IsolatedTestCase):
         (self.repo / "research").mkdir()
         self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
         write(self.framework / "VERSION", "0.3.0\n")
+        digest = self.framework / "kernel" / "DIGEST.md"
+        digest.write_text(digest.read_text() + "Always verify before claiming success.\n")
         stale = self.af("project", "check", str(self.repo))
         self.assert_ok(stale)
-        self.assertIn("older than framework 0.3.0", stale.stdout)
+        self.assertIn("WARNING: digest block (version 0.2.0) differs from the framework 0.3.0", stale.stdout)
 
         self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
         text = self.agents()
@@ -72,6 +74,37 @@ class ProjectSyncTests(IsolatedTestCase):
         check = self.af("project", "check", str(self.repo))
         self.assert_ok(check)
         self.assertIn("0 error(s), 0 warning(s)", check.stdout)
+
+    def test_older_version_with_unchanged_digest_is_not_a_warning(self) -> None:
+        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
+        (self.repo / "research").mkdir()
+        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
+        write(self.framework / "VERSION", "0.3.0\n")
+        check = self.af("project", "check", str(self.repo))
+        self.assert_ok(check)
+        self.assertIn("0 error(s), 0 warning(s)", check.stdout)
+        self.assertNotIn("digest block", check.stdout)
+
+    def test_same_version_with_changed_digest_warns(self) -> None:
+        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
+        (self.repo / "research").mkdir()
+        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
+        digest = self.framework / "kernel" / "DIGEST.md"
+        digest.write_text(digest.read_text() + "Always verify before claiming success.\n")
+        check = self.af("project", "check", str(self.repo))
+        self.assert_ok(check)
+        self.assertIn("WARNING: digest block (version 0.2.0) differs from the framework 0.2.0", check.stdout)
+        self.assertIn("0 error(s), 1 warning(s)", check.stdout)
+
+    def test_invalid_digest_version_is_an_error(self) -> None:
+        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
+        (self.repo / "research").mkdir()
+        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
+        text = self.agents().replace("digest version=0.2.0 ", "digest version=next ")
+        write(self.repo / "AGENTS.md", text)
+        check = self.af("project", "check", str(self.repo))
+        self.assert_fails(check)
+        self.assertIn("digest block has an invalid version: 'next'", check.stdout)
 
     def test_profile_block_follows_digest(self) -> None:
         profile = self.make_profile()

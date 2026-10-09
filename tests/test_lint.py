@@ -241,5 +241,53 @@ class LintTests(IsolatedTestCase):
         self.assertNotIn("PROJECT_STATE", completed.stdout)
 
 
+class ChangelogLintTests(IsolatedTestCase):
+    RELEASED = "## [0.2.0] - 2026-10-09\n\n### Added\n\n- Released entry.\n"
+
+    def write_changelog(self, unreleased_body: str) -> None:
+        write(
+            self.framework / "CHANGELOG.md",
+            "# Changelog\n\n## [Unreleased]\n\n" + unreleased_body + "\n" + self.RELEASED,
+        )
+
+    def test_empty_unreleased_and_valid_fragments_are_clean(self) -> None:
+        self.write_changelog("")
+        write(self.framework / "changes" / "README.md", "# Fragments\n\nAny text, no bullet rule.\n")
+        write(self.framework / "changes" / "added-thing.md", "- Thing\n  continued.\n")
+        completed = self.af("lint")
+        self.assert_ok(completed)
+        self.assertIn("0 error(s), 0 warning(s)", completed.stdout)
+
+    def test_bullet_under_unreleased_is_an_error(self) -> None:
+        self.write_changelog("### Added\n\n- Direct entry.\n- Another.\n")
+        completed = self.af("lint")
+        self.assert_fails(completed)
+        self.assertIn(
+            "CHANGELOG.md line 7: bullet entry under ## [Unreleased] (2 in total); record changes as "
+            "fragments in changes/; only `af changelog --release` edits CHANGELOG.md",
+            completed.stdout,
+        )
+
+    def test_missing_unreleased_section_is_an_error(self) -> None:
+        write(self.framework / "CHANGELOG.md", "# Changelog\n\n" + self.RELEASED)
+        completed = self.af("lint")
+        self.assert_fails(completed)
+        self.assertIn("CHANGELOG.md has no '## [Unreleased]' section", completed.stdout)
+
+    def test_invalid_fragments_are_errors(self) -> None:
+        cases = [
+            ("feature-thing.md", "- Thing.\n", "changes/feature-thing.md: unknown type 'feature'"),
+            ("added_thing.md", "- Thing.\n", "changes/added_thing.md: bad name"),
+            ("added-thing.md", "Prose only.\n", "changes/added-thing.md: has no bullet line"),
+        ]
+        for name, text, needle in cases:
+            with self.subTest(name=name):
+                path = write(self.framework / "changes" / name, text)
+                completed = self.af("lint")
+                self.assert_fails(completed)
+                self.assertIn(needle, completed.stdout)
+                path.unlink()
+
+
 if __name__ == "__main__":
     unittest.main()

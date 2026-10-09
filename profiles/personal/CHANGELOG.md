@@ -3,7 +3,7 @@
 All notable changes to the `personal` profile. Versions follow semantic versioning;
 `VERSION` and `profile.toml` change together.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-09
 
 ### Added
 
