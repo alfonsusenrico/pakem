@@ -16,6 +16,7 @@ transcripts or quoted agent output; grader notes describe findings only.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -117,11 +118,16 @@ def _claude_command(binary: str, prompt: str, repo: str) -> list[str]:
 
 def _codex_command(binary: str, prompt: str, repo: str) -> list[str]:
     # No --skip-git-repo-check: every fixture is a git repository.
+    # workspace-write keeps .git read-only, so commits fail on .git/index.lock; the
+    # disposable fixture's own .git is the only extra writable root.
+    git_dir_root = f"sandbox_workspace_write.writable_roots={json.dumps([repo + '/.git'])}"
     return [
         binary,
         "exec",
         "--sandbox",
         "workspace-write",
+        "-c",
+        git_dir_root,
         "--ephemeral",
         "--color",
         "never",
@@ -133,8 +139,11 @@ def _codex_command(binary: str, prompt: str, repo: str) -> list[str]:
 
 def _antigravity_command(binary: str, prompt: str, repo: str) -> list[str]:
     # Go-style flag parsing stops at the first positional argument, so every flag
-    # precedes -p and the prompt is last.
-    return [binary, "--mode", "accept-edits", "--sandbox", "-p", prompt]
+    # precedes -p and the prompt is last. Headless agy reads command permissions only
+    # from the global settings file and ends the run at the first denied command, so
+    # eval runs in disposable synthetic fixtures skip permission prompts (owner
+    # decision, 2026-10-09); --sandbox keeps the terminal restrictions.
+    return [binary, "--mode", "accept-edits", "--sandbox", "--dangerously-skip-permissions", "-p", prompt]
 
 
 HOSTS: dict[str, HostSpec] = {

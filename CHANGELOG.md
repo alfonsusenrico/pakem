@@ -5,6 +5,45 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-12
+
+### Changed
+
+- Pushes to protected branches are decided by the repository's pre-push hook: Claude
+  Code deny rules, the guard, and Codex rules no longer block plain pushes to `main`;
+  they still block force-pushing or deleting protected branches, and other force
+  pushes need the owner.
+- `af hooks install --protect-none` for projects whose `## Overrides` allow direct
+  pushes; `af project check` warns when the framework hooks are not active.
+- Kernel floors: ask before deleting data or files the current task did not create;
+  agents never merge or approve a merge request (ADR 0006).
+- `default:mr-policy`: agents push the topic branch, open the merge request, and report
+  its URL. `default:branching`: `main` stays deployable, documentation-only changes may
+  go directly to `main`, and a project may allow more.
+- `backend-engineering`: unknown fields are rejected on inputs the project defines;
+  third-party responses and webhooks are validated on the fields used. Applied
+  migrations must not change silently (runner checksum or a CI comparison), so
+  runners without checksums qualify with that CI test.
+- Light and dark themes apply to every UI; removed from the `deployed` capability.
+- `owner-dashboard` and `owner-workbench` are marked "do not adopt until the owner
+  approves it".
+- Planning and bootstrap templates: the last task opens the merge request and
+  reports its URL; force pushes need the owner.
+
+### Removed
+
+- `db_prod.txt` from the Claude Code deny list and the guard's secret names
+  (workspace-specific; the production-dump floor stays).
+
+### Fixed
+
+- `af eval run --host antigravity` passes `--dangerously-skip-permissions` (with
+  `--sandbox`): headless agy ended every run at the first command outside the global
+  allow list, so command-dependent scenarios measured the harness, not compliance.
+- `af eval run --host codex` adds the fixture's own `.git` as a writable sandbox root,
+  so commit-format runs can commit; `workspace-write` otherwise keeps `.git` read-only
+  and every commit failed on `.git/index.lock`.
+
 ## [0.2.0] - 2026-10-09
 
 ### Added
