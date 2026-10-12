@@ -23,8 +23,10 @@ Sources: owner backends (raw SQL with locks, hand-written idempotent migrations,
 ## Migrations
 
 - Hand-written; never autogenerate and never let the ORM synchronize schema at runtime.
-- Idempotent (`IF NOT EXISTS`, catalog checks) and forward-only; checksummed by the
-  migration runner so an applied file cannot change silently.
+- Idempotent (`IF NOT EXISTS`, catalog checks) and forward-only.
+- An applied migration cannot change silently: the runner checksums applied files,
+  or, for runners without checksums (for example Alembic), a CI test compares the
+  applied revisions with the migration files.
 - Migration identifiers fit the storage that records them; add a test when the tool
   does not check this.
 - Run as a separate step (compose one-shot service or deploy step) before new app

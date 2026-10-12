@@ -104,7 +104,8 @@ verification gate. Get it approved, then propose changes phase by phase.
   warning recorded as follow-up work.
 - **Tasks**: grouped in phases; each phase ends with an "Expected Result" line;
   every task names the evidence that proves it (command, test, HTTP check, browser
-  check). The last task pushes the branch and reports the compare link.
+  check). The last task pushes the branch, opens the merge request, and reports its
+  URL.
 - Keep an unknown cause explicitly unknown: plan reproduction and diagnosis first
   (`root-cause-debugging`), then update the design with the supported explanation.
 

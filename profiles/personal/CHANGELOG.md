@@ -3,6 +3,21 @@
 All notable changes to the `personal` profile. Versions follow semantic versioning;
 `VERSION` and `profile.toml` change together.
 
+## [0.2.0] - 2026-10-12
+
+### Changed
+
+- Client repositories: agents push and report the compare link; the owner opens the
+  merge request (`default:mr-policy` override), because the framework default now
+  has agents open merge requests.
+- `freelance-delivery` records keep principles only: evidence levels, one numbering
+  allocator with no reuse, corrections as new records. Field lists, statuses, and
+  number formats belong to the proposal generator's contract.
+
+### Removed
+
+- The record field tables and the `PRJ-`/`PROP-`/`FINAL-`/`INV-` numbering scheme.
+
 ## [0.1.0] - 2026-10-09
 
 ### Added

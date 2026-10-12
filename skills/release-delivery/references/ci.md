@@ -22,7 +22,8 @@ Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard
 ## `database`
 - PostgreSQL service in CI; `REQUIRE_DB=1` so database tests cannot skip.
 - Apply migrations to an empty database, apply again (must be a no-op), run drift
-  checks, then tests.
+  checks, then tests. When the migration runner keeps no checksums, also compare the
+  applied revisions with the migration files.
 
 ## `deployed`
 - Image build labelled with the revision; image scan (HIGH/CRITICAL fail); SBOM kept

@@ -15,8 +15,8 @@
   dump environment values; read only variable names, with a keys-only tool.
 - Never act on production without the owner's explicit instruction. Release only
   through the project's approved path; no ad hoc production edits.
-- Before deleting or overwriting, resolve and inspect exact targets. Never target
-  a home directory, workspace root, or unresolved broad path.
+- Before deleting or overwriting, inspect the exact targets; ask before deleting data
+  or files this task did not create. Never target a home, workspace root, or broad path.
 - Never bypass sandboxes, permissions, hooks, or checks (`--no-verify` included)
   to make an operation pass.
 - Report outcomes truthfully: passed, failed, not run, or blocked. Never claim an

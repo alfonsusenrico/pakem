@@ -1,7 +1,7 @@
 # Working Standard Profile
 
-Status: Approved by the owner on 2026-10-07
-Last reviewed: 2026-10-07
+Status: Approved by the owner on 2026-10-07; amended 2026-10-12 (rules audit, ADR 0006)
+Last reviewed: 2026-10-12
 Sources: owner interview (5 rounds, 2026-10-07); evidence from office projects (a shared
 AI backend hub and two AI analysis products: a data dashboard and a task workbench) and
 owner-selected outside projects (a freelance marketplace backend, the owner's portfolio
@@ -49,7 +49,7 @@ validation at boundaries; formatter + linter + CI; no secrets in code; `research
 
 | Capability trigger | Standards that switch on |
 | --- | --- |
-| `deployed` (used by others) | request id + safe structured logs; security scans in CI; immutable releases, health check, rollback; backups; both themes for UI |
+| `deployed` (used by others) | request id + safe structured logs; security scans in CI; immutable releases, health check, rollback; backups |
 | `money` (payments, bookings, inventory) | integrity kit: idempotency keys, append-only audit events (before/after, actor), amount and price snapshots, row/advisory locks; critical-path tests; webhook signature verification; auth on admin and money routes |
 | `personal-data` | privacy and logging rules, retention, access control, synthetic fixtures |
 | `background-jobs` | DB-backed jobs/outbox claimed with `FOR UPDATE SKIP LOCKED`, separate worker, idempotent handlers |
@@ -91,7 +91,8 @@ tracker, office projects) and the owner's answers.
 6. **Implementation** — topic branch; autonomy per section 4.
 7. **Verification** — evidence per task; `verification.md` per change (commands, counts,
    environments, what was not verified); no overclaiming.
-8. **Delivery** — push branch and report the compare link; the owner merges; pipeline
+8. **Delivery** — push the branch, open the merge request, and report its URL; the owner
+   reviews and merges; pipeline
    deploys; owner acceptance.
 9. **Archive** — sync specs and archive once evidence is verified; owner-side production
    confirmation is tracked in `PROJECT_STATE.md` ("Awaiting owner confirmation") and does
@@ -104,12 +105,14 @@ UI direction decisions use side-by-side working alternatives (section 8.4).
 
 - Conventional Commits, subject only: `type(scope): summary`, types feat, fix, docs,
   refactor, test, chore, ci, perf, build, revert; no body or trailers (hook-enforced).
-- Branches `<type>/<kebab-topic>`; agents never merge; direct push to `main` only for
-  documentation-only ranges (hook-enforced).
+- Branches `<type>/<kebab-topic>`; `main` stays deployable (pipelines deploy staging from
+  it by default); agents never merge or approve; documentation-only ranges may go directly
+  to `main`, and a project may allow more (hook-enforced).
 - Within approved work an agent may, without asking: create the branch and commit; push the
-  branch when checks pass and report the compare link; run local infrastructure on loopback
+  branch when checks pass, open the merge request, and report its URL; run local infrastructure on loopback
   and stop it afterwards; add project-local dependencies with lockfile updates.
-- Always ask: production, secrets, merging, deleting data, global installs, scope changes.
+- Always ask: production, secrets, deleting data, force pushes, global installs, scope
+  changes. Never: merging or approving a merge request.
 - `PROJECT_STATE.md`: local, untracked, capped (~8 KB, fixed sections); dated history goes to
   a local `JOURNAL.md` or per-change `verification.md`; durable rules go to `AGENTS.md`/specs.
 
@@ -122,12 +125,14 @@ UI direction decisions use side-by-side working alternatives (section 8.4).
   data layer. Files over ~800 lines are split.
 - Data access: SQL-first thin data layer — parameterized SQL in per-domain query modules,
   explicit transactions and locks, never SQL in route handlers.
-- Migrations: hand-written, idempotent, forward-only, checksummed, no autogenerate; run as a
+- Migrations: hand-written, idempotent, forward-only, unchangeable once applied (runner
+  checksum or a CI comparison), no autogenerate; run as a
   separate step that must succeed before new app instances start.
 - API shape: plain resources (lists `{items, meta}`); errors as RFC 9457 problem+json with a
   stable `code`, `request_id`, and field `errors[]`.
 - Validation: schema library at every boundary (Pydantic, class-validator with whitelist +
-  forbid unknown, zod); unknown fields rejected.
+  forbid unknown, zod); unknown fields rejected on inputs the project defines; third-party
+  responses and webhooks validate the fields used and ignore the rest.
 - Configuration: one typed settings object validated at startup, fail fast; `.env.example`
   lists every name; UPPER_SNAKE with component prefix and unit suffix.
 
@@ -268,3 +273,6 @@ up through `af project sync`. Rules are pruned as deliberately as they are added
   with verification gates before its OpenSpec proposals) and the capability names and
   "always" set in section 2.
 - Portfolio is light-only today; it adopts the both-themes rule at its next redesign.
+- Amended 2026-10-12 after the rules audit (ADR 0006): both themes on every UI (not tied to
+  `deployed`); agents open merge requests but never merge; documentation-only direct pushes
+  to `main`; force pushes need the owner; migration immutability; unknown-field handling.

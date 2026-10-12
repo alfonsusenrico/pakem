@@ -22,12 +22,13 @@ and rules; they never weaken a floor.
   dump environment values; read only variable names, with a keys-only tool.
 - Never act on production without the owner's explicit instruction. Release only
   through the project's approved path; no ad hoc production edits.
-- Before deleting or overwriting, resolve and inspect exact targets. Never target
-  a home directory, workspace root, or unresolved broad path.
+- Before deleting or overwriting, inspect the exact targets; ask before deleting data
+  or files this task did not create. Never target a home, workspace root, or broad path.
 - Never use a personal identity (SSH key, account token) for CI, automation, or
   deployment; use a dedicated, least-privilege, project-scoped credential.
 - Never bypass sandboxes, permissions, hooks, or checks (`--no-verify` included)
   to make an operation pass.
+- Never merge or approve a merge request; the owner reviews and merges.
 - Never install or enable skills, plugins, hooks, MCP servers, telemetry, or
   global tooling without the owner's approval.
 - Never log personal data, prompt content, or model output unless the project
@@ -102,15 +103,15 @@ and rules; they never weaken a floor.
 
 ## 6. Git and autonomy
 
-- Never commit or push to `main` directly, except documentation-only changes
-  (`default:branching`). Work on a topic branch named `<type>/<kebab-topic>`.
+- Keep `main` deployable: work on a `<type>/<kebab-topic>` branch. Documentation-only
+  changes may go directly to `main`; a project may allow more (`default:branching`).
 - Commit subjects use Conventional Commits, subject line only: `type(scope):
   summary`, types feat, fix, docs, refactor, test, chore, ci, perf, build, revert.
   No body and no trailers, including AI attribution (`default:commits`).
 - Within approved work you may commit, push the topic branch once checks pass,
   run local services on loopback, and add project-local dependencies.
-- Never open, approve, or merge a merge request; push the branch and report it
-  (`default:mr-policy`). Never rewrite shared history without authorization.
+- Open a merge request for the pushed branch and report its URL (`default:mr-policy`).
+  Never rewrite shared history or force-push without the owner's authorization.
 
 ## 7. Continuity
 

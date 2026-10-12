@@ -373,6 +373,19 @@ def _check_project_files(repo: Path, report: Report) -> None:
         report.warn(f"{RESEARCH_DIR}/ folder is missing (notes, prototypes, and evidence live there)")
 
 
+def _check_hooks(repo: Path, report: Report) -> None:
+    # Host rules no longer block plain pushes to main; the pre-push hook is the control.
+    if not is_git_work_tree(repo):
+        return
+    hooks_path = run_git(repo, "config", "--get", "core.hooksPath", check=False).stdout.strip()
+    if hooks_path != ".githooks" or not (repo / ".githooks" / "pre-push").is_file():
+        report.warn(
+            "framework git hooks are not active here (core.hooksPath is "
+            f"{hooks_path or 'unset'}); nothing checks pushes to protected branches "
+            "(af hooks install)"
+        )
+
+
 def check_repo(framework: Framework, repo: Path) -> Report:
     report = Report()
     agents_path = repo / AGENTS_FILE
@@ -401,6 +414,7 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     _check_overrides(document, override_labels(framework), report)
     _check_capabilities(framework, document, report)
     _check_project_files(repo, report)
+    _check_hooks(repo, report)
     return report
 
 

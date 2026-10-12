@@ -11,18 +11,24 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
   perf, build, revert; imperative, lower-case summary, at most 72 characters; no body,
   no trailers, no AI attribution. Rationale goes in the OpenSpec change or merge
   request, not the commit.
-- Direct pushes to a protected branch only for documentation-only ranges (`*.md`,
-  `docs/**`); everything else goes through a branch and a merge request the owner
-  merges.
+- `main` stays deployable: pipelines deploy staging from it by default. Code changes
+  go through a topic branch and a merge request: the agent pushes the branch, opens
+  the merge request (`gh pr create`, `glab mr create`), and reports its URL; the owner
+  reviews and merges. Agents never merge or approve.
+- Documentation-only ranges (`*.md`, `docs/**`) may be pushed directly to a protected
+  branch. The repository's pre-push hook enforces this; host rules only block force
+  pushes and deletions of protected branches.
 - Protected branches default to `main` and `master`. A repository that integrates
   through another branch (for example `development`) declares the full set with
   `af hooks install <repo> --protect development --protect main --apply`. The list
-  replaces the default, so name `main` too when it stays protected. The values live
-  in the repository's `agentframework.protectedBranch` git config and are read by the
-  pre-push hook and the Claude Code and Antigravity guard; Codex rules are static and
-  always protect `main`, `master`, and `development`.
-- Never rewrite shared history; force-push only your own unmerged topic branch, and
-  prefer `--force-with-lease`.
+  replaces the default, so name `main` too when it stays protected. A project that
+  allows direct code pushes records `default:branching` in `## Overrides` and installs
+  with `--protect-none`. The values live in the repository's
+  `agentframework.protectedBranch` git config and are read by the pre-push hook and
+  the Claude Code and Antigravity guard; Codex rules are static and always forbid
+  force-pushing or deleting `main`, `master`, and `development`.
+- Never rewrite shared history. Ask the owner before any force push, including on
+  your own topic branch.
 - Releases are tagged `vMAJOR.MINOR.PATCH` on `main` when the project ships versions.
 - Hooks (`commit-msg`, `pre-push`) live in `.githooks/` and are enabled with
   `git config core.hooksPath .githooks`; never bypass them. The owner override for a

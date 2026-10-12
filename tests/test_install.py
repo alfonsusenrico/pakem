@@ -6,7 +6,7 @@ import json
 import os
 import unittest
 
-from support import IsolatedTestCase, init_repo, git, targets_toml, write
+from support import IsolatedTestCase, activate_hooks, init_repo, git, targets_toml, write
 
 INSTALL = ("install", "--allow-dirty")
 
@@ -222,7 +222,7 @@ class DoctorTests(IsolatedTestCase):
     def test_repos_summary(self) -> None:
         self.assert_ok(self.af(*INSTALL, "--apply"))
         projects = self.base / "projects"
-        good = init_repo(projects / "good", self.home)
+        good = activate_hooks(init_repo(projects / "good", self.home), self.home)
         (good / "research").mkdir()
         init_repo(projects / "bare-notes", self.home)
         self.assert_ok(self.af("project", "sync", str(good), "--apply"))

@@ -23,7 +23,10 @@ capabilities, and any `## Overrides` first.
 
 - **Validation**: a schema library at every trust boundary - requests, webhooks,
   queue payloads, external API responses (Pydantic; class-validator with
-  `whitelist` + `forbidNonWhitelisted`; zod). Reject unknown fields.
+  `whitelist` + `forbidNonWhitelisted`; zod). Reject unknown fields on inputs the
+  project defines (its API requests, its queue payloads). For third-party responses
+  and webhooks, validate the fields you use and ignore the rest: providers add
+  fields as a backward-compatible change.
 - **Configuration**: one typed settings object, validated at startup; missing
   required values stop the app. Follow [configuration and environment
   variables](references/config-and-env.md).
@@ -41,9 +44,9 @@ Follow [data access and migrations](references/data-and-migrations.md):
 - SQL-first thin data layer: parameterized SQL in per-domain query modules,
   explicit transactions and locks. An ORM only for mapping when the framework
   already brings one.
-- Hand-written, idempotent, forward-only, checksummed migrations; never
-  autogenerate; never runtime schema sync. Migrations run as a separate step that
-  must succeed before new app instances start.
+- Hand-written, idempotent, forward-only migrations that cannot change silently once
+  applied; never autogenerate; never runtime schema sync. Migrations run as a separate
+  step that must succeed before new app instances start.
 - Tests run against a real disposable PostgreSQL with migrations applied.
 
 ## 4. Capability-triggered standards

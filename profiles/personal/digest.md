@@ -7,6 +7,8 @@ Personal and freelance rules (agent-framework profile `personal`):
   confirm `git status` shows none of them before every push.
 - Follow the client's conventions in their repository; record each one that departs
   from an owner default as an `## Overrides` bullet with the client rule as reason.
+- In a client repository, push the topic branch and report the compare link; the
+  owner opens the merge request (`default:mr-policy` in `## Overrides`).
 - Client servers, shared databases, client data, and client accounts need the
   owner's explicit instruction for that task. Draft messages to the client or the
   client's team for the owner; never send them.

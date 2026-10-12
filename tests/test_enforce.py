@@ -128,14 +128,15 @@ class EnforceTests(IsolatedTestCase):
 
 
 CODEX_RULES = REPO_ROOT / "enforcement" / "codex" / "agent-framework.rules"
-PROTECTED_REFSPEC_FORMS = ("{}", "HEAD:{}", "+{}", ":{}", "refs/heads/{}", "HEAD:refs/heads/{}")
+DESTRUCTIVE_REFSPEC_FORMS = ("+{}", ":{}", "+HEAD:{}", ":refs/heads/{}")
+PLAIN_REFSPEC_FORMS = ("{}", "HEAD:{}", "refs/heads/{}", "HEAD:refs/heads/{}")
 
 
 class CodexRulesContentTests(unittest.TestCase):
-    def test_every_refspec_form_is_listed_for_each_protected_branch(self) -> None:
+    def test_every_destructive_refspec_form_is_listed_for_each_protected_branch(self) -> None:
         text = CODEX_RULES.read_text()
         for branch in ("main", "master", "development"):
-            for form in PROTECTED_REFSPEC_FORMS:
+            for form in DESTRUCTIVE_REFSPEC_FORMS:
                 with self.subTest(refspec=form.format(branch)):
                     self.assertIn(f'"{form.format(branch)}",', text)
 
@@ -154,20 +155,27 @@ class CodexRulesSyntaxTests(unittest.TestCase):
         return json.loads(completed.stdout).get("decision")
 
     def test_decisions(self) -> None:
-        self.assertEqual(self.decision("git", "push", "origin", "main"), "forbidden")
         self.assertEqual(self.decision("git", "push", "--force", "origin", "feat/x"), "forbidden")
+        self.assertEqual(self.decision("git", "push", "--no-verify", "origin", "main"), "forbidden")
         self.assertEqual(self.decision("git", "commit", "--no-verify", "-m", "x"), "forbidden")
         self.assertEqual(self.decision("printenv"), "forbidden")
         self.assertIsNone(self.decision("git", "push", "origin", "feat/x"))
         self.assertIsNone(self.decision("git", "commit", "-m", "feat: x"))
 
-    def test_development_is_protected(self) -> None:
-        for form in PROTECTED_REFSPEC_FORMS:
-            refspec = form.format("development")
-            with self.subTest(refspec=refspec):
-                self.assertEqual(self.decision("git", "push", "origin", refspec), "forbidden")
+    def test_plain_pushes_to_protected_branches_are_left_to_the_hook(self) -> None:
+        for branch in ("main", "master", "development"):
+            for form in PLAIN_REFSPEC_FORMS:
+                refspec = form.format(branch)
+                with self.subTest(refspec=refspec):
+                    self.assertIsNone(self.decision("git", "push", "origin", refspec))
+
+    def test_force_and_delete_of_protected_branches_are_forbidden(self) -> None:
+        for branch in ("main", "master", "development"):
+            for form in DESTRUCTIVE_REFSPEC_FORMS:
+                refspec = form.format(branch)
+                with self.subTest(refspec=refspec):
+                    self.assertEqual(self.decision("git", "push", "origin", refspec), "forbidden")
         self.assertIsNone(self.decision("git", "push", "origin", "development-docs"))
-        self.assertIsNone(self.decision("git", "push", "origin", "feat/x"))
 
 
 if __name__ == "__main__":

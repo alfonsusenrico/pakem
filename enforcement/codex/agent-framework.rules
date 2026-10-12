@@ -3,48 +3,41 @@
 # Prefix rules only see leading argv tokens, so they cover the common spellings;
 # the git pre-push and commit-msg hooks remain the authoritative checks.
 
-# Codex execpolicy rules are static and cannot read a repository's
-# agentframework.protectedBranch git config, so `development` (the usual
-# integration branch for repositories that do not merge straight into main) is
-# protected globally here; the guard and pre-push hook use the per-repository set.
-PROTECTED_BRANCH_REFSPECS = [
-    "main",
-    "master",
-    "development",
-    "HEAD:main",
-    "HEAD:master",
-    "HEAD:development",
+# Plain pushes to protected branches are left to the repository's pre-push hook,
+# which allows documentation-only ranges and whatever the project's
+# agentframework.protectedBranch configuration permits. Execpolicy rules are
+# static and cannot read that configuration, so force-push (+) and delete (:)
+# refspecs are forbidden for the usual protected names everywhere.
+DESTRUCTIVE_PROTECTED_REFSPECS = [
     "+main",
     "+master",
     "+development",
     ":main",
     ":master",
     ":development",
-    "refs/heads/main",
-    "refs/heads/master",
-    "refs/heads/development",
-    "HEAD:refs/heads/main",
-    "HEAD:refs/heads/master",
-    "HEAD:refs/heads/development",
+    "+HEAD:main",
+    "+HEAD:master",
+    "+HEAD:development",
+    ":refs/heads/main",
+    ":refs/heads/master",
+    ":refs/heads/development",
 ]
 
 FORCE_FLAGS = ["--force", "-f", "--force-with-lease", "--force-if-includes"]
 
 prefix_rule(
-    pattern = ["git", "push", ["origin", "upstream"], PROTECTED_BRANCH_REFSPECS],
+    pattern = ["git", "push", ["origin", "upstream"], DESTRUCTIVE_PROTECTED_REFSPECS],
     decision = "forbidden",
-    justification = "Direct pushes to main, master, or development are blocked; push a topic branch and let the owner merge.",
+    justification = "Force-pushing or deleting main, master, or development rewrites deployed history; ask the owner.",
     match = [
-        "git push origin main",
-        "git push origin HEAD:main",
-        "git push upstream master",
-        "git push origin development",
-        "git push origin HEAD:refs/heads/development",
+        "git push origin +main",
+        "git push origin :main",
+        "git push upstream +development",
     ],
     not_match = [
+        "git push origin main",
         "git push origin feat/x",
-        "git push origin main-docs",
-        "git push origin development-docs",
+        "git push origin +feat/x",
     ],
 )
 

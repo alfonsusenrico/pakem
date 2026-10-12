@@ -1,6 +1,6 @@
 # Design Base: owner-dashboard
 
-Status: Draft (pending owner review)
+Status: Draft (do not adopt until the owner approves it)
 Applies to: data dashboards and analytics consoles (tool surface)
 Last reviewed: 2026-10-08
 Review by: 2027-04-08

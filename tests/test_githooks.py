@@ -134,6 +134,12 @@ class PrePushTests(IsolatedTestCase):
         for branch in branches:
             git(self.repo, "config", "--add", "agentframework.protectedBranch", branch, home=self.home)
 
+    def test_no_protected_branch_allows_code_push_to_main(self) -> None:
+        self.protect("-")
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        completed = self.push("main")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_configured_branch_rejects_code_push(self) -> None:
         self.protect("development")
         git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
@@ -274,6 +280,15 @@ class HooksInstallTests(IsolatedTestCase):
                 self.assert_fails(completed, code=2)
                 self.assertFalse((self.repo / ".githooks").exists())
         self.assertEqual(self.protected_values(), [])
+
+    def test_protect_none_allows_code_push_to_main(self) -> None:
+        completed = self.af("hooks", "install", str(self.repo), "--protect-none", "--apply")
+        self.assert_ok(completed)
+        self.assertIn("none (direct pushes allowed)", completed.stdout)
+        self.assertEqual(self.protected_values(), ["-"])
+        self.assert_fails(
+            self.af("hooks", "install", str(self.repo), "--protect-none", "--protect", "main", "--apply"), code=2
+        )
 
     def test_without_protect_leaves_config_alone(self) -> None:
         git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)

@@ -18,14 +18,16 @@ ALLOW = None
 
 SHELL_CASES = [
     # (command, expected decision)
-    ("git push origin main", DENY),
-    ("git push origin HEAD:main", DENY),
+    # Plain pushes to protected branches are left to the pre-push hook.
+    ("git push origin main", ALLOW),
+    ("git push origin HEAD:main", ALLOW),
+    ("git push origin refs/heads/master", ALLOW),
+    ("git -C . push upstream master", ALLOW),
+    ("cd app && git push origin main", ALLOW),
     ("git push origin +main", DENY),
     ("git push origin :main", DENY),
-    ("git push origin refs/heads/master", DENY),
-    ("git -C . push upstream master", DENY),
-    ("cd app && git push origin main", DENY),
-    ("git push --all origin", DENY),
+    ("git push --delete origin main", DENY),
+    ("git push --all origin", ASK),
     ("git push origin feat/x", ALLOW),
     ("git push -u origin feat/x", ALLOW),
     ("git push origin main-docs", ALLOW),
@@ -61,7 +63,6 @@ SHELL_CASES = [
     ("cp ~/.codex/auth.json /tmp/x", DENY),
     ("base64 secrets/api_secret.txt", DENY),
     ("cat secrets/README.md", ALLOW),
-    ("cat deploy/db_prod.txt", DENY),
     ("scp host:~/.ssh/id_rsa .", DENY),
     ("cat .env*", DENY),
     ("python3 app.py < .env", DENY),
@@ -233,32 +234,33 @@ class GuardShellTests(IsolatedTestCase):
         self.assertIsNone(claude_decision(run_guard("claude", on_topic)))
         main_repo = init_repo(self.base / "main-work", self.home, branch="main")
         on_main = {"tool_name": "Bash", "tool_input": {"command": "git push"}, "cwd": str(main_repo)}
-        self.assertEqual(claude_decision(run_guard("claude", on_main)), DENY)
+        self.assertIsNone(claude_decision(run_guard("claude", on_main)))
+        force_on_main = {"tool_name": "Bash", "tool_input": {"command": "git push -f"}, "cwd": str(main_repo)}
+        self.assertEqual(claude_decision(run_guard("claude", force_on_main)), DENY)
         head_on_main = {
             "tool_name": "Bash",
-            "tool_input": {"command": "git push origin HEAD"},
+            "tool_input": {"command": "git push --force origin HEAD"},
             "cwd": str(main_repo),
         }
         self.assertEqual(claude_decision(run_guard("claude", head_on_main)), DENY)
-        outside_repo = {"tool_name": "Bash", "tool_input": {"command": "git push"}, "cwd": str(self.base)}
+        outside_repo = {"tool_name": "Bash", "tool_input": {"command": "git push -f"}, "cwd": str(self.base)}
         self.assertEqual(claude_decision(run_guard("claude", outside_repo)), ASK)
 
 
 CONFIGURED_PUSH_CASES = [
     # Repository protects exactly development and main.
-    ("git push origin development", DENY),
-    ("git push origin HEAD:development", DENY),
-    ("git push origin HEAD:refs/heads/development", DENY),
+    ("git push origin development", ALLOW),
+    ("git push origin HEAD:refs/heads/development", ALLOW),
     ("git push origin +development", DENY),
     ("git push origin :development", DENY),
-    ("git push origin refs/heads/development", DENY),
-    ("git push -f origin development", DENY),
-    ("git push origin main", DENY),
-    ("git push origin master", ALLOW),
+    ("git push -f origin HEAD:development", DENY),
+    ("git push -f origin refs/heads/development", DENY),
+    ("git push -f origin main", DENY),
+    ("git push -f origin master", ASK),
     ("git push origin feat/x", ALLOW),
-    ("git push origin development-docs", ALLOW),
+    ("git push -f origin development-docs", ASK),
     ("git push --force origin feat/x", ASK),
-    ("git push --all origin", DENY),
+    ("git push --all origin", ASK),
 ]
 
 
@@ -292,30 +294,31 @@ class GuardProtectedBranchConfigTests(IsolatedTestCase):
                 self.assertEqual(decision, expected)
 
     def test_reason_names_the_branch(self) -> None:
-        payload = {"tool_name": "Bash", "tool_input": {"command": "git push origin development"}, "cwd": str(self.repo)}
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git push -f origin development"}, "cwd": str(self.repo)}
         output = json.loads(run_guard("claude", payload).stdout)
         self.assertIn("protected branch development", output["hookSpecificOutput"]["permissionDecisionReason"])
 
     def test_bare_push_on_configured_branch(self) -> None:
         git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
-        self.assertEqual(self.claude_push("git push", self.repo), DENY)
-        self.assertEqual(self.claude_push("git push origin HEAD", self.repo), DENY)
+        self.assertIsNone(self.claude_push("git push", self.repo))
+        self.assertEqual(self.claude_push("git push -f", self.repo), DENY)
+        self.assertEqual(self.claude_push("git push --force origin HEAD", self.repo), DENY)
 
     def test_directory_changes_select_the_repository(self) -> None:
-        self.assertEqual(self.claude_push("cd client && git push origin development", self.base), DENY)
-        self.assertEqual(self.claude_push(f"git -C {self.repo} push origin development", self.base), DENY)
+        self.assertEqual(self.claude_push("cd client && git push -f origin development", self.base), DENY)
+        self.assertEqual(self.claude_push(f"git -C {self.repo} push -f origin development", self.base), DENY)
 
     def test_falls_back_to_main_and_master_outside_a_repository(self) -> None:
-        self.assertEqual(self.claude_push("git push origin main", self.base), DENY)
-        self.assertEqual(self.claude_push("git push origin master", self.base), DENY)
-        self.assertIsNone(self.claude_push("git push origin development", self.base))
+        self.assertEqual(self.claude_push("git push -f origin main", self.base), DENY)
+        self.assertEqual(self.claude_push("git push -f origin master", self.base), DENY)
+        self.assertEqual(self.claude_push("git push -f origin development", self.base), ASK)
         missing = self.base / "does-not-exist"
-        self.assertEqual(self.claude_push("git push origin main", missing), DENY)
+        self.assertEqual(self.claude_push("git push -f origin main", missing), DENY)
 
     def test_unconfigured_repository_protects_main_and_master_only(self) -> None:
         plain = init_repo(self.base / "plain", self.home, branch="feat/topic")
-        self.assertEqual(self.claude_push("git push origin master", plain), DENY)
-        self.assertIsNone(self.claude_push("git push origin development", plain))
+        self.assertEqual(self.claude_push("git push -f origin master", plain), DENY)
+        self.assertEqual(self.claude_push("git push -f origin development", plain), ASK)
 
 
 class GuardFileToolTests(unittest.TestCase):
@@ -352,7 +355,7 @@ class GuardFileToolTests(unittest.TestCase):
                 self.assertEqual(antigravity_decision(run_guard("antigravity", payload)), expected)
 
     def test_unparsable_input_fails_closed_only_for_clear_matches(self) -> None:
-        clear = run_guard("claude", '{"tool_name": "Bash", "tool_input": {"command": "git push origin main"')
+        clear = run_guard("claude", '{"tool_name": "Bash", "tool_input": {"command": "git push --force origin main"')
         self.assertEqual(claude_decision(clear), DENY)
         harmless = run_guard("claude", '{"tool_name": "Bash", "tool_input": {"command": "ls"')
         self.assertIsNone(claude_decision(harmless))

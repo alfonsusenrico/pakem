@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import unittest
 
-from support import CHECK_SCRIPT, IsolatedTestCase, git, init_repo, isolated_env, write
+from support import CHECK_SCRIPT, IsolatedTestCase, activate_hooks, git, init_repo, isolated_env, write
 
 LEGACY_TEXT = "# App\n\n<!-- owner-baseline:start -->\nold baseline\n<!-- owner-baseline:end -->\n\nNotes.\n"
 
@@ -13,7 +13,7 @@ LEGACY_TEXT = "# App\n\n<!-- owner-baseline:start -->\nold baseline\n<!-- owner-
 class ProjectSyncTests(IsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.repo = init_repo(self.base / "app", self.home)
+        self.repo = activate_hooks(init_repo(self.base / "app", self.home), self.home)
 
     def agents(self) -> str:
         return (self.repo / "AGENTS.md").read_text()
@@ -156,7 +156,7 @@ class ProjectSyncTests(IsolatedTestCase):
 class ProjectCheckTests(IsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.repo = init_repo(self.base / "app", self.home)
+        self.repo = activate_hooks(init_repo(self.base / "app", self.home), self.home)
         self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
         self.agents_path = self.repo / "AGENTS.md"
 
@@ -241,7 +241,7 @@ class ProjectCheckTests(IsolatedTestCase):
 class ProjectCapabilityAndFileTests(IsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.repo = init_repo(self.base / "app", self.home)
+        self.repo = activate_hooks(init_repo(self.base / "app", self.home), self.home)
         (self.repo / "research").mkdir()
         self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
         self.agents_path = self.repo / "AGENTS.md"
@@ -336,6 +336,13 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         completed = self.af("project", "check", str(self.repo))
         self.assert_ok(completed)
         self.assertIn("research/ folder is missing", completed.stdout)
+
+    def test_inactive_hooks_warn(self) -> None:
+        self.agents_path.write_text(self.synced + "Capabilities: none\n")
+        git(self.repo, "config", "--unset", "core.hooksPath", home=self.home)
+        completed = self.af("project", "check", str(self.repo))
+        self.assert_ok(completed)
+        self.assertIn("framework git hooks are not active here (core.hooksPath is unset)", completed.stdout)
 
 
 if __name__ == "__main__":

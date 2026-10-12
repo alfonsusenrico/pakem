@@ -167,6 +167,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     hooks_install.add_argument(
+        "--protect-none",
+        action="store_true",
+        help=(
+            "protect no branch, so code may be pushed directly to main; only for a project whose "
+            "AGENTS.md records default:branching in ## Overrides"
+        ),
+    )
+    hooks_install.add_argument(
         "--local-only",
         action="store_true",
         help="add .githooks/ to .git/info/exclude so the hooks are never committed (client repositories)",

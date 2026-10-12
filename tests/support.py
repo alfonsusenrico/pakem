@@ -182,6 +182,13 @@ def init_repo(path: Path, home: Path, branch: str = "main") -> Path:
     return path
 
 
+def activate_hooks(repo: Path, home: Path) -> Path:
+    """Mark the framework hooks active, as af hooks install does; af project check warns otherwise."""
+    write(repo / ".githooks" / "pre-push", "#!/bin/sh\nexit 0\n")
+    git(repo, "config", "core.hooksPath", ".githooks", home=home)
+    return repo
+
+
 class IsolatedTestCase(unittest.TestCase):
     """Provides a temporary HOME and a fixture framework checkout per test."""
 

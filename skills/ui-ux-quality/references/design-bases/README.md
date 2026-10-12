@@ -16,10 +16,10 @@ Available bases:
 - `owner-studio` (`owner-studio.md`) - marketing and portfolio surface, from the owner's
   approved portfolio (2026-10).
 - `owner-dashboard` (`owner-dashboard.md`) - tool surface: data dashboards and analytics
-  consoles (draft, pending owner review).
+  consoles (draft: do not adopt until the owner approves it).
 - `owner-workbench` (`owner-workbench.md`) - tool surface: task workbenches with
-  master-detail review, ledgers, editors, and assistant panels (draft, pending owner
-  review).
+  master-detail review, ledgers, editors, and assistant panels (draft: do not adopt
+  until the owner approves it).
 
 `owner-dashboard` and `owner-workbench` share identical neutral, semantic, and focus
 tokens, so a product with both kinds of screen adopts one of them for its tokens and
