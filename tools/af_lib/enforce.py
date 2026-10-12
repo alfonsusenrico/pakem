@@ -34,7 +34,7 @@ JSON_HOSTS = {
 }
 CODEX_RULES_SOURCE = "codex/agent-framework.rules"
 CODEX_RULES_DESTINATION = ".codex/rules/agent-framework.rules"
-CODEX_PROBE_COMMAND = ["git", "push", "origin", "main"]
+CODEX_PROBE_COMMAND = ["git", "push", "--force", "origin", "main"]
 
 
 def merge_fragment(target: dict, fragment: dict, path: tuple = ()) -> list[dict]:

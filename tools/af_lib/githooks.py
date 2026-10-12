@@ -11,6 +11,8 @@ HOOK_NAMES = ("commit-msg", "pre-push")
 HOOKS_DIR_NAME = ".githooks"
 HOOK_MODE = 0o755
 PROTECTED_BRANCH_KEY = "agentframework.protectedBranch"
+# Git rejects "-" as a branch name, so this value matches no branch: nothing is protected.
+NO_PROTECTED_BRANCH = "-"
 DEFAULT_PROTECTED_BRANCHES = ("main", "master")
 EXCLUDE_ENTRY = f"{HOOKS_DIR_NAME}/"
 # Any of these lines in info/exclude already keeps the hooks directory out of commits.
@@ -23,7 +25,12 @@ def run_hooks_install(args) -> int:
     if not is_git_work_tree(repo):
         raise AfError(f"not a git work tree: {repo}")
     top_level = Path(run_git(repo, "rev-parse", "--show-toplevel").stdout.strip())
-    requested_branches = validated_branches(top_level, args.protect or [])
+    if args.protect_none and args.protect:
+        raise AfError("--protect-none and --protect are mutually exclusive")
+    if args.protect_none:
+        requested_branches = [NO_PROTECTED_BRANCH]
+    else:
+        requested_branches = validated_branches(top_level, args.protect or [])
 
     configured = run_git(top_level, "config", "--get", "core.hooksPath", check=False).stdout.strip()
     if configured and configured != HOOKS_DIR_NAME:
@@ -121,16 +128,22 @@ def plan_protected_branches(top_level: Path, requested: list[str]) -> bool:
     current = run_git(
         top_level, "config", "--local", "--get-all", PROTECTED_BRANCH_KEY, check=False
     ).stdout.splitlines()
-    wanted = ", ".join(requested)
+    wanted = describe_protected(requested)
     if current == requested:
         print(f"  {'unchanged':22}  git config {PROTECTED_BRANCH_KEY}: {wanted}")
         return False
     if current:
-        previous = ", ".join(current)
+        previous = describe_protected(current)
     else:
         previous = f"unset, so {', '.join(DEFAULT_PROTECTED_BRANCHES)}"
     print(f"  {'set':22}  git config {PROTECTED_BRANCH_KEY}: {wanted} (currently {previous})")
     return True
+
+
+def describe_protected(branches: list[str]) -> str:
+    if branches == [NO_PROTECTED_BRANCH]:
+        return "none (direct pushes allowed)"
+    return ", ".join(branches)
 
 
 def write_protected_branches(top_level: Path, branches: list[str]) -> None:

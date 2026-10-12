@@ -33,8 +33,10 @@ Protected branches: for a push, the guard runs
 `git config --get-all agentframework.protectedBranch` in the directory the push
 runs in (the hook's cwd, adjusted for `cd` and `git -C`). When the key is unset,
 or git cannot answer (not a repository, git missing, timeout), the protected set
-is main and master. Pushes to a protected branch are denied, force pushes
-elsewhere ask, and a push whose target cannot be determined asks.
+is main and master. Force pushes to a protected branch are denied and force
+pushes elsewhere ask. Plain pushes to a protected branch are left to the
+repository's pre-push hook, which allows documentation-only ranges and whatever
+the project's protected-branch configuration permits.
 """
 
 from __future__ import annotations
@@ -117,7 +119,6 @@ SECRET_BASENAMES = {
     "oauth_creds.json",
     "credentials",
     "credentials.json",
-    "db_prod.txt",
     "runtime.env",
 }
 SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".runtime.env")
@@ -132,10 +133,11 @@ HEREDOC_SUBSTITUTION = re.compile(
     r"^\$\(\s*cat\s+<<-?\s*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n[ \t]*\2[ \t]*\n?\s*\)\s*$", re.DOTALL
 )
 
-REASON_PUSH_PROTECTED = "direct push to protected branch {branch} is blocked; push a topic branch"
-REASON_PUSH_ALL = "pushing every branch includes the protected branches ({branches}); push a topic branch"
+REASON_DELETE_PROTECTED = "deleting protected branch {branch} on the remote is blocked"
+REASON_FORCE_PROTECTED = "force push to protected branch {branch} rewrites deployed history; it is blocked"
+REASON_PUSH_ALL = "pushing every branch at once also pushes the protected branches ({branches}); confirm with the owner first"
 REASON_FORCE = "force push rewrites remote history; confirm with the owner first"
-REASON_UNKNOWN_BRANCH = "could not determine which branch this push targets; confirm it is not a protected branch"
+REASON_UNKNOWN_FORCE = "could not determine which branch this force push targets; confirm with the owner first"
 REASON_NO_VERIFY = "--no-verify bypasses the repository hooks; fix the reported problem instead"
 REASON_SUBJECT_ONLY = "subject-only commits: one -m with a single-line conventional subject, no body or trailers (including Co-Authored-By)"
 SECRET_HINT = "use skills/sensitive-operations/scripts/env_keys.py to list variable names"
@@ -146,7 +148,7 @@ REASON_ENV_DUMP = "environment dumps can expose secrets; inspect only the variab
 # working directory is unknown then, so per-repository protected branches cannot be
 # read and only the default main/master are matched.
 FALLBACK_DENY_PATTERNS = (
-    re.compile(r"git\s+push\b[^\n]*\b(main|master)\b"),
+    re.compile(r"git\s+push\b[^\n]*(--force|\s-\w*f|\s\+)[^\n]*\b(main|master)\b"),
     re.compile(r"--no-verify"),
     re.compile(r"\bprintenv\b"),
     re.compile(r"(?<![\w.-])\.env(\.(?!example\b|sample\b|template\b)[\w.-]+)?(?![\w.-])"),
@@ -688,6 +690,7 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
     decision = NO_OBJECTION
     positional: list[str] = []
     force = False
+    deletes = False
     pushes_all_branches = False
     index = 0
     while index < len(arguments):
@@ -701,6 +704,8 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
             force = True
         elif argument in ("--all", "--mirror", "--branches"):
             pushes_all_branches = True
+        elif argument == "--delete":
+            deletes = True
         elif argument in PUSH_OPTIONS_WITH_VALUE:
             index += 1
         elif argument.startswith("--"):
@@ -709,6 +714,8 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
             for position, flag in enumerate(argument[1:]):
                 if flag == "f":
                     force = True
+                if flag == "d":
+                    deletes = True
                 if flag == "o":
                     # -o takes a value: the rest of the cluster, or the next argument.
                     if position == len(argument) - 2:
@@ -721,10 +728,11 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
     protected = protected_branches(cwd)
     if pushes_all_branches:
         listed = ", ".join(sorted(protected))
-        return Decision(DENY, REASON_PUSH_ALL.format(branches=listed))
+        decision = decision.stronger(Decision(ASK, REASON_PUSH_ALL.format(branches=listed)))
 
     refspecs = positional[1:]
     protected_target = None
+    deleted_protected = None
     unknown_target = False
     for refspec in refspecs:
         if refspec.startswith("+"):
@@ -734,6 +742,8 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
             unknown_target = True
         elif destination in protected:
             protected_target = destination
+            if deletes or refspec.startswith(":"):
+                deleted_protected = destination
     if not refspecs:
         branch = current_branch(cwd)
         if branch is None:
@@ -741,12 +751,14 @@ def analyze_push(arguments: list[str], cwd: str) -> Decision:
         elif branch in protected:
             protected_target = branch
 
-    if protected_target is not None:
-        return Decision(DENY, REASON_PUSH_PROTECTED.format(branch=protected_target))
-    if force:
+    if deleted_protected is not None:
+        return decision.stronger(Decision(DENY, REASON_DELETE_PROTECTED.format(branch=deleted_protected)))
+    if force and protected_target is not None:
+        return decision.stronger(Decision(DENY, REASON_FORCE_PROTECTED.format(branch=protected_target)))
+    if force and unknown_target:
+        decision = decision.stronger(Decision(ASK, REASON_UNKNOWN_FORCE))
+    elif force:
         decision = decision.stronger(Decision(ASK, REASON_FORCE))
-    if unknown_target:
-        decision = decision.stronger(Decision(ASK, REASON_UNKNOWN_BRANCH))
     return decision
 
 

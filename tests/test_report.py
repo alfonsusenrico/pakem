@@ -6,7 +6,7 @@ import re
 import unittest
 from pathlib import Path
 
-from support import REPO_ROOT, IsolatedTestCase, git, init_repo, write
+from support import REPO_ROOT, IsolatedTestCase, activate_hooks, git, init_repo, write
 
 REPORT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{4}\.md$")
 SECRET_VALUE = "sk-test-0123456789abcdef"
@@ -16,7 +16,7 @@ class ReportTests(IsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.org = self.base / "org"
-        self.clean = init_repo(self.org / "clean", self.home)
+        self.clean = activate_hooks(init_repo(self.org / "clean", self.home), self.home)
         self.assert_ok(self.af("project", "sync", str(self.clean), "--apply"))
         (self.clean / "research").mkdir()
         self.broken = init_repo(self.org / "broken", self.home)
