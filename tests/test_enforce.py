@@ -79,6 +79,28 @@ class EnforceTests(IsolatedTestCase):
         self.assertFalse(guard.exists())
         self.assertNotIn("claude", self.manifest()["enforcement"])
 
+    def test_reinstall_removes_entries_dropped_from_the_fragment(self) -> None:
+        write(self.settings_path(), json.dumps(EXISTING_SETTINGS, indent=2) + "\n")
+        fragment_path = self.framework / "enforcement" / "claude" / "settings.fragment.json"
+        fragment = json.loads(fragment_path.read_text())
+        fragment["permissions"]["deny"].append("Bash(git push origin main)")
+        fragment_path.write_text(json.dumps(fragment, indent=2) + "\n")
+        self.assert_ok(self.af("enforce", "install", "--host", "claude", "--apply"))
+        self.assertIn("Bash(git push origin main)", json.loads(self.settings_path().read_text())["permissions"]["deny"])
+
+        fragment["permissions"]["deny"].remove("Bash(git push origin main)")
+        fragment_path.write_text(json.dumps(fragment, indent=2) + "\n")
+        reinstalled = self.af("enforce", "install", "--host", "claude", "--apply")
+        self.assert_ok(reinstalled)
+        self.assertIn('remove stale: permissions.deny "Bash(git push origin main)"', reinstalled.stdout)
+        deny = json.loads(self.settings_path().read_text())["permissions"]["deny"]
+        self.assertNotIn("Bash(git push origin main)", deny)
+        self.assertIn("Bash(rm -rf *)", deny)
+        self.assertIn("Read(//**/.env)", deny)
+
+        self.assert_ok(self.af("enforce", "uninstall", "--host", "claude", "--apply"))
+        self.assertEqual(json.loads(self.settings_path().read_text()), EXISTING_SETTINGS)
+
     def test_claude_settings_created_and_removed_when_absent(self) -> None:
         self.assert_ok(self.af("enforce", "install", "--host", "claude", "--apply"))
         self.assertTrue(self.settings_path().is_file())

@@ -835,6 +835,7 @@ class RunContext:
     installed_version: str
     host: HostSpec
     host_version: str
+    host_model: str
     repeat: int
     timeout_note: str
     started_at: datetime
@@ -878,6 +879,7 @@ def render_run_section(context: RunContext, scenarios: list[Scenario], results: 
         f"## Run {context.started_at.strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "",
         f"- Host: {context.host.label} (`{context.host.binary} --version`: {context.host_version})",
+        f"- Model: {context.host_model}",
         f"- Framework checkout: {context.framework_version}, commit {context.framework_commit}",
         f"- Installed kernel (af manifest): {context.installed_version}",
         f"- Command: `{command_template(context.host)}`",
@@ -956,6 +958,33 @@ def _installed_version() -> str:
     return version or "not installed"
 
 
+# Where each host keeps its configured model; only the model key is ever read.
+MODEL_SOURCES = {
+    "claude": ".claude/settings.json",
+    "codex": ".codex/config.toml",
+    "antigravity": ".gemini/antigravity-cli/settings.json",
+}
+
+
+def _host_model(host_id: str) -> str:
+    """The model the host is configured to use, so results from different models are not mixed."""
+    if host_id == "claude" and os.environ.get("ANTHROPIC_MODEL"):
+        return f"{os.environ['ANTHROPIC_MODEL']} (from ANTHROPIC_MODEL)"
+    relative = MODEL_SOURCES[host_id]
+    path = Path.home() / relative
+    if not path.is_file():
+        return f"host default (no ~/{relative})"
+    try:
+        text = path.read_text(encoding="utf-8")
+        data = tomllib.loads(text) if path.suffix == ".toml" else json.loads(text)
+    except (OSError, ValueError) as exc:
+        return f"unknown (~/{relative} unreadable: {type(exc).__name__})"
+    model = data.get("model") if isinstance(data, dict) else None
+    if not isinstance(model, str) or not model:
+        return f"host default (no model key in ~/{relative})"
+    return f"{model} (from ~/{relative})"
+
+
 def _host_version(binary_path: str) -> str:
     try:
         completed = subprocess.run(
@@ -1026,6 +1055,7 @@ def run_eval(args) -> int:
         installed_version=installed,
         host=host,
         host_version=_host_version(binary_path),
+        host_model=_host_model(host.host_id),
         repeat=repeat,
         timeout_note=f"{args.timeout}s (override)" if args.timeout else "per scenario",
         started_at=started_at,
