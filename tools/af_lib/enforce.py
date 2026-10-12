@@ -100,6 +100,21 @@ def revert_changes(data: dict, changes: list[dict]) -> list[str]:
     return warnings
 
 
+def _fragment_contains(fragment: dict, change: dict) -> bool:
+    """Whether the current fragment still asks for a change recorded by an earlier install."""
+    value = _container_at(fragment, change["path"])
+    if change["op"] == "append":
+        return isinstance(value, list) and change["item"] in value
+    return value is not None and value == change["value"]
+
+
+def split_stale_changes(changes: list[dict], fragment: dict) -> tuple[list[dict], list[dict]]:
+    """Split recorded changes into (still wanted, no longer in the fragment)."""
+    kept = [change for change in changes if _fragment_contains(fragment, change)]
+    stale = [change for change in changes if not _fragment_contains(fragment, change)]
+    return kept, stale
+
+
 def _load_json_object(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -189,11 +204,20 @@ def install_json_host(framework: Framework, host: str, apply: bool) -> int:
     existed = target_path.exists()
     before_text = target_path.read_text(encoding="utf-8") if existed else ""
     data = _load_json_object(target_path)
+    previous = manifest["enforcement"].get(host)
+    kept_changes, stale_changes = split_stale_changes(previous.get("changes", []) if previous else [], fragment)
+    # Entries a newer fragment dropped would otherwise stay in the host settings forever.
+    warnings = revert_changes(data, stale_changes)
     changes = merge_fragment(data, fragment)
     after_text = _render_json(data)
 
     print(f"af enforce install --host {host} ({'apply' if apply else 'dry-run'})")
-    if changes:
+    for change in stale_changes:
+        detail = change.get("item", change.get("value"))
+        print(f"  remove stale: {'.'.join(change['path'])} {json.dumps(detail)}")
+    for warning in warnings:
+        print(f"WARNING: {warning}")
+    if changes or stale_changes:
         _print_diff(target_path, before_text, after_text)
     else:
         print(f"  unchanged: {display_path(target_path)} already contains the fragment")
@@ -202,17 +226,17 @@ def install_json_host(framework: Framework, host: str, apply: bool) -> int:
         print("Dry run: nothing written. Re-run with --apply to write.")
         return 0
 
-    record = manifest["enforcement"].get(host) or {
+    record = previous or {
         "target": display_path(target_path),
         "created_file": not existed,
         "changes": [],
     }
-    if changes:
+    if changes or stale_changes:
         if existed:
             backup = BackupSession().back_up(target_path, f"enforce-{host}")
             manifest["backups"].append(backup)
         write_text_atomically(target_path, after_text)
-        record["changes"].extend(changes)
+        record["changes"] = kept_changes + changes
     record["installed_at"] = utc_now_iso()
     manifest["enforcement"][host] = record
     save_manifest(manifest)
