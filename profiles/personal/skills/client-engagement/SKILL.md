@@ -19,7 +19,9 @@ Record in the project `AGENTS.md` (kept private):
 - who decides (client PM, owner) and who builds and deploys;
 - the sources of truth and their order (section 2);
 - the integration branch, the merge path, and the deploy path;
-- client conventions that differ from owner defaults (section 4).
+- client conventions that differ from owner defaults (section 4);
+- `default:mr-policy` in `## Overrides`: agents push and report the compare link, and
+  the owner opens the merge request, because it is visible to the client's team.
 
 Then set up the repository:
 
@@ -45,8 +47,8 @@ record the minimum assumption needed to stay compatible with other workstreams.
 - Before reporting a branch, check that it merges cleanly
   (`git merge-tree --write-tree origin/<integration> HEAD`) and that the project's
   build, tests, lint, and formatter pass.
-- Push the topic branch and report the compare link; never merge, rebase shared
-  branches, or delete a teammate's branch.
+- Push the topic branch and report the compare link; the owner opens the merge
+  request. Never merge, rebase shared branches, or delete a teammate's branch.
 - Leave teammates' history as it is, even where it breaks owner conventions.
 
 ## 4. Client conventions and owner standards

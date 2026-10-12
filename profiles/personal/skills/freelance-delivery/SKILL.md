@@ -46,7 +46,8 @@ Follow [records](references/records.md):
 - Closure requires an approved final report, every issued invoice settled or voided
   with payment evidence, and a recorded handover.
 
-Use the numbering scheme in the records reference when the owner has no other.
+Document numbers come from one allocator and are never reused; record fields follow
+the proposal generator's contract (records reference).
 
 ## 4. Documents
 
