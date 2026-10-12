@@ -1,6 +1,6 @@
 # Design Base: owner-workbench
 
-Status: Draft (pending owner review)
+Status: Draft (do not adopt until the owner approves it)
 Applies to: task workbenches (master-detail review, ledgers, editors, assistant panels)
 Last reviewed: 2026-10-08
 Review by: 2027-04-08

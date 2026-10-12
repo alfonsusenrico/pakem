@@ -51,7 +51,7 @@ capabilities, and stack. Record the decision in `research/notes/`.
 12. **First commit**: `chore: bootstrap project` on `main`, then branch for the first
     change. The pre-push hook lets only documentation reach `main`, so the first push of
     a bootstrapped `main` that contains code is done once by the owner with
-    `AF_ALLOW_PROTECTED_PUSH=1 git push -u origin main` (agents cannot push to `main`).
+    `AF_ALLOW_PROTECTED_PUSH=1 git push -u origin main`; agents never set that variable.
 
 ## 3. Capabilities
 

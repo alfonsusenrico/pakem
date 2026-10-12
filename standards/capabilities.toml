@@ -21,7 +21,7 @@ standards = ["versioned hand-written migrations run as a separate step", "real d
 
 [capabilities.deployed]
 summary = "Deployed or used by people other than the developer"
-standards = ["request id and safe structured logs", "security scans in CI", "immutable releases with health check and rollback", "backups", "light and dark themes for UI"]
+standards = ["request id and safe structured logs", "security scans in CI", "immutable releases with health check and rollback", "backups"]
 
 [capabilities.money]
 summary = "Payments, bookings, inventory, settlement, or balances"

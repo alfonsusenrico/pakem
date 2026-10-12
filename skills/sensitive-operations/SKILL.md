@@ -67,5 +67,6 @@ and data-preservation evidence before calling a migration complete.
   collection recursively.
 - Prefer recoverable operations (move to a backup, soft delete) and keep a
   recovery path.
-- Ask when scope or recoverability is uncertain.
+- Ask before deleting data or files the current task did not create, and whenever
+  scope or recoverability is uncertain.
 - Afterwards, report exactly what was removed and whether it can be recovered.
