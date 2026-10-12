@@ -401,6 +401,7 @@ class StatusAndResultsTests(unittest.TestCase):
             installed_version="9.8.7",
             host=evals.HOSTS["claude"],
             host_version="claude 1.0",
+            host_model="opus (from ~/.claude/settings.json)",
             repeat=2,
             timeout_note="per scenario",
             started_at=datetime(2026, 10, 8, 9, 30, tzinfo=timezone.utc),
@@ -535,6 +536,7 @@ class EvalCommandTests(IsolatedTestCase):
         self.assertIn("pass^1: 5/5 scenarios", completed.stdout)
         text = self.results_text("claude")
         self.assertIn("- Host: Claude Code (`claude --version`: claude 9.9.9 (fake))", text)
+        self.assertIn("- Model: host default (no ~/.claude/settings.json)", text)
         self.assertIn("pass^1: 5/5 scenarios. pass@1: 5/5 scenarios.", text)
         for scenario_id in SCENARIO_IDS:
             self.assertRegex(text, rf"\| {scenario_id} \| [^|]+ \| PASS \| yes \| yes \|")
