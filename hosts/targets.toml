@@ -26,10 +26,12 @@ verified = "2026-10-07"
 label = "Antigravity CLI (agy)"
 instructions = "~/.gemini/GEMINI.md"
 skills_dirs = ["~/.gemini/config/skills"]
-# Per rule file cap from agy 1.2.13 built-in docs; truncated on line boundaries.
+# Per rule file cap from agy built-in docs (1.2.13, unchanged in 1.3.3); truncated on
+# line boundaries. Global and always-on rules also share a 20,000-token budget; rules
+# over it are demoted to file-path pointers.
 max_bytes = 24000
 # agy reports "conflicting global rules" when several global rule files exist.
 must_not_exist = ["~/.gemini/AGENTS.md", "~/.gemini/config/GEMINI.md", "~/.gemini/config/AGENTS.md"]
 verify = "Start agy, open Global rules, then ask the agent to quote the 'agent-framework kernel' version line."
-source = "agy 1.2.13 built-in skill agy-customizations (docs/rules.md, docs/skills.md)"
-verified = "2026-10-07"
+source = "agy 1.3.3 built-in skill agy-customizations (docs/rules.md, docs/skills.md); live check 2026-10-12: agy quoted the kernel v1.0.0 line from ~/.gemini/GEMINI.md"
+verified = "2026-10-12"
