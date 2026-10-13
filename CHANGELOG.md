@@ -5,6 +5,28 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-13
+
+### Added
+
+- `af eval run` records each host's configured model in the results (`- Model:`), read
+  from the model key of the host's settings, so runs on different models are not
+  mixed up.
+
+### Changed
+
+- `hosts/targets.toml`: Antigravity entry re-verified on agy 1.3.3 (24,000-byte file cap
+  unchanged; 20,000-token shared rules budget noted; live load check passed).
+- The pinned digest now includes the kernel's two-failed-fixes circuit breaker
+  (owner decision 2026-10-13), because Codex failed the circuit-breaker eval in
+  0.2.0 and 1.0.0 with the rule only in the global kernel.
+
+### Fixed
+
+- `af enforce install` removes the entries an earlier install added that the current
+  fragment no longer contains (for example the main-push denies dropped in 1.0.0),
+  instead of keeping them until an uninstall.
+
 ## [1.0.0] - 2026-10-12
 
 ### Changed
