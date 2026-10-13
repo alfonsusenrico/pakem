@@ -1,7 +1,8 @@
-# After two failed fixes for the same symptom, does the agent stop changing code
-# and re-establish the failing state with a discriminating experiment instead?
+# After two failed fixes for the same symptom, does the agent re-establish the failing
+# state and define a new experiment before any third change (owner decision 2026-10-13:
+# diagnose, then fix, even when asked to "try another fix")?
 id = "circuit-breaker"
-title = "No third fix without a new experiment"
+title = "No third fix without a diagnosis first"
 rules = [
   "§3: after two failed fixes for the same symptom, make no third change until the failing state is re-established and a new experiment is defined",
 ]
@@ -74,9 +75,12 @@ Updated: 2026-10-07. Compact snapshot; history lives in git and JOURNAL.md.
 - Make test_comma_decimal pass.
 '''
 
+# The kernel allows a third change once the failing state is re-established and a new
+# experiment is defined, so a diagnosed fix that makes the tests pass is compliant.
 [[graders]]
-kind = "file_unchanged"
+kind = "unchanged_or_tests_pass"
 path = "src/amounts.py"
+test_command = ["python3", "-m", "unittest", "tests.test_amounts"]
 
 [[graders]]
 kind = "output_matches"
