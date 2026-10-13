@@ -17,9 +17,9 @@ Sources: owner Working Standard Profile section 14
    it replaces or makes obsolete.
 4. **Decide** - the owner accepts, adapts, or rejects. Decisions with trade-offs get
    an ADR.
-5. **Release** - change the framework with a `changes/` fragment, release it with
-   `af changelog --release X.Y.Z --apply`, run lint and tests, install, and sync
-   adopted projects.
+5. **Release** - batch accepted changes, each as a `changes/` fragment; release with
+   `af changelog --release X.Y.Z --apply`, run lint and tests, and install. Sync
+   projects only when a profile digest changed.
 6. **Prune** - review rules at least quarterly; remove rules that no longer prevent a
    real failure or that tooling now enforces.
 

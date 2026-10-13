@@ -23,16 +23,22 @@ it is installed into each host by `tools/af install`, not loaded from here.
 - Kernel budget: at most 9,500 characters and 150 lines. Every line must be
   universal, not discoverable from code, not mechanically enforceable, and tied to
   a real or plausible failure. List rules removed or considered when adding one.
-- `kernel/DIGEST.md` may contain only verbatim kernel lines (ADR 0003).
 - Skills follow the Agent Skills format: trigger-first description of at most 350
   characters, body under 500 lines, references one level deep, each reference
   starting with a status header.
 - Instruction text drafted by an agent needs owner review before it is merged.
-- Record decisions as ADRs in `docs/adr/`. Record each change as a fragment
+- The framework is stable (ADR 0007). Change rules only for a problem a real
+  project hit, batch changes (at most one release a month), one PR per batch, and
+  no release for wording alone. Build no new `af` mechanism unless a project needs
+  it.
+- ADRs only for decisions with real trade-offs. Record each change as a fragment
   `changes/<type>-<kebab-topic>.md` (`changes/README.md`); never edit `CHANGELOG.md`
   on a branch. A release runs `tools/af changelog --release X.Y.Z --apply`, which
-  writes `CHANGELOG.md` and `VERSION`; choose X.Y.Z per semver (MAJOR: floor,
-  marker, or skill-name changes).
+  writes `CHANGELOG.md` and `VERSION`. MAJOR only when a floor changes or an
+  existing install or project would break; MINOR for new or changed rules; PATCH
+  for fixes.
+- Compliance evals are optional: run them by hand after a large host or model
+  change, not as a release gate (`evals/README.md`).
 - `archive/` holds legacy sources verbatim; never edit or install from it.
 
 ## Overrides

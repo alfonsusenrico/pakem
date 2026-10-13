@@ -39,14 +39,6 @@ FIXTURE_KERNEL = textwrap.dedent(
     """
 )
 
-FIXTURE_DIGEST = textwrap.dedent(
-    """\
-    <!-- digest of the kernel -->
-    Always verify before claiming success.
-    Never print secret values.
-    """
-)
-
 FIXTURE_SKILL = textwrap.dedent(
     """\
     ---
@@ -206,7 +198,6 @@ class IsolatedTestCase(unittest.TestCase):
     def build_framework(self, root: Path, **target_options) -> Path:
         write(root / "VERSION", FIXTURE_VERSION + "\n")
         write(root / "kernel" / "KERNEL.md", FIXTURE_KERNEL)
-        write(root / "kernel" / "DIGEST.md", FIXTURE_DIGEST)
         write(root / "hosts" / "targets.toml", targets_toml(**target_options))
         write(root / "skills" / "demo-skill" / "SKILL.md", FIXTURE_SKILL)
         write(root / "skills" / "demo-skill" / "references" / "guide.md", FIXTURE_REFERENCE)

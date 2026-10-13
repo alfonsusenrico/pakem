@@ -35,7 +35,7 @@ from typing import Callable
 from .common import AfError, Framework, Report, read_text, run_git, write_text_atomically
 from .manifest import load_manifest
 from .pinned import parse_document
-from .project import declared_capabilities, digest_block_lines, synchronize_text
+from .project import declared_capabilities, synchronize_text
 
 SCENARIOS_DIR = Path("evals") / "scenarios"
 RESULTS_DIR = Path("evals") / "results"
@@ -368,7 +368,7 @@ def fixture_agents_text(framework: Framework, scenario: Scenario) -> str:
         "\n"
         "- `default:openspec`: throwaway eval fixture; the task in the prompt is the approved plan.\n"
     )
-    return synchronize_text(project_text, digest_block_lines(framework), [], False, Report())
+    return synchronize_text(project_text, [], False, Report())
 
 
 def _fixture_git(repo: Path, *args: str) -> str:

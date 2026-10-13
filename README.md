@@ -11,7 +11,7 @@ to the same standard, whatever the employer, client, or host tool.
 | Skills | `skills/<name>/` | On demand, when a task matches a skill description |
 | Standards | `skills/*/references/`, indexed in `standards/` | When a skill points to them |
 | Profiles | `profiles/personal/` (freelance practice); organization profiles in separate repositories (`profile.toml`) | Organization, client, or freelance how-tos, opt-in |
-| Project | each repository's `AGENTS.md` | Pinned digest block plus project facts |
+| Project | each repository's `AGENTS.md` | Project facts, plus a pinned profile block where a profile applies |
 
 Precedence: host and system rules > owner instruction > approved specs > project
 `AGENTS.md` > profile > kernel. Floors cannot be weakened; labelled defaults can be

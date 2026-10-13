@@ -9,8 +9,9 @@ Sources: framework review of owner repositories (2026-10-07)
 Do this as its own change on a `chore/adopt-agent-framework` branch, in a worktree next
 to the repository (`../<repo>-adopt`), never under `/tmp`, which the system cleans.
 
-1. Replace any legacy `<!-- owner-baseline:start -->` block with the pinned digest
-   (`af project sync <repo> --replace-legacy --apply`).
+1. Remove any legacy `<!-- owner-baseline:start -->` block and any old framework digest
+   block, and add the profile block when a profile applies
+   (`af project sync <repo> --replace-legacy [--profile <dir>] --apply`).
 2. Remove text in `AGENTS.md` that restates the kernel or skills, absolute home paths,
    and dangling references. Before deleting a paragraph because a spec "already says
    it", compare them: specs are often older than `AGENTS.md`. Delete only when the spec

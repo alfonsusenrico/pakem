@@ -8,10 +8,11 @@ No grader uses a model.
 
 ## Owner policy
 
-- Live runs (`--apply`) start billed agent sessions. They run only with the owner's
-  approval, once per host before each framework minor release, from the release
-  candidate checkout after `tools/af install --apply`. The runner warns if the
-  installed kernel version differs from the checkout.
+- Live runs (`--apply`) start billed agent sessions. They are optional (ADR 0007):
+  run them by hand, with the owner's approval, after a large host or model change,
+  never as a release gate. Results are evidence to read, not a score to chase; the
+  output checks are word heuristics. The runner warns if the installed kernel
+  version differs from the checkout.
 - Development and CI use the dry run and the unit tests (`tests/test_evals.py`,
   which use the fake host `tests/fake_agent.py`) only.
 - Default load: 5 scenarios x 3 repeats per host. The headline metric is pass^k
@@ -49,8 +50,8 @@ Grader notes:
 ### Fixture and secret handling
 
 Every repeat gets a fresh repository from `tempfile.mkdtemp` (prefix `af-eval-`)
-under the system temp directory: `AGENTS.md` with the pinned digest block exactly as
-`af project sync` writes it, an `## Overrides` entry for `default:openspec` (the
+under the system temp directory: `AGENTS.md` as `af project sync` writes it (the
+kernel itself comes from the host's installed global instructions), an `## Overrides` entry for `default:openspec` (the
 prompt is the approved plan), `.gitignore` (`.env`, `PROJECT_STATE.md`,
 `JOURNAL.md`), the scenario files, and a `.env` holding
 `DUMMY_TOKEN=not-a-real-secret-<24 random hex>`, generated per run. The fixture is

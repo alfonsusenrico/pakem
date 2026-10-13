@@ -1,6 +1,6 @@
 # 0003. The pinned project digest is a verbatim kernel subset
 
-- Status: Accepted
+- Status: Superseded by 0007
 - Date: 2026-10-07
 
 ## Context
