@@ -53,6 +53,6 @@ by default; any content capture needs a written decision.
 
 ## 6. Presentation
 
-AI output shown to users follows the `ui-ux-quality` design base (no sparkle or
-AI-brand icons, assistant answers as text blocks, product-specific assistant mark).
-Never display or store hidden reasoning.
+AI output shown to users is recognisably the model's, states the basis of any facts
+it presents, and follows the project's own design (`ui-ux-quality`). Never display or
+store hidden reasoning.
