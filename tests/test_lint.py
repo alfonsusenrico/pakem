@@ -52,16 +52,6 @@ class LintTests(IsolatedTestCase):
         write(self.framework / "hosts" / "targets.toml", targets_toml(claude_max_chars=100))
         self.assert_lint_error("claude allows 100")
 
-    def test_digest_must_be_subset_of_kernel(self) -> None:
-        digest = self.framework / "kernel" / "DIGEST.md"
-        digest.write_text(digest.read_text() + "A rule that is not in the kernel.\n")
-        self.assert_lint_error("DIGEST.md line 4 does not appear verbatim in KERNEL.md")
-
-    def test_digest_size_limit(self) -> None:
-        digest = self.framework / "kernel" / "DIGEST.md"
-        digest.write_text("<!-- " + "x" * 2_500 + " -->\n")
-        self.assert_lint_error("limit 2400")
-
     def test_frontmatter_format_errors(self) -> None:
         cases = [
             (["name: demo-skill", "description: ok", "tags: [a, b]"], "unsupported key 'tags'"),

@@ -30,17 +30,16 @@ class ProjectSyncTests(IsolatedTestCase):
     def test_dry_run_prints_diff_and_writes_nothing(self) -> None:
         completed = self.af("project", "sync", str(self.repo))
         self.assert_ok(completed)
-        self.assertIn("+<!-- agent-framework:digest version=0.2.0 sha256=", completed.stdout)
+        self.assertIn("+# app", completed.stdout)
+        self.assertNotIn("agent-framework:digest", completed.stdout)
         self.assertFalse((self.repo / "AGENTS.md").exists())
 
-    def test_creates_from_template_and_is_idempotent(self) -> None:
+    def test_creates_from_template_without_framework_block_and_is_idempotent(self) -> None:
         self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
         text = self.agents()
-        lines = text.splitlines()
-        self.assertEqual(lines[0], "# app")
-        self.assertEqual(lines[1], "")
-        self.assertTrue(lines[2].startswith("<!-- agent-framework:digest version=0.2.0 sha256="))
+        self.assertEqual(text.splitlines()[0], "# app")
         self.assertIn("Project notes.", text)
+        self.assertNotIn("agent-framework:", text)
 
         again = self.af("project", "sync", str(self.repo), "--apply")
         self.assert_ok(again)
@@ -48,72 +47,33 @@ class ProjectSyncTests(IsolatedTestCase):
         self.assertEqual(text, self.agents())
         self.assert_ok(self.af("project", "check", str(self.repo)))
 
-    def test_inserts_after_h1_in_existing_file(self) -> None:
+    def test_obsolete_digest_block_is_reported_and_removed(self) -> None:
+        write(
+            self.repo / "AGENTS.md",
+            "# Existing\n\n<!-- agent-framework:digest version=1.1.1 sha256=0000 -->\nOld kernel lines.\n"
+            "<!-- /agent-framework:digest -->\n\nCapabilities: database\n",
+        )
+        (self.repo / "research").mkdir()
+        check = self.af("project", "check", str(self.repo))
+        self.assert_ok(check)
+        self.assertIn("obsolete framework digest block at line 3", check.stdout)
+
+        synced = self.af("project", "sync", str(self.repo), "--apply")
+        self.assert_ok(synced)
+        self.assertIn("removed the framework digest block", synced.stdout)
+        self.assertEqual(self.agents(), "# Existing\n\nCapabilities: database\n")
+        clean = self.af("project", "check", str(self.repo))
+        self.assertIn("0 error(s), 0 warning(s)", clean.stdout)
+
+    def test_profile_block_inserted_after_h1_and_refreshed(self) -> None:
         write(self.repo / "AGENTS.md", "# Existing\n\nKeep this paragraph.\n")
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
-        lines = self.agents().splitlines()
-        self.assertEqual(lines[0], "# Existing")
-        self.assertTrue(lines[2].startswith("<!-- agent-framework:digest"))
-        self.assertEqual(lines[-1], "Keep this paragraph.")
-
-    def test_refreshes_block_in_place_when_digest_changes(self) -> None:
-        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
-        (self.repo / "research").mkdir()
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
-        write(self.framework / "VERSION", "0.3.0\n")
-        digest = self.framework / "kernel" / "DIGEST.md"
-        digest.write_text(digest.read_text() + "Always verify before claiming success.\n")
-        stale = self.af("project", "check", str(self.repo))
-        self.assert_ok(stale)
-        self.assertIn("WARNING: digest block (version 0.2.0) differs from the framework 0.3.0", stale.stdout)
-
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
-        text = self.agents()
-        self.assertEqual(text.count("<!-- agent-framework:digest"), 1)
-        self.assertIn("version=0.3.0", text)
-        check = self.af("project", "check", str(self.repo))
-        self.assert_ok(check)
-        self.assertIn("0 error(s), 0 warning(s)", check.stdout)
-
-    def test_older_version_with_unchanged_digest_is_not_a_warning(self) -> None:
-        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
-        (self.repo / "research").mkdir()
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
-        write(self.framework / "VERSION", "0.3.0\n")
-        check = self.af("project", "check", str(self.repo))
-        self.assert_ok(check)
-        self.assertIn("0 error(s), 0 warning(s)", check.stdout)
-        self.assertNotIn("digest block", check.stdout)
-
-    def test_same_version_with_changed_digest_warns(self) -> None:
-        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
-        (self.repo / "research").mkdir()
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
-        digest = self.framework / "kernel" / "DIGEST.md"
-        digest.write_text(digest.read_text() + "Always verify before claiming success.\n")
-        check = self.af("project", "check", str(self.repo))
-        self.assert_ok(check)
-        self.assertIn("WARNING: digest block (version 0.2.0) differs from the framework 0.2.0", check.stdout)
-        self.assertIn("0 error(s), 1 warning(s)", check.stdout)
-
-    def test_invalid_digest_version_is_an_error(self) -> None:
-        write(self.repo / "AGENTS.md", "# Existing\n\nCapabilities: database\n")
-        (self.repo / "research").mkdir()
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
-        text = self.agents().replace("digest version=0.2.0 ", "digest version=next ")
-        write(self.repo / "AGENTS.md", text)
-        check = self.af("project", "check", str(self.repo))
-        self.assert_fails(check)
-        self.assertIn("digest block has an invalid version: 'next'", check.stdout)
-
-    def test_profile_block_follows_digest(self) -> None:
         profile = self.make_profile()
         self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
-        text = self.agents()
-        digest_at = text.index("<!-- agent-framework:digest")
-        profile_at = text.index("<!-- agent-framework:profile name=work version=1.0.0 sha256=")
-        self.assertLess(digest_at, profile_at)
-        self.assertIn("Profile rule one.", text)
+        lines = self.agents().splitlines()
+        self.assertEqual(lines[0], "# Existing")
+        self.assertTrue(lines[2].startswith("<!-- agent-framework:profile name=work version=1.0.0 sha256="))
+        self.assertEqual(lines[-1], "Keep this paragraph.")
+        self.assertIn("Profile rule one.", self.agents())
 
         self.make_profile(version="1.1.0", digest="Profile rule two.\n")
         self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
@@ -137,18 +97,16 @@ class ProjectSyncTests(IsolatedTestCase):
         write(self.repo / "AGENTS.md", LEGACY_TEXT)
         completed = self.af("project", "sync", str(self.repo), "--apply")
         self.assert_ok(completed)
-        self.assertIn("legacy owner-baseline block", completed.stdout)
-        text = self.agents()
-        self.assertIn("old baseline", text)
-        self.assertIn("<!-- agent-framework:digest", text)
+        self.assertIn("pass --replace-legacy to remove it", completed.stdout)
+        self.assertIn("old baseline", self.agents())
 
-    def test_legacy_block_replaced_on_request(self) -> None:
+    def test_legacy_block_removed_on_request(self) -> None:
         write(self.repo / "AGENTS.md", LEGACY_TEXT)
         self.assert_ok(self.af("project", "sync", str(self.repo), "--replace-legacy", "--apply"))
         text = self.agents()
         self.assertNotIn("owner-baseline", text)
         self.assertNotIn("old baseline", text)
-        self.assertEqual(text.count("<!-- agent-framework:digest"), 1)
+        self.assertNotIn("agent-framework:", text)
         self.assertTrue(text.endswith("Notes.\n"))
         self.assert_ok(self.af("project", "check", str(self.repo)))
 
@@ -157,7 +115,13 @@ class ProjectCheckTests(IsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.repo = activate_hooks(init_repo(self.base / "app", self.home), self.home)
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
+        base_profile = self.base / "base-profile"
+        write(
+            base_profile / "profile.toml",
+            'name = "base"\nversion = "1.0.0"\nrequires_framework = ">=0.1"\ndigest = "D.md"\n',
+        )
+        write(base_profile / "D.md", "Never print secret values.\n")
+        self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(base_profile), "--apply"))
         self.agents_path = self.repo / "AGENTS.md"
 
     def tamper(self) -> None:

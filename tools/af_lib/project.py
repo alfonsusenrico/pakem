@@ -15,14 +15,12 @@ from .common import (
     normalize_newlines,
     read_text,
     run_git,
-    version_tuple,
     write_text_atomically,
 )
 from .pinned import (
     DIGEST_KIND,
     PROFILE_KIND,
     join_lines,
-    normalize_body,
     parse_document,
     render_block,
 )
@@ -66,11 +64,6 @@ def _top_insert_index(lines: list[str]) -> int:
     return 0
 
 
-def digest_block_lines(framework: Framework) -> list[str]:
-    body = read_text(framework.digest_path)
-    return render_block(DIGEST_KIND, [("version", framework.version())], body)
-
-
 def profile_block_lines(profile: Profile) -> list[str]:
     attributes = [("name", profile.name), ("version", profile.version)]
     return render_block(PROFILE_KIND, attributes, profile.digest_text())
@@ -85,21 +78,28 @@ def _require_well_formed(text: str):
 
 def synchronize_text(
     text: str,
-    digest_lines: list[str],
     profile_blocks: list[tuple[str, list[str]]],
     replace_legacy: bool,
     report: Report,
 ) -> str:
-    """Return text with the digest and profile blocks inserted or refreshed."""
+    """Return text with profile blocks inserted or refreshed and obsolete framework blocks removed.
+
+    The framework digest is no longer pinned (ADR 0007): the kernel is installed
+    globally for every host, so a repository copy only added sync work.
+    """
     document = _require_well_formed(text)
     lines = list(document.lines)
 
-    wanted: dict[tuple[str, str], list[str]] = {(DIGEST_KIND, ""): digest_lines}
+    wanted: dict[tuple[str, str], list[str]] = {}
     for name, block_lines in profile_blocks:
         wanted[(PROFILE_KIND, name)] = block_lines
 
     placed: set[tuple[str, str]] = set()
     for block in sorted(document.blocks, key=lambda item: item.start, reverse=True):
+        if block.kind == DIGEST_KIND:
+            _delete_range(lines, block.start, block.end)
+            report.warn("removed the framework digest block; the globally installed kernel carries those rules")
+            continue
         replacement = wanted.get(block.identity)
         if replacement is None:
             report.warn(
@@ -107,9 +107,7 @@ def synchronize_text(
             )
             continue
         if block.identity in placed:
-            raise AfError(
-                f"AGENTS.md contains more than one {block.kind} block for {block.identity[1] or 'digest'}"
-            )
+            raise AfError(f"AGENTS.md contains more than one profile block for {block.identity[1]}")
         lines[block.start : block.end + 1] = replacement
         placed.add(block.identity)
 
@@ -119,29 +117,20 @@ def synchronize_text(
         if not replace_legacy:
             report.warn(
                 f"legacy owner-baseline block at lines {legacy_start + 1}-{legacy_end + 1}; "
-                "pass --replace-legacy to replace it with the digest block"
+                "pass --replace-legacy to remove it"
             )
-        elif (DIGEST_KIND, "") in placed:
+        else:
             _delete_range(lines, legacy_start, legacy_end)
-            report.warn("removed legacy owner-baseline block (digest block already present)")
-        else:
-            lines[legacy_start : legacy_end + 1] = digest_lines
-            placed.add((DIGEST_KIND, ""))
-            report.warn("replaced legacy owner-baseline block with the digest block")
-
-    if (DIGEST_KIND, "") not in placed:
-        document = _require_well_formed(join_lines(lines))
-        if document.blocks:
-            index = min(block.start for block in document.blocks)
-        else:
-            index = _top_insert_index(lines)
-        _insert_with_spacing(lines, index, digest_lines)
+            report.warn("removed legacy owner-baseline block (the globally installed kernel replaces it)")
 
     for name, block_lines in profile_blocks:
         if (PROFILE_KIND, name) in placed:
             continue
         document = _require_well_formed(join_lines(lines))
-        index = max(block.end for block in document.blocks) + 1
+        if document.blocks:
+            index = max(block.end for block in document.blocks) + 1
+        else:
+            index = _top_insert_index(lines)
         _insert_with_spacing(lines, index, block_lines)
 
     return join_lines(lines)
@@ -177,9 +166,7 @@ def run_sync(args) -> int:
 
     profiles = load_profiles(args.profile, framework.version())
     profile_blocks = [(profile.name, profile_block_lines(profile)) for profile in profiles]
-    updated = synchronize_text(
-        starting_text, digest_block_lines(framework), profile_blocks, args.replace_legacy, report
-    )
+    updated = synchronize_text(starting_text, profile_blocks, args.replace_legacy, report)
 
     mode = "apply" if args.apply else "dry-run"
     print(f"af project sync ({mode}) {agents_path}")
@@ -265,35 +252,18 @@ def _check_home_paths(repo: Path, report: Report) -> None:
                 report.warn(f"{relative} line {index + 1}: machine-specific home path (/Users/... or ~/)")
 
 
-def _check_blocks(framework: Framework, document, report: Report) -> None:
-    framework_version = framework.version()
-    digest_blocks = [block for block in document.blocks if block.kind == DIGEST_KIND]
-    if not digest_blocks:
-        report.warn("AGENTS.md has no agent-framework digest block (run af project sync)")
-    if len(digest_blocks) > 1:
-        report.error("AGENTS.md has more than one digest block")
-
-    current_digest = normalize_body(read_text(framework.digest_path))
+def _check_blocks(document, report: Report) -> None:
     for block in document.blocks:
-        label = block.kind if block.kind == DIGEST_KIND else f"profile {block.attributes.get('name', '?')}"
+        if block.kind == DIGEST_KIND:
+            report.warn(
+                f"obsolete framework digest block at line {block.start + 1}; "
+                "the kernel is installed globally (af project sync removes it)"
+            )
+            continue
         if not block.integrity_ok():
             report.error(
-                f"{label} block (line {block.start + 1}) body does not match its sha256; it was edited by hand"
-            )
-        if block.kind != DIGEST_KIND:
-            continue
-        block_version = block.attributes.get("version", "")
-        try:
-            version_tuple(block_version)
-        except AfError:
-            report.error(f"digest block has an invalid version: {block_version!r}")
-            continue
-        # Staleness is judged by content only: a release that leaves DIGEST.md unchanged
-        # must not make every adopted repository warn about the version attribute.
-        if block.integrity_ok() and block.body != current_digest:
-            report.warn(
-                f"digest block (version {block_version}) differs from the framework {framework_version} "
-                "DIGEST.md (run af project sync)"
+                f"profile {block.attributes.get('name', '?')} block (line {block.start + 1}) body does not "
+                "match its sha256; it was edited by hand"
             )
 
 
@@ -402,7 +372,7 @@ def check_repo(framework: Framework, repo: Path) -> Report:
             "AGENTS.md still contains a legacy owner-baseline block (af project sync --replace-legacy)"
         )
 
-    _check_blocks(framework, document, report)
+    _check_blocks(document, report)
 
     char_count = len(text)
     if char_count > AGENTS_ERROR_CHARS:

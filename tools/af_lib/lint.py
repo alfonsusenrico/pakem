@@ -22,7 +22,6 @@ from .profiles import Profile, load_profile
 KERNEL_WARN_CHARS = 9_500
 KERNEL_ERROR_CHARS = 10_500
 KERNEL_WARN_LINES = 150
-DIGEST_ERROR_CHARS = 2_400
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SKILL_NAME_MAX = 64
 DESCRIPTION_ERROR_CHARS = 1_024
@@ -294,7 +293,6 @@ class Linter:
 
     def run(self) -> Report:
         self.check_kernel()
-        self.check_digest()
         self.check_skills()
         self.check_kernel_skill_table()
         self.check_capabilities()
@@ -331,24 +329,6 @@ class Linter:
         for host in targets.values():
             for violation in size_violations(rendered, host):
                 self.report.error(violation)
-
-    def check_digest(self) -> None:
-        digest_path = self.framework.digest_path
-        if not digest_path.is_file():
-            self.report.error("kernel/DIGEST.md is missing")
-            return
-        digest = read_text(digest_path)
-        if len(digest) > DIGEST_ERROR_CHARS:
-            self.report.error(f"kernel/DIGEST.md is {len(digest)} chars (limit {DIGEST_ERROR_CHARS})")
-        if not self.framework.kernel_path.is_file():
-            return
-        kernel_lines = {line.strip() for line in read_text(self.framework.kernel_path).splitlines()}
-        for number, line in enumerate(digest.splitlines(), start=1):
-            stripped = line.strip()
-            if not stripped or stripped.startswith("<!--"):
-                continue
-            if stripped not in kernel_lines:
-                self.report.error(f"kernel/DIGEST.md line {number} does not appear verbatim in KERNEL.md")
 
     def check_skills(self) -> None:
         if not self.framework.skills_root.is_dir():

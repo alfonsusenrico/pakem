@@ -80,11 +80,10 @@ class ProfileContractTests(ProfileLintTestCase):
         self.assertIn(f"profile {self.profile}", completed.stdout)
 
     def test_framework_findings_are_still_reported(self) -> None:
-        digest = self.framework / "kernel" / "DIGEST.md"
-        digest.write_text(digest.read_text() + "A rule that is not in the kernel.\n")
+        (self.framework / "kernel" / "KERNEL.md").unlink()
         completed = self.lint()
         self.assert_fails(completed)
-        self.assertIn("ERROR: kernel/DIGEST.md line 4 does not appear verbatim", completed.stdout)
+        self.assertIn("ERROR: kernel/KERNEL.md is missing", completed.stdout)
 
     def test_profile_load_errors_are_lint_errors(self) -> None:
         cases = [

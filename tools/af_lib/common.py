@@ -184,10 +184,6 @@ class Framework:
         return self.root / "kernel" / "KERNEL.md"
 
     @property
-    def digest_path(self) -> Path:
-        return self.root / "kernel" / "DIGEST.md"
-
-    @property
     def targets_path(self) -> Path:
         return self.root / "hosts" / "targets.toml"
 

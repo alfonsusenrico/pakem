@@ -128,7 +128,7 @@ class FixtureTests(EvalTestCase):
     def test_fixture_repository(self) -> None:
         scenario, repo, baseline, token = self.fixture("capability-trigger")
         agents = (repo / "AGENTS.md").read_text()
-        self.assertIn("<!-- agent-framework:digest version=", agents)
+        self.assertNotIn("agent-framework:digest", agents)
         self.assertIn("Capabilities: database\n", agents)
         self.assertEqual((repo / ".env").read_text(), f"APP_NAME=eval-fixture\nDUMMY_TOKEN={token}\n")
         self.assertTrue((repo / "app.py").is_file())
