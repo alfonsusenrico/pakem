@@ -99,7 +99,7 @@ tracker, office projects) and the owner's answers.
    not block archiving.
 10. **Lessons intake** — section 14.
 
-UI direction decisions use side-by-side working alternatives (section 8.4).
+UI direction decisions use side-by-side working alternatives (section 8).
 
 ## 4. Git, autonomy, and continuity
 
@@ -159,49 +159,25 @@ UI direction decisions use side-by-side working alternatives (section 8.4).
 - Phone layouts are purpose-built (navigation, density, disclosure), tested at 320/390 and up.
 - Data fetching and form libraries are project choices.
 
-## 8. UI/UX design base
+## 8. UI/UX
 
-### 8.1 Invariants
-- Radius: controls 7–8px; grouped containers 10–16px; full pill only for chips, choices,
-  and round icon buttons; table rows and badges 4–6px.
-- One interactive accent per product (chosen per project); semantic colours only for real
-  state; never colour alone.
-- Hierarchy through alignment, type, and 1px hairlines; cards only for selectable or
-  interactive items; no decorative or celebratory cards.
-- Type weight (research-backed): headings and KPI values 600 (500–650 by typeface); body
-  400; small text ≤12px may use 500–600; never ≥800 for UI text; nothing below 400;
-  tabular figures for numbers in tables and KPIs.
-- Uppercase only for table column headers and field labels, ≥11px and ≥4.5:1 contrast;
-  never as eyebrows on public pages.
-- Prose left-aligned, 60–78ch, line-height ~1.6; no captions that lead to no action.
-- Line icons ~1.6–1.8 stroke, round caps, custom or outlined; brand logos filled.
-- Truthful content: no invented metrics or outcomes; unknown is never shown as 0;
-  progress only from real counts.
-- Native semantics first (`<dialog>`, `<details>`), Escape and focus return, visible 2–3px
-  focus outlines, ~44px targets, WCAG 2.2 AA as the target without conformance claims.
-- Both light and dark themes on every surface (persisted, following the OS until changed).
-- AI surfaces: no sparkle or AI-brand icons, no glow; user messages may be bubbles, assistant
-  answers are plain text blocks; a custom assistant mark per product.
+Amended 2026-10-13 (ADR 0008): the earlier visual invariants, fonts, surface styling,
+and portfolio reference values are project decisions now; each project keeps them in
+its tokens file and design notes.
 
-### 8.2 Fonts
-- Marketing sites self-host an expressive pair; tools may self-host one family or pair when it
-  strengthens identity (max 2 families, only used weights); otherwise system stacks.
-
-### 8.3 Surfaces
-| | Marketing / portfolio | Tools: dashboards and workbenches |
-| --- | --- | --- |
-| Depth | soft shadows allowed, tinted (never black) | flat; elevation only for dialogs, menus, popovers |
-| Motion | ambient and auto-rotating motion only with safeguards: pause offscreen, manual choice resets the interval, global pause control, reduced motion | functional only: feedback 120–350ms, transitions up to ~650ms, no ambient loops |
-| Layout | airy, asymmetric, full-bleed bands | dense, aligned, master–detail or sidebar + toolbar |
-
-Primary reference values (portfolio): cream `#fffaf5`, navy ink `#243b49`, forest accent
-`#28594e`, terracotta decorative `#d87747`, sage selected `#dbe6d3`, Outfit 600 + DM Sans,
-1160px wrap, easing `cubic-bezier(.22,1,.36,1)`.
-
-### 8.4 Choosing a direction
-For a new direction or major redesign: build 2–4 working alternatives (no-index review route
-or `research/prototypes/`), compare in the browser, record the choice and rejected options.
-After acceptance: refine, don't restyle.
+- Visual style (colour, type, shape, icons, motion, tone) is decided per project.
+- Start from what the interface is for: the agent decides whether a product is mostly
+  a data dashboard (read and compare much data: easy navigation and control, room for
+  the data, categories distinguishable at a glance), a public website (attract
+  strangers, hold interest, convey the key message completely), a web application
+  (many features without confusion, data easy and pleasant to take in, a reason to
+  come back), a mix, or something else, and applies that surface's goals and checks.
+- For every interface: truthful content (no invented metrics; unknown is never shown
+  as 0); WCAG 2.2 AA without conformance claims; light and dark themes (persisted,
+  following the OS until changed); meaning never by colour alone; phone layouts
+  designed for the phone.
+- Choosing a direction: 2-4 working alternatives compared in the browser; after
+  acceptance, refine, don't restyle.
 
 ## 9. Testing and QA
 

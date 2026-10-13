@@ -15,7 +15,7 @@ Sources: owner baseline (2026-09); owner skill review (2026-09); framework ADRs
   and freshness; missing edges do not prove missing callers; verify findings against
   source; prefer direct reads and `rg` for known files.
 - Third-party design skills (for example `frontend-design`): may inform direction but
-  never override the project's approved design or the owner's design base.
+  never override the project's approved design.
 - Review upstream changes before updating any tool and preserve local customizations.
 - Do not claim a tool or skill ran when it was unavailable; apply the equivalent
   check manually and say so.

@@ -21,7 +21,7 @@ shows where each standard lives and which capability makes it mandatory
 | Logging and privacy | `skills/sensitive-operations/references/logging-privacy.md` | always; stricter with personal-data |
 | Migration safety | `skills/sensitive-operations/references/migrations.md` | database |
 | Debugging and incidents | `skills/root-cause-debugging` | always |
-| Design base, surfaces, direction, frontend, accessibility | `skills/ui-ux-quality/references` | any UI |
+| Surfaces (what the interface is for), direction, frontend, accessibility | `skills/ui-ux-quality/references` | any UI |
 | GenAI (prompts, evals, structured output, RAG, agents, security, cost, observability) | `skills/genai-engineering/references` | llm |
 | Review checklist, testing standard | `skills/change-review/references` | always |
 | CI, deployment, handover, alerting | `skills/release-delivery/references` | always (CI); deployed |
