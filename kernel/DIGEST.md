@@ -27,6 +27,9 @@
 - Standards attach to the capabilities listed in the project `AGENTS.md`. If a
   change adds a capability, say so before implementing, then include the
   standards it requires or record the gap as debt with a payback plan.
+- Fix the first violated contract in its owning component, not a downstream
+  symptom. After two failed fixes for the same symptom, make no third change
+  until the failing state is re-established and a new experiment is defined.
 
 ## 6. Git and autonomy
 
