@@ -34,7 +34,7 @@ for one to remove.
 
 ## 3. Budgets
 
-- Kernel at most 9,500 characters; digest at most 2,400.
+- Kernel at most 9,500 characters; profile digests at most 1,600.
 - Project `AGENTS.md` under 12,000 characters including pinned blocks (project
   content under 8,000).
 - Skill description at most 350 characters, trigger first; skill body under 500
@@ -66,11 +66,12 @@ or recommending skills, plugins, or tools.
 
 ## 7. Changing the framework itself
 
-The framework repository records decisions as ADRs and each change as a fragment in
-`changes/` (never a direct `CHANGELOG.md` edit); a release runs
-`af changelog --release X.Y.Z --apply`, versioned per semantic versioning (MAJOR for
-floor, marker, or skill-name changes). Run its lint and tests before any commit.
-Install only from merged `main`: fetch, check that the checkout is clean and equal
-to `origin/main`, then run `af install --apply` with owner approval, and
-`af project sync` in adopted repositories. `--allow-unmerged` and `--allow-dirty` are
-for deliberately testing a branch, never for a routine install.
+The framework is stable: change it only for a problem a real project hit, in
+batches (at most one release a month), with ADRs only for real trade-offs. Each change
+is a fragment in `changes/` (never a direct `CHANGELOG.md` edit); a release runs
+`af changelog --release X.Y.Z --apply` (MAJOR only when a floor changes or an existing
+install or project would break). Run its lint and tests before any commit. Install
+only from merged `main`: fetch, check that the checkout is clean and equal to
+`origin/main`, then run `af install --apply` with owner approval. Repositories need
+`af project sync` only when a profile digest changes. `--allow-unmerged` and
+`--allow-dirty` are for deliberately testing a branch, never for a routine install.
