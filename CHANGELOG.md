@@ -5,6 +5,20 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-13
+
+### Changed
+
+- Lighter process (ADR 0007): stable base with batched releases, compliance evals
+  optional instead of a release gate, ADRs only for real trade-offs, and MAJOR only for
+  floor changes or breaking installs.
+
+### Removed
+
+- The kernel digest is no longer pinned in repositories (ADR 0007): `af project sync`
+  removes the old block and keeps profile blocks; `af project check` reports a leftover
+  block; `kernel/DIGEST.md` is gone. The kernel reaches projects through `af install`.
+
 ## [1.1.1] - 2026-10-13
 
 ### Changed
