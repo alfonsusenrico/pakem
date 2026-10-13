@@ -5,6 +5,20 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-13
+
+### Changed
+
+- `ui-ux-quality` starts from what the interface is for (ADR 0008): `surfaces.md` gives a
+  method plus worked examples for a data dashboard, a public website, and a web
+  application (goal, questions, principles, checks). Visual style is a project decision.
+
+### Removed
+
+- The owner design base (`design-base.md`) and the `owner-studio`, `owner-dashboard`, and
+  `owner-workbench` token sets; the universal rules (truthful content, accessibility,
+  both themes, no colour-only meaning, phone layouts) moved into the skill.
+
 ## [1.2.0] - 2026-10-13
 
 ### Changed
