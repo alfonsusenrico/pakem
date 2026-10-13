@@ -5,6 +5,21 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-13
+
+### Changed
+
+- The circuit-breaker eval grades the kernel rule as written: a third change passes
+  when the output shows the re-established failure or a new experiment and the
+  fixture tests pass (owner decision 2026-10-13: diagnose, then fix). New grader
+  kind `unchanged_or_tests_pass`.
+
+### Removed
+
+- The two-failed-fixes line is no longer pinned in the digest (added in 1.1.0): it
+  did not change Codex's behaviour, and the shared pinned block stays compact. The
+  rule remains in the kernel.
+
 ## [1.1.0] - 2026-10-13
 
 ### Added
