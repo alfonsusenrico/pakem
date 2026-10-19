@@ -65,6 +65,9 @@ class CosignVerifier:
         arguments = [self._cosign, "verify", "--key", str(self._public_key)]
         if not self._transparency_log:
             arguments.append("--insecure-ignore-tlog=true")
+        if reference.split("/")[0].split(":")[0] in {"127.0.0.1", "localhost"}:
+            # Loopback registries (tests, rehearsals) speak plain http, like af_oci.
+            arguments.append("--allow-http-registry")
         arguments.append(reference)
         environment = {key: os.environ[key] for key in ("PATH", "HOME") if key in os.environ}
         if self._docker_config is not None:
