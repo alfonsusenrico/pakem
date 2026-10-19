@@ -54,7 +54,10 @@ source checkout.
   before doing anything.
 - CI signs the record, every image, and the bundle by digest with the project's release
   signing key (cosign key pair). The private key lives only in the CI secret store; hosts
-  hold the public key. Private repositories sign without the public transparency log.
+  hold the public key. Private repositories sign without the public transparency log:
+  cosign 3 signs with `--signing-config` pointing at a config without services
+  (`cosign signing-config create --out signing-config.json`), and hosts verify with
+  `--insecure-ignore-tlog=true`.
 - Before any change, the engine verifies the record signature, then the signature of every
   digest the record names. Any failure refuses the deployment (exit 2).
 
