@@ -1,0 +1,23 @@
+{
+  "schema": "af.deployment/v1",
+  "project": "example",
+  "environment": "production",
+  "result": "deployed",
+  "exit_code": 0,
+  "release": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "version": "v1.4.2",
+  "images": {
+    "web": "ghcr.io/example-owner/example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "worker": "ghcr.io/example-owner/example/worker@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "schema_version": "0009_paid_accounting",
+  "previous_commit": "fedcba9876543210fedcba9876543210fedcba98",
+  "previous_schema_version": "0008_call_identity",
+  "backup": "/srv/deploy/example/production/backups/20261020T093100Z/database.dump.age",
+  "trigger": "pull",
+  "actor": "agent",
+  "started": "2026-10-20T09:31:00Z",
+  "finished": "2026-10-20T09:32:10Z",
+  "engine": "1.0.0"
+}

@@ -1,0 +1,46 @@
+# deploy/release.toml: how the release engine runs this project (contracts v1, section 4).
+af_standard = 1
+project = "example"
+compose_files = ["compose.yaml"]
+
+# In-image configuration check; prints names, never values. [] disables it.
+preflight = ["python", "-m", "app.preflight", "--require-restricted-environment"]
+# One-off migration container; [] when the project has no database.
+migrate = ["python", "-m", "app.migrate"]
+migrate_service = "web"
+# How CI finds the newest migration identifier for the release record.
+schema_version = { glob = "src/app/migrations/*.sql" }
+
+# stop-start (default) or blue-green (needs [[routes]] and releases safe side by side).
+switch = "stop-start"
+# Seconds running work may take to finish when the old release stops.
+drain_seconds = 60
+
+[health]
+service = "web"
+path = "/health/release"
+revision_key = "revision"
+
+[[images]]
+name = "web"
+dockerfile = "Dockerfile"
+context = "."
+platforms = ["linux/amd64", "linux/arm64"]
+
+[[images]]
+name = "worker"
+dockerfile = "Dockerfile.worker"
+context = "."
+
+[[routes]]
+host_setting = "PUBLIC_HOST"
+service = "web"
+port = 8000
+
+[environments.staging]
+keep = 3
+backup = "optional"
+
+[environments.production]
+keep = 6
+backup = "required"
