@@ -186,3 +186,17 @@ Owner modes `root` and `self` keep the ownership and permission checks of
 Every release must work against the schema left by the release before it (expand, then
 contract across two releases). A release that cannot is a breaking release: its notes say
 so, and its rollback is a restore from the pre-migration backup, never a redeploy.
+
+## 10. Setting up a project (CI side)
+
+1. Generate the release signing key once: `cosign generate-key-pair`. Store the private key
+   and its password as the CI secrets `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD`; commit
+   only `cosign.pub` as `deploy/release-signing.pub`; delete the local private copy.
+2. Copy `assets/deploy/af_publish.py` and `contracts.py` into `deploy/af/` (record the
+   framework version in a comment).
+3. Write `deploy/release.toml`, `deploy/settings.toml`, `deploy/env/<environment>.env`, and
+   any `deploy/hooks/` from the examples in `assets/deploy/contracts/`.
+4. GitHub: copy `assets/ci/github/workflows/release.yml` to
+   `.github/workflows/af-release.yml` and adapt `release.example.yml`. Protect `v*` tags.
+5. Run one publish, promote, and rollback on staging before relying on it; hosts follow
+   with the engine (pull agent or push trigger).
