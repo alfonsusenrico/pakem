@@ -20,6 +20,8 @@ drain_seconds = 60
 service = "web"
 path = "/health/release"
 revision_key = "revision"
+# Placement name holding the loopback port the engine checks: http://127.0.0.1:<port><path>
+port_setting = "HTTP_PORT"
 
 [[images]]
 name = "web"
