@@ -40,9 +40,13 @@ the contracts.
 ### Layers
 
 1. **CI (build and publish)**, the same on GitHub Actions and GitLab CI: verify, build the
-   image once per `main` commit for `linux/amd64` and `linux/arm64`, scan, SBOM and
-   provenance, sign by digest, push to the platform registry, and publish a signed release
-   record. CI never builds again for staging or production.
+   image once per `main` commit for `linux/amd64` and `linux/arm64`, scan, SBOM, push to the
+   platform registry with a deploy bundle (Compose and project deploy files of the same
+   commit), sign every digest with the project's release signing key (cosign key pair;
+   private repositories skip the public transparency log), and publish a signed release
+   record. CI never builds again for staging or production. Keyless signing is not the
+   default: it writes private repository identities to a public log and does not work with
+   a self-managed GitLab without running a Sigstore stack.
 2. **Release engine**, one program on every host, the only thing that changes a running
    environment. Fixed sequence: lock; verify record and image signatures; pull by digest;
    preflight inside the image; backup hook (required in production when the project has
@@ -84,7 +88,7 @@ the contracts.
 | --- | --- | --- | --- |
 | local | the developer, from the working tree | built locally | none; same settings manifest, `setup-local` generates secrets |
 | staging | merge to `main` | the image built for that commit | required CI checks |
-| production | protected tag `vX.Y.Z` on a `main` commit whose staging deploy succeeded | the same digest, promoted, never rebuilt | protected tag; protected environment or required reviewers where the platform allows |
+| production | protected tag `vX.Y.Z` on a `main` commit that staging received | the same digests, promoted, never rebuilt | the tag is the owner's acceptance of staging; protected tags, environments, or reviewers where the plan allows |
 
 Rollback is a manual promotion of an earlier release record through the same engine.
 Staging may share a host with production when the base directory, Compose project, ports,
@@ -125,9 +129,13 @@ keeps the handoff package.
   tested code, the agent stays small, and both ship only after the pilots and drills.
 - Work projects adopt only with their team's agreement; until then they can take the
   engine with the push trigger, which closes their restore, backup, and lock gaps.
-- Open checks before v1.0: registry and keyless signing support on the organization's
-  GitLab (fallback: a CI-held signing key, or the engine's host-build mode as a recorded
-  exception); GitHub plan limits on environment protections.
+- Platform limits (2026-10-19): on GitHub Free, private repositories get no required
+  reviewers or wait timers, and artifact attestations need Enterprise Cloud; signing with
+  a project key works on every plan and platform. The engine cannot see staging from a
+  production host, so "staging succeeded" is the owner's judgement expressed by the tag,
+  while CI checks that staging received the commit.
+- Open check before v1.0: whether the organization's GitLab has a container registry
+  (fallback: the engine's host-build mode as a recorded exception).
 - Supersedes the Phase 2b deploy design where they differ (host-built images, SSH-only
   transport, backup retention left open).
 - Pilots before v1.0: one GitHub and one GitLab project; drills for a failed start, a

@@ -1,0 +1,29 @@
+# deploy/settings.toml: every runtime name and its single source (contracts v1, section 4).
+af_standard = 1
+required = ["PUBLIC_HOST", "HTTP_PORT", "DATA_DIR", "DATABASE_PASSWORD", "SESSION_KEY", "LOG_LEVEL"]
+optional = ["SMTP_USER", "SMTP_PASSWORD"]
+pairs = [["SMTP_USER", "SMTP_PASSWORD"]]
+
+# Host or environment facts: placement.env on the host (pull) or CI variables (push).
+placement = ["PUBLIC_HOST", "HTTP_PORT", "DATA_DIR"]
+# Files <base>/secrets/<NAME>, set once by the operator; the app reads <NAME>_FILE.
+secrets = ["DATABASE_PASSWORD", "SMTP_PASSWORD"]
+# Created once on the host by the engine.
+host_generated = ["SESSION_KEY"]
+production_environments = ["production"]
+
+[generators]
+SESSION_KEY = "token_urlsafe:32"
+
+# Everything else comes from the committed defaults file of the environment.
+[defaults]
+staging = "deploy/env/staging.env"
+production = "deploy/env/production.env"
+
+[formats]
+PUBLIC_HOST = "[a-z0-9.-]+"
+HTTP_PORT = "[0-9]{2,5}"
+LOG_LEVEL = "debug|info|warning|error"
+
+[prod_assert]
+LOG_LEVEL = "info"

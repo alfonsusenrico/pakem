@@ -1,0 +1,16 @@
+{
+  "schema": "af.release/v1",
+  "project": "example",
+  "commit": "0123456789abcdef0123456789abcdef01234567",
+  "version": "v1.4.2",
+  "created": "2026-10-20T09:30:00Z",
+  "source": "https://github.com/example-owner/example",
+  "ci_run": "https://github.com/example-owner/example/actions/runs/2",
+  "images": {
+    "web": "ghcr.io/example-owner/example/web@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "worker": "ghcr.io/example-owner/example/worker@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "bundle": "ghcr.io/example-owner/example/bundle@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "schema_version": "0009_paid_accounting",
+  "rollback": false
+}

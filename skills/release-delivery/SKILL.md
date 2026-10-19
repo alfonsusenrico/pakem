@@ -22,6 +22,11 @@ with automatic restore, revision-matching health check, rollback for every
 environment, one deploy per environment at a time. Use the
 [deploy templates](assets/deploy/README.md).
 
+The standard is moving to [deployment contracts v1](references/deployment-contracts.md)
+(ADR 0009, draft until standard v1.0): CI builds once and signs, one release engine per
+host, pull or push trigger. Design new pipelines against the contracts; the current
+templates still implement the earlier host-build design.
+
 For client-operated hosting, build a versioned handoff package from a tagged commit
 ([handover](references/handover.md)). Never deploy loose files or zips of
 uncommitted work.
