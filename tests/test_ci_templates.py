@@ -339,7 +339,7 @@ class DeployTemplateTests(unittest.TestCase):
 
     def test_deploy_templates_pin_hosts_and_name_no_servers(self) -> None:
         scripts = [path for path in sorted(DEPLOY_ROOT.iterdir()) if path.suffix in (".py", ".sh", ".md", ".toml")]
-        self.assertEqual(len(scripts), 10)
+        self.assertEqual(len(scripts), 11)
         examples = sorted((DEPLOY_ROOT / "contracts").iterdir())
         for path in DEPLOY_TEMPLATES + scripts + examples:
             text = path.read_text()
