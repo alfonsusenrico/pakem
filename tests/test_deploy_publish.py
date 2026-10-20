@@ -93,6 +93,15 @@ class Bundle(unittest.TestCase):
         self.assertEqual(members["deploy/hooks/backup"].mode, 0o755)
         self.assertEqual({m.mtime for m in members.values()} | {m.uid for m in members.values()}, {0})
 
+    def test_bytecode_caches_are_left_out(self) -> None:
+        root = project(self)
+        config = af_publish.load_config(root)
+        clean = af_publish.build_bundle(root, config)
+        (root / "deploy/af/__pycache__").mkdir(parents=True)
+        (root / "deploy/af/__pycache__/contracts.cpython-312.pyc").write_bytes(b"cache")
+        (root / "deploy/hooks/helper.pyc").write_bytes(b"cache")
+        self.assertEqual(af_publish.build_bundle(root, config), clean)
+
     def test_local_and_secret_files_never_enter_a_bundle(self) -> None:
         for name in ("deploy/.env.production", "deploy/._release.toml", "deploy/.DS_Store"):
             root = project(self)
