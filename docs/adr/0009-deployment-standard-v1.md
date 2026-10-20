@@ -102,9 +102,10 @@ volumes, and database are separate.
 - **Zero-downtime:** designed in, opt-in per project. The default switch is stop, then
   start; opted-in projects start the new release beside the old one and the engine moves
   the proxy route after the health check.
-- **Backups:** projects with data declare a backup hook; the host runs it on a schedule as
-  well as before migrations; archives are encrypted and copied off the host; a restore
-  drill is recorded at least quarterly.
+- **Backups:** projects with data declare a backup hook, and the engine runs it before
+  migrations (required in production). Scheduled backups, encryption, off-host copies, and
+  restore drills are each project's own responsibility, not a host service (owner
+  decision, 2026-10-20).
 - **Alerting:** the engine notifies every deployment result through a configured channel;
   a per-host check reports failing health; container logs are size-bounded.
 
