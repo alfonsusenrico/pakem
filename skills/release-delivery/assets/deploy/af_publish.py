@@ -88,11 +88,18 @@ def schema_version(root: Path, config: dict) -> str | None:
 
 
 def bundle_files(root: Path, config: dict) -> list[str]:
-    """Compose files plus everything under deploy/, as sorted repository paths."""
+    """Compose files plus everything under deploy/, as sorted repository paths.
+
+    Python bytecode caches are skipped: publishing imports deploy/af/contracts.py from the
+    checkout, so they appear during the run, and they embed timestamps.
+    """
     files = set(config["compose_files"])
     for path in (root / "deploy").rglob("*"):
+        relative = path.relative_to(root)
+        if "__pycache__" in relative.parts or path.suffix == ".pyc":
+            continue
         if path.is_file():
-            files.add(path.relative_to(root).as_posix())
+            files.add(relative.as_posix())
     result = []
     for name in sorted(files):
         relative = PurePosixPath(name)
