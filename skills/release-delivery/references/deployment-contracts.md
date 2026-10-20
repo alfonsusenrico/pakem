@@ -218,6 +218,11 @@ so, and its rollback is a restore from the pre-migration backup, never a redeplo
 
 Linux with systemd, Docker with Compose, Python 3.11 or newer, and cosign.
 
+On GPU hosts, run GPU containers with `runtime: nvidia` (NVIDIA Container Toolkit 1.18+,
+CDI) rather than the legacy `deploy.devices` request: any `systemctl daemon-reload`, from
+this setup or a package upgrade, strips GPU access from legacy-mode containers until they
+are recreated.
+
 `assets/deploy/af_bootstrap.sh` does steps 1, 2, the host parts of 4 and 5, and 6 on Debian
 or Ubuntu (amd64, arm64): run `sudo ./af_bootstrap.sh install [--trigger push]
 [--deploy-root <path>] [--no-proxy]` from a tagged framework checkout. It keeps an existing
