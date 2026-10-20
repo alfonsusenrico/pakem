@@ -67,7 +67,7 @@ class BuildRuntime(unittest.TestCase):
         host = Host(self)
         host.build()
         first = (host.secrets / "SESSION_KEY").read_bytes()
-        self.assertEqual(stat.S_IMODE((host.secrets / "SESSION_KEY").stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE((host.secrets / "SESSION_KEY").stat().st_mode), 0o640)
         self.assertEqual(host.build().generated, [])
         self.assertEqual((host.secrets / "SESSION_KEY").read_bytes(), first)
         self.assertGreaterEqual(len(first), 40)
@@ -137,9 +137,14 @@ class BuildRuntime(unittest.TestCase):
 class Secrets(unittest.TestCase):
     def test_secret_files_must_be_private(self) -> None:
         host = Host(self)
-        (host.secrets / "DATABASE_PASSWORD").chmod(0o644)
-        with self.assertRaisesRegex(af_settings.SettingsError, "secret DATABASE_PASSWORD must not be readable"):
-            host.build()
+        for mode in (0o644, 0o660):
+            (host.secrets / "DATABASE_PASSWORD").chmod(mode)
+            with self.subTest(mode=oct(mode)), self.assertRaisesRegex(af_settings.SettingsError, "mode 0640"):
+                host.build()
+        # A 0600 file from an older engine is opened up to the group, which containers join.
+        (host.secrets / "DATABASE_PASSWORD").chmod(0o600)
+        host.build()
+        self.assertEqual(stat.S_IMODE((host.secrets / "DATABASE_PASSWORD").stat().st_mode), 0o640)
         host.secrets.chmod(0o755)
         with self.assertRaisesRegex(af_settings.SettingsError, "private directory"):
             host.build()

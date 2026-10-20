@@ -84,6 +84,7 @@ COMPOSE = textwrap.dedent(
         env_file: ${AF_RUNTIME_FILE}
         ports: ["127.0.0.1:${HTTP_PORT}:8000"]
         secrets: [database_password]
+        group_add: ["${AF_SECRETS_GID}"]
     secrets:
       database_password:
         file: ${AF_SECRETS_DIR}/DATABASE_PASSWORD

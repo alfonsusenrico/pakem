@@ -481,5 +481,33 @@ class HostProxyTemplateTests(unittest.TestCase):
         self.assertIn("import /etc/caddy/sites/*.caddy", caddyfile)
         self.assertNotRegex(caddyfile, r"admin\s+(localhost|127\.0\.0\.1|:)")
 
+
+class HostBootstrapTests(unittest.TestCase):
+    """af_bootstrap.sh: pinned downloads and keys, and every engine module installed."""
+
+    def setUp(self) -> None:
+        self.script = (DEPLOY_ROOT / "af_bootstrap.sh").read_text()
+
+    def test_pins_match_the_pins_file(self) -> None:
+        pins = PINS.read_text()
+        for name in ("COSIGN_SHA256_AMD64", "COSIGN_SHA256_ARM64", "DOCKER_KEY_FINGERPRINT", "CADDY_KEY_FINGERPRINT"):
+            value = re.search(rf"^{name}=(\S+)$", self.script, re.MULTILINE).group(1)
+            with self.subTest(pin=name):
+                self.assertIn(value, pins)
+        self.assertIn("sha256sum --check --strict", self.script)
+
+    def test_installs_every_host_module(self) -> None:
+        listed = set(re.search(r'^ENGINE_FILES="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
+        host_side = {path.name for path in DEPLOY_ROOT.glob("af_*.py")} - {"af_publish.py"} | {"contracts.py"}
+        self.assertEqual(listed, host_side)
+        units = set(re.search(r'^UNITS="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
+        self.assertEqual(units, {path.name for path in (DEPLOY_ROOT / "systemd").iterdir()})
+
+    def test_runs_strict_and_downloads_only_over_https(self) -> None:
+        self.assertTrue(self.script.startswith("#!/usr/bin/env bash\n"))
+        self.assertIn("set -euo pipefail", self.script)
+        self.assertEqual(self.script.count("curl -fsSL --proto '=https' --tlsv1.2"), 2)
+        self.assertNotIn("curl -fsSL http", self.script)
+
 if __name__ == "__main__":
     unittest.main()

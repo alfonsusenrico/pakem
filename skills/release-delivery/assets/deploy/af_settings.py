@@ -25,6 +25,8 @@ import contracts
 NAME = re.compile(r"[A-Z][A-Z0-9_]{0,127}")
 MAX_VALUE_LENGTH = 4096
 MAX_SECRET_BYTES = 64 * 1024
+# Owner read-write, group read: containers join the deploying user's group to read secrets.
+SECRET_MODE = 0o640
 CONTAINER_SECRETS = "/run/secrets"
 
 
@@ -81,6 +83,24 @@ def _private_file(path: Path, label: str) -> None:
         raise SettingsError(f"{label} must be owned by the deploying user")
 
 
+def _secret_file(path: Path, name: str) -> None:
+    """A secret file is owned by the deploying user, readable by its own group only (0640).
+
+    Compose mounts file secrets with the host owner and mode, so containers running as any
+    user read them through `group_add: ["${AF_SECRETS_GID}"]`. A 0600 file from an older
+    engine is opened up to 0640 here.
+    """
+    info = os.lstat(path)
+    if not stat.S_ISREG(info.st_mode):
+        raise SettingsError(f"secret {name} must be a regular file")
+    if info.st_uid != os.getuid() or info.st_gid != os.getgid():
+        raise SettingsError(f"secret {name} must be owned by the deploying user and its group")
+    if info.st_mode & 0o037:
+        raise SettingsError(f"secret {name} must not be writable by the group or readable by others (mode 0640)")
+    if stat.S_IMODE(info.st_mode) != SECRET_MODE:
+        os.chmod(path, SECRET_MODE)
+
+
 def _private_directory(path: Path, label: str) -> None:
     info = os.lstat(path)
     if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077 or info.st_uid != os.getuid():
@@ -100,11 +120,12 @@ def generate(spec: str) -> str:
     raise SettingsError("unknown generator")
 
 
-def _write_private(path: Path, data: bytes) -> None:
+def _write_private(path: Path, data: bytes, mode: int = 0o600) -> None:
     temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(temporary, flags, 0o600)
+    descriptor = os.open(temporary, flags, mode)
     try:
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(data)
             handle.flush()
@@ -122,7 +143,7 @@ def set_secret(secrets_dir: Path, name: str, value: bytes) -> None:
     if not value or len(value) > MAX_SECRET_BYTES:
         raise SettingsError(f"{name}: secret must be 1 to {MAX_SECRET_BYTES} bytes")
     _private_directory(secrets_dir, "secrets directory")
-    _write_private(secrets_dir / name, value)
+    _write_private(secrets_dir / name, value, SECRET_MODE)
 
 
 def build_runtime(
@@ -174,7 +195,7 @@ def build_runtime(
     for name in generated_names:
         path = secrets_dir / name
         if not path.exists():
-            _write_private(path, generate(manifest["generators"][name]).encode())
+            _write_private(path, generate(manifest["generators"][name]).encode(), SECRET_MODE)
             generated.append(name)
 
     values = {**defaults, **placement}
@@ -182,7 +203,7 @@ def build_runtime(
     for name in [*secret_names, *generated_names]:
         path = secrets_dir / name
         if path.exists():
-            _private_file(path, f"secret {name}")
+            _secret_file(path, name)
             if path.stat().st_size == 0 or path.stat().st_size > MAX_SECRET_BYTES:
                 raise SettingsError(f"secret {name} must be 1 to {MAX_SECRET_BYTES} bytes")
             present_secrets.append(name)

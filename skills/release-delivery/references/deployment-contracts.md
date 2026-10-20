@@ -89,13 +89,16 @@ source.
 | --- | --- | --- |
 | default | `deploy/env/<environment>.env`, committed | log level, pool sizes |
 | `placement` | the host's `placement.env` (pull), or environment-scoped CI variables (push) | domain, ports, data path, network names |
-| `secrets` | files `<base>/secrets/<NAME>` (0600), set once by the operator | database password, provider keys |
+| `secrets` | files `<base>/secrets/<NAME>` (0640, the deploy user and its group), set once by the operator | database password, provider keys |
 | `host_generated` | created once by the engine into `<base>/secrets/`, with `[generators]` | signing keys, session keys |
 
 Also: `required`, `optional`, `pairs`, `[formats]` (full-match, single line),
 `[prod_assert]` with `production_environments`. Secrets reach containers as Compose
 secrets mounted at `/run/secrets/<name>`, and the application reads `<NAME>_FILE`;
 secret values never enter the runtime env file, images, logs, or (in pull mode) CI.
+Compose mounts file secrets with the host file's owner and mode, so every service that
+reads secrets declares `group_add: ["${AF_SECRETS_GID}"]` (the engine sets it to the deploy
+user's group) and then reads them as any container user, without root.
 
 ## 5. Engine interface
 
@@ -211,6 +214,14 @@ so, and its rollback is a restore from the pre-migration backup, never a redeplo
 ## 11. Setting up a host
 
 Linux with systemd, Docker with Compose, Python 3.11 or newer, and cosign.
+
+`assets/deploy/af_bootstrap.sh` does steps 1, 2, the host parts of 4 and 5, and 6 on Debian
+or Ubuntu (amd64, arm64): run `sudo ./af_bootstrap.sh install [--trigger push]
+[--deploy-root <path>] [--no-proxy]` from a tagged framework checkout. It keeps an existing
+Docker and its containers untouched, refuses a foreign Caddyfile unless
+`--replace-caddyfile` (which keeps a backup), and ends with `check`, which can be rerun at
+any time. The per-project parts (step 3, keys, host configs, placement, secrets, channels,
+authorized keys) stay manual.
 
 1. Create the deploy user `af` (`useradd --system --create-home af`) and add it to the
    `docker` group. Docker access is root-equivalent: use the user for deployments only.

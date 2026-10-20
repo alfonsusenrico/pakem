@@ -33,11 +33,28 @@ published checksum file and a local download.
 | shellcheck | `0.11.0` | `shellcheck-v0.11.0.linux.x86_64.tar.xz` | `8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198` |
 | hadolint | `2.15.1` | `hadolint-linux-x86_64` | `c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507` |
 
+| Tool | Version | Asset | SHA-256 |
+| --- | --- | --- | --- |
 | cosign | `v3.1.3` | `cosign-linux-amd64` | `4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71` |
+| cosign | `v3.1.3` | `cosign-linux-arm64` | `c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a` |
 | oras | `1.3.5` | `oras_1.3.5_linux_amd64.tar.gz` | `f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22` |
 
-cosign and oras (release.yml, resolved 2026-10-19) were cross-checked against
-`cosign_checksums.txt` and `oras_1.3.5_checksums.txt` from the same releases.
+cosign and oras (release.yml, resolved 2026-10-19; cosign arm64 for af_bootstrap.sh,
+2026-10-20) were cross-checked against `cosign_checksums.txt` and
+`oras_1.3.5_checksums.txt` from the same releases.
+
+## Host packages (af_bootstrap.sh)
+
+Installed from the vendors' signed apt repositories so hosts keep receiving security
+updates; the script refuses a repository key whose primary fingerprint differs.
+
+| Repository | Key URL | Primary key fingerprint | Checked against |
+| --- | --- | --- | --- |
+| Docker (`download.docker.com/linux/<debian or ubuntu>`) | `.../gpg` | `9DC858229FC7DD38854AE2D88D81803C0EBFCD88` | Docker's install documentation |
+| Caddy (`dl.cloudsmith.io/public/caddy/stable`) | `gpg.155B6D79CA56EA34.key` | `65760C51EDEA2017CEA2CA15155B6D79CA56EA34` | the GPG fingerprint on Cloudsmith's caddy/stable package pages |
+
+Resolved 2026-10-20; the fresh-host test installed Docker Engine 29.9.1 (Compose 5.6.0)
+and Caddy v2.11.7 on Debian 13. Tests pin `caddy:2.11.7@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af`.
 
 ## Tools run through uv or npm
 

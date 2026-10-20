@@ -16,3 +16,5 @@ TimeoutStartSec=3h
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full
+# The engine writes the project's proxy routes; "-" ignores the path on hosts without a proxy.
+ReadWritePaths=-/etc/caddy/sites
