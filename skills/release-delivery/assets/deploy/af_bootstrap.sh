@@ -79,6 +79,17 @@ require_host() {
   for file in $ENGINE_FILES; do [[ -f "$HERE/$file" ]] || die "missing $file next to this script"; done
 }
 
+reload_systemd() {
+  # Only after a unit file changed. On GPU hosts a reload strips GPU access from containers
+  # started with the legacy NVIDIA device request (`deploy.devices` / `--gpus`); containers
+  # on `runtime: nvidia` (toolkit 1.18+, CDI) keep it. NVIDIA Container Toolkit troubleshooting.
+  if [[ -e /dev/nvidiactl ]]; then
+    say "warning: reloading systemd on a GPU host; GPU containers not on runtime: nvidia lose GPU access until recreated"
+  fi
+  say "reloading systemd ($1)"
+  systemctl daemon-reload
+}
+
 port_owner() {
   # The process listening on a TCP port, or empty.
   ss -Hltnp "sport = :$1" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1
@@ -181,7 +192,7 @@ configure_caddy() {
   install -d -m 0755 -o af -g caddy /etc/caddy/sites
   usermod -aG caddy af
   if ((changed)); then
-    systemctl daemon-reload
+    reload_systemd "caddy drop-in"
     systemctl enable --quiet caddy
     systemctl restart caddy
   fi
@@ -235,8 +246,16 @@ install_engine() {
 }
 
 install_units() {
-  for unit in $UNITS; do install -m 0644 "$HERE/systemd/$unit" "/etc/systemd/system/$unit"; done
-  systemctl daemon-reload
+  local changed=()
+  for unit in $UNITS; do
+    if ! cmp -s "$HERE/systemd/$unit" "/etc/systemd/system/$unit"; then
+      install -m 0644 "$HERE/systemd/$unit" "/etc/systemd/system/$unit"
+      changed+=("$unit")
+    fi
+  done
+  if ((${#changed[@]})); then
+    reload_systemd "${changed[*]}"
+  fi
   systemctl enable --now --quiet af-monitor.timer
   if [[ "$TRIGGER" == pull ]]; then
     systemctl enable --now --quiet af-agent.timer

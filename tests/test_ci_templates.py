@@ -507,6 +507,11 @@ class HostBootstrapTests(unittest.TestCase):
         units = set(re.search(r'^UNITS="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
         self.assertEqual(units, {path.name for path in (DEPLOY_ROOT / "systemd").iterdir()})
 
+    def test_reloads_systemd_only_through_the_change_aware_helper(self) -> None:
+        self.assertEqual(self.script.count("systemctl daemon-reload"), 1)
+        self.assertIn("reload_systemd() {", self.script)
+        self.assertIn("if ! cmp -s", self.script)
+
     def test_runs_strict_and_downloads_only_over_https(self) -> None:
         self.assertTrue(self.script.startswith("#!/usr/bin/env bash\n"))
         self.assertIn("set -euo pipefail", self.script)

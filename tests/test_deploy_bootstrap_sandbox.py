@@ -158,6 +158,8 @@ class FreshHostToStaging(unittest.TestCase):
         self.assertIn("caddy present", again)
         self.assertIn("cosign v3.1.3 present", again)
         self.assertNotIn("FAIL", again)
+        self.assertIn("reloading systemd", first)
+        self.assertNotIn("reloading systemd", again)  # nothing changed, so no reload
 
         output = self.run_in_host("bash /work/gate.sh")
         self.assertIn("result deployed pull", output)
