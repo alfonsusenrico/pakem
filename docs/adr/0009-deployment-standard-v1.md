@@ -39,7 +39,7 @@ the contracts.
 
 ### Layers
 
-1. **CI (build and publish)**, the same on GitHub Actions and GitLab CI: verify, build the
+1. **CI (build and publish)**, GitHub Actions in v1 (see Consequences): verify, build the
    image once per `main` commit for `linux/amd64` and `linux/arm64`, scan, SBOM, push to the
    platform registry with a deploy bundle (Compose and project deploy files of the same
    commit), sign every digest with the project's release signing key (cosign key pair;
@@ -68,8 +68,8 @@ the contracts.
    schema version, build time, and CI run link; signed. Mutable names never identify what
    runs.
 2. **Release pointer**: per environment, an OCI artifact in the project's registry
-   (`<image>:release-<environment>`) holding the signed record. GitHub and GitLab
-   registries both store it; CI needs only the registry access it already has.
+   (`<image>:release-<environment>`) holding the signed record. Any OCI registry, GHCR
+   included, stores it; CI needs only the registry access it already has.
 3. **Engine interface**: steps, project hooks (`pre_migrate`, `backup`, `post_switch`),
    exit codes, and the deployment record format.
 4. **Settings manifest**: every runtime name with kind (`default`, `placement`, `secret`,
@@ -134,9 +134,12 @@ keeps the handoff package.
   a project key works on every plan and platform. The engine cannot see staging from a
   production host, so "staging succeeded" is the owner's judgement expressed by the tag,
   while CI checks that staging received the commit.
-- Open check before v1.0: whether the organization's GitLab has a container registry
-  (fallback: the engine's host-build mode as a recorded exception).
+- v1 targets GitHub, where the owner's personal and freelance projects live. The contracts
+  and `af_publish.py` are platform-neutral, so a GitLab CI template is a later addition
+  for the first project that needs it. The organization's GitLab (checked 2026-10-20)
+  has its container registry disabled and predates 12.5, so it would need a separate OCI
+  registry or an enabled and tested built-in one first.
 - Supersedes the Phase 2b deploy design where they differ (host-built images, SSH-only
   transport, backup retention left open).
-- Pilots before v1.0: one GitHub and one GitLab project; drills for a failed start, a
+- Pilots before v1.0: one GitHub project; drills for a failed start, a
   failed migration, rollback, a host move, and a restore.
