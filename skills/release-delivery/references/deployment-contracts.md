@@ -73,7 +73,7 @@ All in the repository, all part of the bundle.
 | `project` | the release record's `project` |
 | `compose_files` | Compose files in order |
 | `[[images]]` | `name`, `dockerfile`, `context`, `platforms` (default amd64 and arm64); Compose uses `image: ${AF_IMAGE_<NAME>}` |
-| `health` | `service`, `path`, `revision_key`: the JSON response must carry the full commit |
+| `health` | `service`, `path`, `revision_key`, `port_setting`: the engine requests `http://127.0.0.1:<port><path>`, where the placement value `port_setting` is the loopback port; the JSON key `revision_key` must carry the full commit |
 | `preflight` | in-image command checking configuration without printing values; `[]` disables |
 | `migrate` | one-off command and service; `[]` without a database |
 | `schema_version` | how CI finds the newest migration identifier (a glob over migration files) |
