@@ -395,6 +395,10 @@ class ReleaseTemplateTests(unittest.TestCase):
         self.assertIn("COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}", self.workflow)
         self.assertIn('rm -rf "$RUNNER_TEMP/af-docker"', self.workflow)
 
+    def test_promotion_waits_for_the_merge_publish(self) -> None:
+        self.assertIn('--wait-minutes "$PUBLISH_WAIT"', self.workflow)
+        self.assertRegex(self.workflow, r"(?m)^      publish_wait_minutes:\n(?:        .*\n)*?        default: 30$")
+
     def test_releases_are_serialized_and_commits_come_from_the_release_branch(self) -> None:
         self.assertIn("cancel-in-progress: false", self.workflow)
         self.assertIn('git merge-base --is-ancestor "$COMMIT" "$RELEASE_REF"', self.workflow)

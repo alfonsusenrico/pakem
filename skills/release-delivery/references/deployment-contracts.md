@@ -185,7 +185,9 @@ Owner modes `root` and `self` keep the ownership and permission checks of
 - **production:** a protected tag `vX.Y.Z` on a `main` commit creates the production
   record and moves `release-production`, refused unless `release-staging` has pointed at
   that commit. The tag is the owner's statement that staging was accepted; platforms that
-  support protected environments or reviewers add that gate as well.
+  support protected environments or reviewers add that gate as well. A tag pushed while the
+  merge's publish is still running waits for it (`publish_wait_minutes`, default 30), then
+  fails if the commit was never published.
 - **rollback:** a manual CI run creates a record for an earlier commit with
   `rollback: true` and moves the pointer; the engine applies the schema rule above.
 
