@@ -253,6 +253,7 @@ class Engine:
             AF_RELEASE_DIR=str(release.directory),
             AF_RUNTIME_FILE=str(release.runtime),
             AF_SECRETS_DIR=str(self.secrets),
+            AF_SECRETS_GID=str(os.getgid()),
             AF_COMPOSE_PROJECT=self.host.compose_project,
         )
         return env
