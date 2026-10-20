@@ -34,10 +34,11 @@ name = "worker"
 dockerfile = "Dockerfile.worker"
 context = "."
 
+# Proxy routes, written by the engine on hosts with a [proxy] table: the domain in the
+# placement value host_setting is served from the loopback port in port_setting.
 [[routes]]
 host_setting = "PUBLIC_HOST"
-service = "web"
-port = 8000
+port_setting = "HTTP_PORT"
 
 [environments.staging]
 keep = 3

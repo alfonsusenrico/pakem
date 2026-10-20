@@ -16,6 +16,11 @@ Host configuration (TOML, private):
     lock_wait_seconds = 0
     notify = "/etc/af/notify.toml"              # optional channels file (af_notify.py)
 
+    [proxy]                                     # optional: the host's reverse proxy (Caddy)
+    sites = "/etc/caddy/sites"                  # af-writable directory the Caddyfile imports
+    reload = ["caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--address", "unix//run/caddy/admin.sock"]
+    tls = true                                  # false when a tunnel in front terminates TLS
+
 Standard library plus `docker` (with Compose) and `cosign`. Output names steps, services,
 and settings, never values.
 """
@@ -52,6 +57,8 @@ HOOK_TIMEOUT = 1800
 COMMAND_TIMEOUT = 3600
 HEALTH_ATTEMPTS = 60
 HEALTH_INTERVAL = 2.0
+RELOAD_TIMEOUT = 120
+DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]")
 
 
 class EngineError(Exception):
@@ -68,6 +75,26 @@ def utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+@dataclass(frozen=True)
+class ProxyConfig:
+    sites: Path
+    reload: list[str]
+    tls: bool = True
+
+    @classmethod
+    def parse(cls, data: object) -> ProxyConfig:
+        if not isinstance(data, dict) or set(data) - {"sites", "reload", "tls"}:
+            raise EngineError("host config [proxy] takes sites, reload, and tls", EXIT_REFUSED)
+        sites, reload, tls = data.get("sites"), data.get("reload"), data.get("tls", True)
+        if not isinstance(sites, str) or not Path(sites).is_absolute():
+            raise EngineError("host config proxy.sites must be an absolute path", EXIT_REFUSED)
+        if not isinstance(reload, list) or not reload or not all(isinstance(part, str) and part for part in reload):
+            raise EngineError("host config proxy.reload must be a command list", EXIT_REFUSED)
+        if not isinstance(tls, bool):
+            raise EngineError("host config proxy.tls must be true or false", EXIT_REFUSED)
+        return cls(Path(sites), reload, tls)
+
+
 @dataclass
 class HostConfig:
     project: str
@@ -78,13 +105,14 @@ class HostConfig:
     registry_credentials: Path | None = None
     lock_wait_seconds: int = 0
     notify: Path | None = None
+    proxy: ProxyConfig | None = None
 
     @classmethod
     def load(cls, path: Path) -> HostConfig:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         allowed = {
             "project", "environment", "base", "pointer", "public_key", "registry_credentials", "lock_wait_seconds",
-            "notify",
+            "notify", "proxy",
         }
         unknown = set(data) - allowed
         if unknown:
@@ -99,6 +127,7 @@ class HostConfig:
                 registry_credentials=Path(data["registry_credentials"]) if data.get("registry_credentials") else None,
                 lock_wait_seconds=int(data.get("lock_wait_seconds", 0)),
                 notify=Path(data["notify"]) if data.get("notify") else None,
+                proxy=ProxyConfig.parse(data["proxy"]) if "proxy" in data else None,
             )
         except (KeyError, TypeError, ValueError):
             raise EngineError("host config needs project, environment, base, pointer, public_key", EXIT_REFUSED) from None
@@ -194,6 +223,8 @@ class Engine:
         self.base = host.base
         self.releases = self.base / "releases"
         self.secrets = self.base / "secrets"
+        # The route file's content before this deployment changed it; None while unchanged.
+        self.routes_before: str | None = None
 
     # -- environment and commands ------------------------------------------------------
 
@@ -247,6 +278,77 @@ class Engine:
             if attempt + 1 < self.health_attempts:
                 self.sleep(HEALTH_INTERVAL)
         return False
+
+    # -- proxy routes ------------------------------------------------------------------
+
+    @property
+    def route_file(self) -> Path | None:
+        proxy = self.host.proxy
+        return proxy.sites / f"{self.host.compose_project}.caddy" if proxy else None
+
+    def route_text(self, release: Release) -> str | None:
+        """The proxy site file for a release, or None when this host or project has no routes.
+
+        Domains and ports come from the release's runtime file and are checked before they
+        reach the Caddyfile, so a placement value can never inject proxy configuration.
+        """
+        routes = release.config.get("routes") or []
+        if self.host.proxy is None or not routes:
+            return None
+        if not self.host.proxy.sites.is_dir():
+            raise EngineError("proxy.sites is not a directory", EXIT_REFUSED)
+        values = read_runtime(release.runtime)
+        blocks = []
+        for route in routes:
+            domain = values.get(route["host_setting"], "")
+            port = values.get(route["port_setting"], "")
+            if not DOMAIN.fullmatch(domain):
+                raise EngineError(f"route {route['host_setting']} must hold a lowercase domain name", EXIT_REFUSED)
+            if not port.isdigit() or not 0 < int(port) < 65536:
+                raise EngineError(f"route {route['port_setting']} must hold a port number", EXIT_REFUSED)
+            address = domain if self.host.proxy.tls else f"http://{domain}"
+            blocks.append(f"{address} {{\n\treverse_proxy 127.0.0.1:{int(port)}\n}}\n")
+        header = (
+            f"# Managed by af_engine for {self.host.project} {self.host.environment}; "
+            "changes here are overwritten.\n"
+        )
+        return header + "\n".join(blocks)
+
+    def write_routes(self, text: str | None) -> bool:
+        """Install the release's routes and reload the proxy; on a failed reload the old
+        file is put back. True when the routes are in place (or nothing changed)."""
+        path = self.route_file
+        if text is None or path is None:
+            return True
+        old = path.read_text(encoding="utf-8") if path.exists() else ""
+        if old == text:
+            return True
+        log("updating proxy routes")
+        write_text(path, text, 0o644)
+        if self.reload_proxy():
+            self.routes_before = old
+            return True
+        self._put_routes_back(old)
+        return False
+
+    def restore_routes(self) -> None:
+        """Undo this deployment's route change (used when the old release is restored)."""
+        if self.routes_before is not None:
+            self._put_routes_back(self.routes_before)
+            self.routes_before = None
+
+    def reload_proxy(self) -> bool:
+        env = {key: os.environ[key] for key in ("PATH", "HOME") if key in os.environ}
+        return self.runner(list(self.host.proxy.reload), env, None, RELOAD_TIMEOUT) == 0
+
+    def _put_routes_back(self, text: str) -> None:
+        path = self.route_file
+        if text:
+            write_text(path, text, 0o644)
+        else:
+            path.unlink(missing_ok=True)
+        if not self.reload_proxy():
+            log("proxy reload failed while putting the previous routes back; check the proxy")
 
     # -- releases on disk --------------------------------------------------------------
 
@@ -348,7 +450,7 @@ class Engine:
         try:
             candidate = self.prepare(fetched, previous)
             if candidate.config.get("switch", "stop-start") != "stop-start":
-                raise EngineError("blue-green switching needs the host proxy (not in this engine version)", EXIT_REFUSED)
+                raise EngineError("blue-green switching is not in this engine version", EXIT_REFUSED)
             settings = af_settings.build_runtime(
                 candidate.bundle,
                 self.host.environment,
@@ -357,6 +459,7 @@ class Engine:
                 placement_file=None if self.placement_values is not None else self.base / "placement.env",
                 placement_values=self.placement_values,
             )
+            routes = self.route_text(candidate)
         except (af_release.ReleaseError, af_settings.SettingsError) as error:
             raise EngineError(str(error), EXIT_REFUSED) from None
         if settings.generated:
@@ -402,6 +505,8 @@ class Engine:
             return self._fail_late("start failed", candidate, fetched, previous, started, backup)
         if not self.healthy(candidate):
             return self._fail_late("health check did not report this release", candidate, fetched, previous, started, backup)
+        if not self.write_routes(routes):
+            return self._fail_late("the proxy refused the new routes", candidate, fetched, previous, started, backup)
         if not self.hook(candidate, "post_switch") or not self.hook(candidate, "smoke"):
             return self._fail_late("post-switch or smoke hook failed", candidate, fetched, previous, started, backup)
 
@@ -434,6 +539,7 @@ class Engine:
             log("the schema changed; services stay stopped for the owner (restore from the backup)")
             return self._record("stopped", EXIT_STOPPED, fetched, previous, started, backup, reason)
         log("restoring the previous release")
+        self.restore_routes()
         if self.compose(previous, "up", "--detach", "--no-build", "--remove-orphans") == 0 and self.healthy(previous):
             log("previous release restored")
             return self._record("restored", EXIT_RESTORED, fetched, previous, started, backup, reason)
@@ -497,6 +603,16 @@ def read_json(path: Path) -> dict:
         return {}
     data = json.loads(path.read_text(encoding="utf-8"))
     return data if isinstance(data, dict) else {}
+
+
+def write_text(path: Path, text: str, mode: int) -> None:
+    """Replace a file atomically with the given mode (no symlink is followed)."""
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(temporary, flags, mode), "w", encoding="utf-8") as handle:
+        handle.write(text)
+    os.chmod(temporary, mode)
+    os.replace(temporary, path)
 
 
 def write_json(path: Path, data: dict) -> None:

@@ -286,6 +286,7 @@ class EngineSandbox(unittest.TestCase):
         with redirect_stdout(output):
             record = af_engine.Engine(config, health_attempts=30).deploy()
         self.assertNotIn("sandbox-secret", output.getvalue())
+        self.last_output = output.getvalue()
         return record
 
     def served_revision(self, environment: str) -> str | None:

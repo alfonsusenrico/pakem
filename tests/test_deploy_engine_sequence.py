@@ -30,7 +30,7 @@ SECRET_VALUE = "db-password-never-printed"
 PLACEMENT = "PUBLIC_HOST=example.test\nHTTP_PORT=18081\nDATA_DIR=/srv/data/example\n"
 
 
-def bundle(*, backup_hook: bool = True, compose: bytes = b"services: {}\n") -> bytes:
+def bundle(*, backup_hook: bool = True, post_switch_hook: bool = False, compose: bytes = b"services: {}\n") -> bytes:
     files = {
         "compose.yaml": compose,
         "deploy/release.toml": (EXAMPLES / "release.toml").read_bytes(),
@@ -39,6 +39,8 @@ def bundle(*, backup_hook: bool = True, compose: bytes = b"services: {}\n") -> b
     }
     if backup_hook:
         files["deploy/hooks/backup"] = b"#!/bin/sh\nexit 0\n"
+    if post_switch_hook:
+        files["deploy/hooks/post_switch"] = b"#!/bin/sh\nexit 0\n"
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as archive:
         for name, content in files.items():
@@ -60,9 +62,11 @@ class FakeDocker:
 
     def __call__(self, arguments: list[str], env: dict, cwd: Path | None, timeout: int) -> int:
         commit = env.get("AF_COMMIT", "")
-        if arguments[0].endswith("/hooks/backup"):
-            step = "backup"
-            if (step, commit) not in self.fail:
+        if arguments[0] == "caddy":
+            step = "reload"
+        elif "/hooks/" in arguments[0]:
+            step = arguments[0].rsplit("/", 1)[1]
+            if step == "backup" and (step, commit) not in self.fail:
                 Path(env["AF_BACKUP_DIR"], "database.dump").write_text("dump")
         elif arguments[:2] == ["docker", "pull"]:
             step = "pull"
@@ -338,6 +342,94 @@ class HostConfigFile(unittest.TestCase):
             with self.assertRaises(af_engine.EngineError):
                 af_engine.HostConfig.load(path)
 
+
+
+class ProxyRoutes(unittest.TestCase):
+    """Route files for the host proxy: written after the health check, reverted on restore."""
+
+    def setUp(self) -> None:
+        self.registry = self.enterContext(FakeRegistry())
+        self.host = Host(self, self.registry)
+        self.sites = self.host.base.parent / "sites"
+        self.sites.mkdir()
+        self.host.config.proxy = af_engine.ProxyConfig(self.sites, ["caddy", "reload", "--config", "/etc/caddy/Caddyfile"])
+        self.route_file = self.sites / "example-production.caddy"
+
+    def set_placement(self, text: str) -> None:
+        (self.host.base / "placement.env").write_text(text)
+
+    def test_routes_follow_the_health_check_and_reload_only_on_change(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.assertEqual(self.host.deploy()["result"], "deployed")
+        steps = self.host.docker.steps()
+        self.assertEqual(steps[steps.index("up") + 1 :], ["reload"])
+        self.assertIn("example.test {\n\treverse_proxy 127.0.0.1:18081\n}", self.route_file.read_text())
+        self.assertEqual(oct(self.route_file.stat().st_mode & 0o777), "0o644")
+
+        self.host.publish(B, created="2026-10-21T00:00:00Z")
+        self.host.deploy()
+        self.assertEqual(self.host.docker.steps().count("reload"), 1)
+
+    def test_a_refused_reload_puts_the_old_routes_back_and_restores(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.deploy()
+        before = self.route_file.read_text()
+        self.set_placement(PLACEMENT.replace("PUBLIC_HOST=example.test", "PUBLIC_HOST=new.example.test"))
+        self.host.docker.fail.add(("reload", ""))
+        self.host.publish(B, created="2026-10-21T00:00:00Z")
+        record = self.host.deploy()
+        self.assertEqual((record["result"], record["exit_code"]), ("restored", 3))
+        self.assertEqual(self.route_file.read_text(), before)
+        self.assertEqual(self.host.current_commit(), A)
+
+    def test_a_failure_after_the_switch_reverts_the_routes(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.deploy()
+        before = self.route_file.read_text()
+        self.set_placement(PLACEMENT.replace("PUBLIC_HOST=example.test", "PUBLIC_HOST=new.example.test"))
+        self.host.publish(B, created="2026-10-21T00:00:00Z", post_switch_hook=True)
+        self.host.docker.fail.add(("post_switch", B))
+        record = self.host.deploy()
+        self.assertEqual(record["result"], "restored")
+        self.assertEqual(self.route_file.read_text(), before)
+        self.assertEqual(self.host.docker.steps().count("reload"), 3)  # first, new, reverted
+
+    def test_an_unhealthy_release_never_touches_the_routes(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.docker.unhealthy.add(A)
+        self.host.deploy()
+        self.assertFalse(self.route_file.exists())
+        self.assertNotIn("reload", self.host.docker.steps())
+
+    def test_placement_values_cannot_inject_proxy_configuration(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.deploy()
+        for host_value in ("example.test}", "Example.test", "example", "example.test:443", "*.example.test"):
+            with self.subTest(value=host_value):
+                self.set_placement(PLACEMENT.replace("PUBLIC_HOST=example.test", f"PUBLIC_HOST={host_value}"))
+                self.host.publish(B, created="2026-10-21T00:00:00Z")
+                with self.assertRaises(af_engine.EngineError) as caught:
+                    self.host.deploy()
+                self.assertEqual(caught.exception.exit_code, af_engine.EXIT_REFUSED)
+                self.assertEqual(self.host.current_commit(), A)
+        self.assertEqual(self.host.docker.steps().count("stop"), 0)
+
+    def test_without_tls_the_site_is_plain_http_and_hosts_without_a_proxy_write_nothing(self) -> None:
+        self.host.config.proxy = af_engine.ProxyConfig(self.sites, ["caddy", "reload"], tls=False)
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.deploy()
+        self.assertIn("http://example.test {", self.route_file.read_text())
+
+        other = Host(self, self.registry)
+        other.publish(B, created="2026-10-21T00:00:00Z")
+        other.deploy()
+        self.assertNotIn("reload", other.docker.steps())
+
+    def test_proxy_settings_are_validated(self) -> None:
+        for proxy in ({"sites": "relative"}, {"sites": "/s", "reload": []}, {"sites": "/s", "reload": ["c"], "tls": "no"},
+                      {"sites": "/s", "reload": ["c"], "extra": 1}):
+            with self.subTest(proxy=proxy), self.assertRaises(af_engine.EngineError):
+                af_engine.ProxyConfig.parse(proxy)
 
 if __name__ == "__main__":
     unittest.main()

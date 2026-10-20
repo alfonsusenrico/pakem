@@ -215,9 +215,15 @@ def validate_project_config(config: dict) -> list[str]:
     routes = config.get("routes", [])
     if switch == "blue-green" and not routes:
         problems.append(f"{label}: blue-green needs at least one [[routes]] entry")
+    if not isinstance(routes, list):
+        routes = [None]
     for route in routes:
-        if not isinstance(route, dict) or not _match(SETTING, route.get("host_setting")):
-            problems.append(f"{label}: every route needs a host_setting placement name")
+        if (
+            not isinstance(route, dict)
+            or set(route) != {"host_setting", "port_setting"}
+            or not all(_match(SETTING, route[key]) for key in ("host_setting", "port_setting"))
+        ):
+            problems.append(f"{label}: every route needs exactly host_setting and port_setting (placement names)")
     environments = config.get("environments")
     if not isinstance(environments, dict) or not environments:
         problems.append(f"{label}: at least one [environments.<name>] table is required")

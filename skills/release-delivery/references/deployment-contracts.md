@@ -78,7 +78,7 @@ All in the repository, all part of the bundle.
 | `migrate` | one-off command and service; `[]` without a database |
 | `schema_version` | how CI finds the newest migration identifier (a glob over migration files) |
 | `switch` | `stop-start` (default) or `blue-green` (needs `[[routes]]` and side-by-side safety) |
-| `[[routes]]` | `host_setting` (a placement name holding the domain), `service`, `port` |
+| `[[routes]]` | `host_setting` and `port_setting`: placement names holding the public domain and the loopback port serving it; on hosts with a `[proxy]` table the engine writes the proxy route after the health check |
 | `drain_seconds` | how long running work may take to finish when stopping |
 | `[environments.<name>]` | `keep` (retained releases), `backup` (`required` or `optional`) |
 
@@ -114,7 +114,8 @@ The engine is the only program that changes a running environment. Sequence:
    command), so a `stop-start` backup is taken with nothing writing;
 9. migrate in a one-off container;
 10. start (`blue-green`: beside the old release); the health check must report the
-    record's commit;
+    record's commit; on hosts with a proxy, write the project's `[[routes]]` file and
+    reload the proxy (a refused reload puts the old file back and counts as a failure);
 11. `post_switch` hook (`blue-green` moves the route and then stops the old release), then
     the `smoke` hook;
 12. promote `current`, write the deployment record, notify, apply retention.
@@ -238,5 +239,12 @@ Linux with systemd, Docker with Compose, Python 3.11 or newer, and cosign.
    every five minutes that each running release still reports its commit: two failures in
    a row notify `unhealthy`, the next pass notifies `recovered`. Delivery is best effort and
    never changes a deployment.
-6. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
+6. Ingress: install Caddy, use `assets/deploy/caddy/Caddyfile` as `/etc/caddy/Caddyfile`
+   (admin API on the unix socket `/run/caddy/admin.sock`, mode 0660), create
+   `/etc/caddy/sites/` owned by `af` (0755), add `af` to the `caddy` group, and add a
+   `[proxy]` table to the host configs (`sites`, `reload`, `tls`; example in the
+   `af_engine.py` docstring). Projects bind their services to `127.0.0.1` and declare
+   `[[routes]]`; the engine writes `<sites>/<project>-<environment>.caddy` after the health
+   check. With a tunnel in front that terminates TLS, set `tls = false`.
+7. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
    `af_engine.py status --config ...`.

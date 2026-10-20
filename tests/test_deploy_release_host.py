@@ -488,8 +488,12 @@ class OwnerTests(ReleaseHostTestCase):
     @unittest.skipIf(os.geteuid() == 0, "root may use --owner root")
     def test_owner_root_requires_root(self) -> None:
         output = io.StringIO()
-        with redirect_stdout(output), redirect_stderr(output):
-            code = release_host.main(["status", "--base", str(self.base()), "--owner", "root"], self.deps)
+        previous_umask = os.umask(0o077)  # main() sets the process umask; keep it from leaking
+        try:
+            with redirect_stdout(output), redirect_stderr(output):
+                code = release_host.main(["status", "--base", str(self.base()), "--owner", "root"], self.deps)
+        finally:
+            os.umask(previous_umask)
         self.assertEqual(code, release_host.EXIT_INVALID)
         self.assertIn("must run as root", output.getvalue())
 
