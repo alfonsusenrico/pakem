@@ -2,7 +2,7 @@
 
 Status: Draft (ADR 0009; becomes Active with deployment standard v1.0)
 Applies to: projects with the `deployed` capability on hosts we or our pipeline control
-Last reviewed: 2026-10-19
+Last reviewed: 2026-10-20
 Review by: 2027-04-19
 Sources: ADR 0009; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
@@ -199,4 +199,35 @@ so, and its rollback is a restore from the pre-migration backup, never a redeplo
 4. GitHub: copy `assets/ci/github/workflows/release.yml` to
    `.github/workflows/af-release.yml` and adapt `release.example.yml`. Protect `v*` tags.
 5. Run one publish, promote, and rollback on staging before relying on it; hosts follow
-   with the engine (pull agent or push trigger).
+   with the engine (section 11).
+
+## 11. Setting up a host
+
+Linux with systemd, Docker with Compose, Python 3.11 or newer, and cosign.
+
+1. Create the deploy user `af` (`useradd --system --create-home af`) and add it to the
+   `docker` group. Docker access is root-equivalent: use the user for deployments only.
+2. Copy `af_engine.py`, `af_trigger.py`, `af_oci.py`, `af_release.py`, `af_settings.py`,
+   and `contracts.py` from a tagged framework release to `/opt/af/` (root-owned, 0644).
+3. Per project and environment: a base `<DEPLOY_ROOT>/<project>/<environment>/` owned by
+   `af` (0700), the project's `release-signing.pub` in `/etc/af/keys/`, and the host config
+   `/etc/af/hosts/<project>-<environment>.toml` (keys in the `af_engine.py` docstring).
+   Write `placement.env` (0600) and set each secret with
+   `af_engine.py secret-set --config ... NAME` (value on standard input). Private
+   registries need `registry_credentials` with a read-only token.
+4. Choose the trigger:
+   - **Pull (default):** install `assets/deploy/systemd/af-agent.service` and
+     `af-agent.timer` and run `systemctl enable --now af-agent.timer`. Every two minutes
+     the agent resolves each host config's pointer and runs the engine when it names a
+     release this host has not attempted. A refused release (missing secret, bad
+     signature) is retried after 15 minutes or when the pointer moves; a failed, restored,
+     or stopped release is not retried until the pointer moves again or the owner runs the
+     engine.
+   - **Push:** give the project's CI key one line in `~af/.ssh/authorized_keys`:
+     `restrict,command="/usr/bin/python3 /opt/af/af_trigger.py receive --config-dir /etc/af/hosts --project <project> --environment <environment>" <public key>`.
+     The key can then only request `deploy <environment> [<actor>]` or
+     `status <environment>`; no shell, forwarding, or release data. In the repository,
+     set `AF_PUSH_SSH_KEY` (secret) and `AF_PUSH_<ENV>_HOST`, `AF_PUSH_<ENV>_KNOWN_HOSTS`
+     (variables), and copy `workflows/push-trigger.yml` to `.github/workflows/af-push.yml`.
+5. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
+   `af_engine.py status --config ...`.

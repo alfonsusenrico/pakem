@@ -7,8 +7,10 @@
 # - manual run        -> roll an environment back to an earlier commit's record
 #
 # Protect `v*` tags (repository rulesets where the plan allows; otherwise only the owner
-# has write access). Hosts pick up the new pointer themselves (pull) or a push trigger
-# runs the engine after this workflow.
+# has write access). Hosts with the pull agent pick up the new pointer themselves. For a
+# host without the agent, set the repository variables AF_PUSH_<ENV>_HOST and
+# AF_PUSH_<ENV>_KNOWN_HOSTS (and optionally _USER, _PORT) and the AF_PUSH_SSH_KEY secret;
+# copy workflows/push-trigger.yml to .github/workflows/af-push.yml.
 name: release
 
 on:
@@ -71,3 +73,33 @@ jobs:
       commit: ${{ inputs.commit }}
       environment: ${{ inputs.environment }}
     secrets: inherit
+
+  push-staging:
+    needs: publish
+    if: vars.AF_PUSH_STAGING_HOST != ''
+    uses: ./.github/workflows/af-push.yml
+    permissions:
+      contents: read
+    with:
+      environment: staging
+      host: ${{ vars.AF_PUSH_STAGING_HOST }}
+      user: ${{ vars.AF_PUSH_STAGING_USER || 'af' }}
+      port: ${{ fromJSON(vars.AF_PUSH_STAGING_PORT || '22') }}
+      known_hosts: ${{ vars.AF_PUSH_STAGING_KNOWN_HOSTS }}
+    secrets:
+      AF_PUSH_SSH_KEY: ${{ secrets.AF_PUSH_SSH_KEY }}
+
+  push-production:
+    needs: promote
+    if: vars.AF_PUSH_PRODUCTION_HOST != ''
+    uses: ./.github/workflows/af-push.yml
+    permissions:
+      contents: read
+    with:
+      environment: production
+      host: ${{ vars.AF_PUSH_PRODUCTION_HOST }}
+      user: ${{ vars.AF_PUSH_PRODUCTION_USER || 'af' }}
+      port: ${{ fromJSON(vars.AF_PUSH_PRODUCTION_PORT || '22') }}
+      known_hosts: ${{ vars.AF_PUSH_PRODUCTION_KNOWN_HOSTS }}
+    secrets:
+      AF_PUSH_SSH_KEY: ${{ secrets.AF_PUSH_SSH_KEY }}

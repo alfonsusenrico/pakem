@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release engine: the only program that changes a running environment (contracts v1, §5).
 
-    af_engine.py deploy --config /etc/af/<project>-<environment>.toml
+    af_engine.py deploy --config /etc/af/hosts/<project>-<environment>.toml
     af_engine.py status --config ...
     af_engine.py secret-set --config ... NAME        (value on standard input)
 
@@ -260,13 +260,13 @@ class Engine:
             # release's files stay in place; only an identical bundle may be reused.
             if current.record["bundle"] != release.record["bundle"]:
                 raise EngineError("the running commit was republished with a different bundle", EXIT_REFUSED)
-            _write_json(directory / "record.json", release.record)
+            write_json(directory / "record.json", release.record)
             return Release(directory, release.record, current.config)
         if directory.exists():
             shutil.rmtree(directory)
         directory.mkdir(mode=0o700, parents=True)
         config = af_release.fetch_bundle(self.registry, release.record, directory / "bundle")
-        _write_json(directory / "record.json", release.record)
+        write_json(directory / "record.json", release.record)
         return Release(directory, release.record, config)
 
     def promote(self, release: Release) -> None:
@@ -463,7 +463,7 @@ class Engine:
         problems = contracts.validate_deployment_record(record)
         if problems:
             raise EngineError("; ".join(problems), EXIT_FAILED)
-        _write_json(self.base / "deployment.json", record)
+        write_json(self.base / "deployment.json", record)
         flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(self.base / "deployments.jsonl", flags, 0o600), "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -480,7 +480,7 @@ def read_runtime(path: Path) -> dict[str, str]:
     return values
 
 
-def _write_json(path: Path, data: dict) -> None:
+def write_json(path: Path, data: dict) -> None:
     temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
     with os.fdopen(os.open(temporary, flags, 0o600), "w", encoding="utf-8") as handle:
