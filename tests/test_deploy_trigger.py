@@ -15,6 +15,7 @@ from support import DEPLOY_ASSETS
 
 sys.path.insert(0, str(DEPLOY_ASSETS))
 import af_engine  # noqa: E402
+import af_notify  # noqa: E402
 import af_oci  # noqa: E402
 import af_trigger  # noqa: E402
 
@@ -94,7 +95,12 @@ class PullAgent(unittest.TestCase):
 
     def agent(self, engine: FakeEngine, digests: dict) -> af_trigger.Agent:
         registry = FakeRegistry(digests)
-        return af_trigger.Agent(engine=engine, registry=lambda host: registry, clock=lambda: self.now)
+        self.sent: list[tuple[str, str]] = []
+        notifier = af_notify.Notifier([])
+        notifier.send = lambda event, text, record=None: self.sent.append((event, text))
+        return af_trigger.Agent(
+            engine=engine, registry=lambda host: registry, notifier=lambda host: notifier, clock=lambda: self.now
+        )
 
     def test_a_release_already_attempted_is_left_alone(self) -> None:
         host = self.hosts.add("example", "staging")
@@ -140,10 +146,18 @@ class PullAgent(unittest.TestCase):
         status, output = quietly(agent.poll, self.hosts.configs)
         self.assertEqual((status, output, len(engine.calls)), (1, "", 1))
 
+        self.assertEqual([event for event, _ in self.sent], ["refused"])
+        self.assertIn("example staging: refused sha256:aaaa", self.sent[0][1])
+
         self.now += 2
+        quietly(agent.poll, self.hosts.configs)
+        self.assertEqual(len(engine.calls), 2)
+        self.assertEqual(len(self.sent), 1)  # the same refusal is announced once
+
+        self.now += af_trigger.REFUSED_RETRY_SECONDS + 1
         engine.outcome = deployed()
         status, _ = quietly(agent.poll, self.hosts.configs)
-        self.assertEqual((status, len(engine.calls)), (0, 2))
+        self.assertEqual((status, len(engine.calls)), (0, 3))
         self.assertFalse((host.base / "agent.json").exists())
 
     def test_a_new_pointer_is_tried_at_once_even_after_a_refusal(self) -> None:

@@ -456,10 +456,19 @@ class AgentUnitTests(unittest.TestCase):
         self.assertIn("ExecStart=/usr/bin/python3 /opt/af/af_trigger.py poll --config-dir /etc/af/hosts", service)
         self.assertIn("NoNewPrivileges=yes", service)
 
-    def test_timer_repeats_after_each_pass(self) -> None:
-        timer = (DEPLOY_ROOT / "systemd" / "af-agent.timer").read_text()
-        self.assertIn("OnUnitInactiveSec=", timer)
-        self.assertIn("WantedBy=timers.target", timer)
+    def test_timers_repeat_after_each_pass(self) -> None:
+        for name in ("af-agent.timer", "af-monitor.timer"):
+            timer = (DEPLOY_ROOT / "systemd" / name).read_text()
+            with self.subTest(timer=name):
+                self.assertIn("OnUnitInactiveSec=", timer)
+                self.assertIn("WantedBy=timers.target", timer)
+
+    def test_monitor_runs_one_read_only_pass_as_the_deploy_user(self) -> None:
+        service = (DEPLOY_ROOT / "systemd" / "af-monitor.service").read_text()
+        self.assertIn("Type=oneshot", service)
+        self.assertIn("User=af", service)
+        self.assertIn("ExecStart=/usr/bin/python3 /opt/af/af_monitor.py check --config-dir /etc/af/hosts", service)
+        self.assertIn("NoNewPrivileges=yes", service)
 
 
 if __name__ == "__main__":

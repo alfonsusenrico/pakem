@@ -1,0 +1,11 @@
+# Starts af-monitor.service every five minutes; two failed passes in a row notify once.
+[Unit]
+Description=agent-framework health monitor check
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target
