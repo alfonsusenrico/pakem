@@ -72,7 +72,7 @@ All in the repository, all part of the bundle.
 | `af_standard` | `1` |
 | `project` | the release record's `project` |
 | `compose_files` | Compose files in order |
-| `[[images]]` | `name`, `dockerfile`, `context`, `platforms` (default amd64 and arm64); Compose uses `image: ${AF_IMAGE_<NAME>}` |
+| `[[images]]` | `name`, `dockerfile`, `context`, `target` (a build stage, default the last one; several images can come from one Dockerfile), `platforms` (default amd64 and arm64); Compose uses `image: ${AF_IMAGE_<NAME>}` |
 | `health` | `service`, `path`, `revision_key`, `port`: the engine asks Docker which `127.0.0.1` port publishes the service's container `port` and requests `http://127.0.0.1:<that port><path>` on every running container of the service; the JSON key `revision_key` must carry the full commit |
 | `preflight` | in-image command checking configuration without printing values; `[]` disables |
 | `migrate` | one-off command and service; `[]` without a database |

@@ -231,6 +231,9 @@ class Publisher:
         dockerfile = str(root / image.get("dockerfile", "Dockerfile"))
         context = str(root / image.get("context", "."))
         labels = ["--build-arg", f"AF_REVISION={commit}", "--label", f"org.opencontainers.image.revision={commit}"]
+        # One Dockerfile may hold several images as build stages; default the last stage.
+        if image.get("target"):
+            labels += ["--target", image["target"]]
         if self.local:
             self.runner(["docker", "build", "--quiet", *labels, "--file", dockerfile, "--tag", tag, context], None)
             self.runner(["docker", "push", "--quiet", tag], None)
