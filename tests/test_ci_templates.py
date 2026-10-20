@@ -117,7 +117,8 @@ class GitHubTemplateTests(unittest.TestCase):
     def test_expected_templates_exist(self) -> None:
         names = {path.name for path in (GITHUB_ROOT / "workflows").glob("*.yml")}
         self.assertEqual(
-            names, {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml", "release.yml"}
+            names, {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml", "release.yml",
+             "push-trigger.yml"},
         )
         self.assertTrue((GITHUB_ROOT / "release.example.yml").is_file())
         self.assertTrue((GITHUB_ROOT / "ci.example.yml").is_file())
@@ -400,12 +401,65 @@ class ReleaseTemplateTests(unittest.TestCase):
 
     def test_example_publishes_main_promotes_tags_and_rolls_back_by_hand(self) -> None:
         jobs = job_blocks(self.example)
-        self.assertEqual(set(jobs), {"verify", "publish", "promote", "rollback"})
+        self.assertEqual(set(jobs), {"verify", "publish", "promote", "rollback", "push-staging", "push-production"})
         self.assertIn("needs: verify", jobs["publish"])
         self.assertIn("refs/heads/main", jobs["publish"])
         self.assertIn("startsWith(github.ref, 'refs/tags/v')", jobs["promote"])
         self.assertIn("version: ${{ github.ref_name }}", jobs["promote"])
         self.assertIn("workflow_dispatch", jobs["rollback"])
+
+    def test_example_pushes_only_when_a_host_is_configured_and_passes_only_its_key(self) -> None:
+        jobs = job_blocks(self.example)
+        for environment, after in (("staging", "publish"), ("production", "promote")):
+            body = jobs[f"push-{environment}"]
+            with self.subTest(environment=environment):
+                self.assertIn(f"needs: {after}", body)
+                self.assertIn(f"if: vars.AF_PUSH_{environment.upper()}_HOST != ''", body)
+                self.assertIn("uses: ./.github/workflows/af-push.yml", body)
+                self.assertIn("AF_PUSH_SSH_KEY: ${{ secrets.AF_PUSH_SSH_KEY }}", body)
+                self.assertNotIn("secrets: inherit", body)
+
+
+class PushTriggerTemplateTests(unittest.TestCase):
+    """The push trigger: a pinned SSH call whose only payload is `deploy <environment> <actor>`."""
+
+    def setUp(self) -> None:
+        self.workflow = (GITHUB_ROOT / "workflows" / "push-trigger.yml").read_text()
+
+    def test_connects_only_with_the_pinned_host_key_and_its_own_identity(self) -> None:
+        for option in ("-F /dev/null", "BatchMode=yes", "StrictHostKeyChecking=yes", "IdentitiesOnly=yes",
+                       "IdentityAgent=none"):
+            self.assertIn(option, self.workflow)
+        self.assertIn('rm -rf "$RUNNER_TEMP/af-push"', self.workflow)
+        self.assertIn("umask 077", self.workflow)
+
+    def test_sends_only_the_deploy_request(self) -> None:
+        self.assertIn('"deploy $ENVIRONMENT $ACTOR"', self.workflow)
+        self.assertEqual(self.workflow.count('@$HOST"'), 1)
+
+    def test_rejects_names_ssh_could_read_as_options(self) -> None:
+        self.assertIn("^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$", self.workflow)
+        self.assertIn("^[a-z_][a-z0-9_-]{0,31}$", self.workflow)
+
+    def test_needs_only_read_permissions(self) -> None:
+        self.assertRegex(self.workflow, r"(?m)^    permissions:\n      contents: read\n    #")
+        self.assertNotIn(": write", self.workflow)
+
+
+class AgentUnitTests(unittest.TestCase):
+    """The systemd units that run the pull agent."""
+
+    def test_service_runs_one_poll_as_the_deploy_user(self) -> None:
+        service = (DEPLOY_ROOT / "systemd" / "af-agent.service").read_text()
+        self.assertIn("Type=oneshot", service)
+        self.assertIn("User=af", service)
+        self.assertIn("ExecStart=/usr/bin/python3 /opt/af/af_trigger.py poll --config-dir /etc/af/hosts", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+
+    def test_timer_repeats_after_each_pass(self) -> None:
+        timer = (DEPLOY_ROOT / "systemd" / "af-agent.timer").read_text()
+        self.assertIn("OnUnitInactiveSec=", timer)
+        self.assertIn("WantedBy=timers.target", timer)
 
 
 if __name__ == "__main__":

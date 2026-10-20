@@ -1,0 +1,132 @@
+# agent-framework CI template: tell one host to deploy its environment now (contracts v1,
+# push trigger). Capability: deployed. For hosts that cannot run the pull agent. The host
+# key runs only `af_trigger.py receive` (a forced command); this job sends
+# `deploy <environment> <actor>`, never release data, and the host's engine reads the signed
+# release pointer itself. Run it after release.yml has moved the pointer.
+# Repository variables carry the target (works on every plan); the private key arrives as
+# the AF_PUSH_SSH_KEY secret and reaches the shell only through env.
+name: push-trigger
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment to deploy (staging or production).
+        type: string
+        required: true
+      host:
+        description: SSH host name or address of the deploy host.
+        type: string
+        required: true
+      user:
+        description: SSH user whose authorized_keys holds the forced command.
+        type: string
+        default: af
+      port:
+        description: SSH port.
+        type: number
+        default: 22
+      known_hosts:
+        description: The host's public key line(s), pinned (ssh-keyscan once, verified out of band).
+        type: string
+        required: true
+      tailscale:
+        description: Join the tailnet first with the TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET OAuth client.
+        type: boolean
+        default: false
+      tailscale_tags:
+        description: Tags the OAuth client assigns to the runner node.
+        type: string
+        default: tag:ci
+      runner:
+        description: Runner label.
+        type: string
+        default: ubuntu-24.04
+      timeout_minutes:
+        description: Job timeout in minutes (the engine runs backups and migrations).
+        type: number
+        default: 60
+    secrets:
+      AF_PUSH_SSH_KEY:
+        description: The project's CI key for this host (private key, OpenSSH format).
+        required: true
+      TS_OAUTH_CLIENT_ID:
+        required: false
+      TS_OAUTH_SECRET:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  trigger:
+    name: deploy ${{ inputs.environment }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    # One request per environment at a time; the host engine also holds a lock.
+    concurrency:
+      group: push-trigger-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Validate inputs
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          ACTOR: ${{ github.actor }}
+          HOST: ${{ inputs.host }}
+          USER_NAME: ${{ inputs.user }}
+          SSH_KEY: ${{ secrets.AF_PUSH_SSH_KEY }}
+          KNOWN_HOSTS: ${{ inputs.known_hosts }}
+        run: |
+          if [[ ! "$ENVIRONMENT" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
+            echo "::error::environment must match [a-z][a-z0-9-]{0,31}"; exit 1
+          fi
+          # Neither may start with "-": ssh would read it as an option.
+          if [[ ! "$HOST" =~ ^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$ || ! "$USER_NAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+            echo "::error::host must be a name or IPv4 address and user a plain account name"; exit 1
+          fi
+          if [[ ! "$ACTOR" =~ ^[A-Za-z0-9][A-Za-z0-9_.\[\]-]{0,63}$ ]]; then
+            echo "::error::the actor name cannot be passed to the host"; exit 1
+          fi
+          if [[ -z "$SSH_KEY" || -z "$KNOWN_HOSTS" ]]; then
+            echo "::error::pass the AF_PUSH_SSH_KEY secret and the known_hosts input"; exit 1
+          fi
+
+      - name: Connect to the tailnet
+        if: inputs.tailscale
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: ${{ inputs.tailscale_tags }}
+
+      - name: Write the key and the pinned host key
+        env:
+          SSH_KEY: ${{ secrets.AF_PUSH_SSH_KEY }}
+          KNOWN_HOSTS: ${{ inputs.known_hosts }}
+        run: |
+          install -d -m 0700 "$RUNNER_TEMP/af-push"
+          (umask 077 && printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/af-push/id_trigger")
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/af-push/known_hosts"
+
+      # Exit codes are the engine's: 0 deployed or unchanged, 1 failed (untouched),
+      # 2 refused, 3 restored, 4 restore failed, 5 stopped after a schema change, 75 busy.
+      - name: Deploy
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          ACTOR: ${{ github.actor }}
+          HOST: ${{ inputs.host }}
+          USER_NAME: ${{ inputs.user }}
+          PORT: ${{ inputs.port }}
+        run: |
+          ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/af-push/known_hosts" \
+            -o IdentitiesOnly=yes -o IdentityAgent=none -o ConnectTimeout=20 \
+            -o ServerAliveInterval=30 \
+            -i "$RUNNER_TEMP/af-push/id_trigger" -p "$PORT" "$USER_NAME@$HOST" \
+            "deploy $ENVIRONMENT $ACTOR"
+
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/af-push"

@@ -1,0 +1,11 @@
+# Starts af-agent.service every two minutes; a pass still running is never started twice.
+[Unit]
+Description=agent-framework release agent poll
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=20s
+
+[Install]
+WantedBy=timers.target

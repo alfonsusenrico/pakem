@@ -1,0 +1,18 @@
+# agent-framework pull agent (ADR 0009): one pass over /etc/af/hosts, started by af-agent.timer.
+# Runs as the dedicated `af` user, which owns every deploy base and is in the docker group
+# (docker access is root-equivalent: keep this user for deployments only).
+[Unit]
+Description=agent-framework release agent (one poll)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=af
+Group=af
+ExecStart=/usr/bin/python3 /opt/af/af_trigger.py poll --config-dir /etc/af/hosts
+# A deployment can wait for backups and migrations; the engine bounds each step itself.
+TimeoutStartSec=3h
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
