@@ -1,0 +1,16 @@
+# agent-framework health monitor (ADR 0009): one read-only pass over /etc/af/hosts, started
+# by af-monitor.timer. Runs as `af`, like the agent, to read each deploy base.
+[Unit]
+Description=agent-framework health monitor (one pass)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=af
+Group=af
+ExecStart=/usr/bin/python3 /opt/af/af_monitor.py check --config-dir /etc/af/hosts
+TimeoutStartSec=10min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

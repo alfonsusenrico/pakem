@@ -1,15 +1,17 @@
-"""Both release triggers end to end with real Docker, registry, and cosign (opt-in: AF_SANDBOX=1).
+"""Triggers and the health monitor end to end with real Docker, registry, and cosign
+(opt-in: AF_SANDBOX=1).
 
 One signed release is pointed at staging and production. The pull agent deploys staging,
 the push receiver deploys production, and the two deployment records must agree on
-everything but the environment, the trigger, and the times. Everything is removed
-afterwards.
+everything but the environment, the trigger, and the times. The monitor then notices a
+stopped release and its recovery. Everything is removed afterwards.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -18,6 +20,8 @@ from engine_sandbox import ENABLED, SKIP_REASON, EngineSandbox
 from support import DEPLOY_ASSETS
 
 sys.path.insert(0, str(DEPLOY_ASSETS))
+import af_monitor  # noqa: E402
+import af_notify  # noqa: E402
 import af_trigger  # noqa: E402
 
 PER_ATTEMPT = {"environment", "trigger", "actor", "started", "finished", "backup"}
@@ -54,6 +58,30 @@ class TriggersEndToEnd(EngineSandbox):
             {key: value for key, value in pulled.items() if key not in PER_ATTEMPT},
             {key: value for key, value in pushed.items() if key not in PER_ATTEMPT},
         )
+
+
+    def test_the_monitor_notices_a_stopped_release_and_its_recovery(self) -> None:
+        commit = "5" * 40
+        staging = self.make_host("staging")
+        configs = self.work / "hosts"
+        self.write_config(staging, configs)
+        self.publish(commit, "2026-10-20T00:00:00Z", environments=("staging",))
+        self.assertEqual(self.deploy(staging)["result"], "deployed")
+
+        sent: list[str] = []
+        notifier = af_notify.Notifier([])
+        notifier.send = lambda event, text, record=None: sent.append(event)
+        monitor = af_monitor.Monitor(notifier=lambda host: notifier)
+        compose = ["docker", "compose", "--project-name", "sandbox-staging"]
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(monitor.check_all(configs), 0)
+            subprocess.run([*compose, "stop"], capture_output=True, check=True)
+            self.assertEqual([monitor.check_all(configs), monitor.check_all(configs)], [1, 1])
+            subprocess.run([*compose, "start"], capture_output=True, check=True)
+            recovered = monitor.check_all(configs)
+        self.assertEqual(recovered, 0)
+        self.assertEqual(sent, ["unhealthy", "recovered"])
 
 
 if __name__ == "__main__":

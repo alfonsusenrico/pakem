@@ -18,6 +18,7 @@ from support import DEPLOY_ASSETS
 
 sys.path.insert(0, str(DEPLOY_ASSETS))
 import af_engine  # noqa: E402
+import af_notify  # noqa: E402
 import af_oci  # noqa: E402
 import af_release  # noqa: E402
 import af_settings  # noqa: E402
@@ -92,6 +93,15 @@ class FakeDocker:
         return [step for step, _ in self.calls]
 
 
+class RecordingNotifier(af_notify.Notifier):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.sent: list[tuple[str, str]] = []
+
+    def send(self, event: str, text: str, record: dict | None = None) -> None:
+        self.sent.append((event, text))
+
+
 class Host:
     def __init__(self, case: unittest.TestCase, registry: FakeRegistry) -> None:
         root = Path(case.enterContext(tempfile.TemporaryDirectory()))
@@ -111,6 +121,7 @@ class Host:
             public_key=root / "unused.pub",
         )
         self.docker = FakeDocker()
+        self.notifier = RecordingNotifier()
         self.bundles: dict[bytes, str] = {}
 
     def publish(self, commit: str, *, created: str, schema: str = "0009", rollback: bool = False, **bundle_options) -> dict:
@@ -138,6 +149,7 @@ class Host:
             health=self.docker.health,
             sleep=lambda seconds: None,
             health_attempts=2,
+            notifier=self.notifier,
         )
         output = io.StringIO()
         with redirect_stdout(output):
@@ -211,6 +223,18 @@ class Sequence(unittest.TestCase):
         record = self.host.deploy()
         self.assertEqual((record["result"], record["exit_code"]), ("restored", 3))
         self.assertEqual((self.host.current_commit(), self.host.docker.running), (A, A))
+
+    def test_every_recorded_result_is_notified_with_its_reason(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.deploy()
+        self.host.deploy()
+        self.host.publish(B, created="2026-10-21T00:00:00Z")
+        self.host.docker.unhealthy.add(B)
+        self.host.deploy()
+        events = [event for event, _ in self.host.notifier.sent]
+        self.assertEqual(events, ["deployed", "unchanged", "restored"])
+        self.assertTrue(self.host.notifier.sent[2][1].endswith(", exit 3: health check did not report this release"))
+        self.assertFalse(any(SECRET_VALUE in text for _, text in self.host.notifier.sent))
 
     def test_failure_after_a_schema_change_stops_for_the_owner(self) -> None:
         self.host.publish(A, created="2026-10-20T00:00:00Z")

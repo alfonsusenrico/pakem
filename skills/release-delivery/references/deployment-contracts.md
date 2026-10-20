@@ -229,5 +229,14 @@ Linux with systemd, Docker with Compose, Python 3.11 or newer, and cosign.
      `status <environment>`; no shell, forwarding, or release data. In the repository,
      set `AF_PUSH_SSH_KEY` (secret) and `AF_PUSH_<ENV>_HOST`, `AF_PUSH_<ENV>_KNOWN_HOSTS`
      (variables), and copy `workflows/push-trigger.yml` to `.github/workflows/af-push.yml`.
-5. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
+5. Notifications and health: copy `af_notify.py` and `af_monitor.py` to `/opt/af/` as
+   well. Write `/etc/af/notify.toml` (channel kinds `telegram`, `slack`, `discord`,
+   `webhook`; format in the `af_notify.py` docstring) with each token or webhook URL in its
+   own 0600 file owned by `af`, and add `notify = "/etc/af/notify.toml"` to the host
+   configs. The engine notifies every recorded result with its reason, the agent notifies a
+   refused release once, and `systemd/af-monitor.timer` (enable like the agent's) checks
+   every five minutes that each running release still reports its commit: two failures in
+   a row notify `unhealthy`, the next pass notifies `recovered`. Delivery is best effort and
+   never changes a deployment.
+6. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
    `af_engine.py status --config ...`.

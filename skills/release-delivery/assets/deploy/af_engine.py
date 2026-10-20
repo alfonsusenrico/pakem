@@ -14,6 +14,7 @@ Host configuration (TOML, private):
     public_key = "/etc/af/keys/example.pub"     # the project's release signing key
     registry_credentials = "/etc/af/registries.json"   # optional, read-only tokens
     lock_wait_seconds = 0
+    notify = "/etc/af/notify.toml"              # optional channels file (af_notify.py)
 
 Standard library plus `docker` (with Compose) and `cosign`. Output names steps, services,
 and settings, never values.
@@ -38,6 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+import af_notify
 import af_oci
 import af_release
 import af_settings
@@ -75,11 +77,15 @@ class HostConfig:
     public_key: Path
     registry_credentials: Path | None = None
     lock_wait_seconds: int = 0
+    notify: Path | None = None
 
     @classmethod
     def load(cls, path: Path) -> HostConfig:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-        allowed = {"project", "environment", "base", "pointer", "public_key", "registry_credentials", "lock_wait_seconds"}
+        allowed = {
+            "project", "environment", "base", "pointer", "public_key", "registry_credentials", "lock_wait_seconds",
+            "notify",
+        }
         unknown = set(data) - allowed
         if unknown:
             raise EngineError(f"host config has unknown keys: {', '.join(sorted(unknown))}", EXIT_REFUSED)
@@ -92,13 +98,14 @@ class HostConfig:
                 public_key=Path(data["public_key"]),
                 registry_credentials=Path(data["registry_credentials"]) if data.get("registry_credentials") else None,
                 lock_wait_seconds=int(data.get("lock_wait_seconds", 0)),
+                notify=Path(data["notify"]) if data.get("notify") else None,
             )
         except (KeyError, TypeError, ValueError):
             raise EngineError("host config needs project, environment, base, pointer, public_key", EXIT_REFUSED) from None
         if not contracts.PROJECT.fullmatch(config.project) or not contracts.ENVIRONMENT.fullmatch(config.environment):
             raise EngineError("host config has an invalid project or environment name", EXIT_REFUSED)
-        if not config.base.is_absolute():
-            raise EngineError("host config base must be an absolute path", EXIT_REFUSED)
+        if not config.base.is_absolute() or (config.notify is not None and not config.notify.is_absolute()):
+            raise EngineError("host config base and notify must be absolute paths", EXIT_REFUSED)
         return config
 
     @property
@@ -168,6 +175,7 @@ class Engine:
         trigger: str = "pull",
         actor: str = "agent",
         placement_values: dict[str, str] | None = None,
+        notifier: af_notify.Notifier | None = None,
     ) -> None:
         self.host = host
         credentials = (
@@ -182,6 +190,7 @@ class Engine:
         self.trigger = trigger
         self.actor = actor
         self.placement_values = placement_values
+        self.notifier = notifier or af_notify.from_file(host.notify, log)
         self.base = host.base
         self.releases = self.base / "releases"
         self.secrets = self.base / "secrets"
@@ -405,7 +414,7 @@ class Engine:
 
     def _fail_early(self, reason: str, fetched: af_release.Release, previous: Release | None, started: str) -> dict:
         log(f"{reason}; the running release was not touched")
-        return self._record("failed", EXIT_FAILED, fetched, previous, started, None)
+        return self._record("failed", EXIT_FAILED, fetched, previous, started, None, reason)
 
     def _fail_late(
         self,
@@ -420,16 +429,16 @@ class Engine:
         self.compose(candidate, "stop")
         if previous is None:
             log("first deployment failed; services stay stopped")
-            return self._record("failed", EXIT_FAILED, fetched, previous, started, backup)
+            return self._record("failed", EXIT_FAILED, fetched, previous, started, backup, reason)
         if candidate.record["schema_version"] != previous.record["schema_version"]:
             log("the schema changed; services stay stopped for the owner (restore from the backup)")
-            return self._record("stopped", EXIT_STOPPED, fetched, previous, started, backup)
+            return self._record("stopped", EXIT_STOPPED, fetched, previous, started, backup, reason)
         log("restoring the previous release")
         if self.compose(previous, "up", "--detach", "--no-build", "--remove-orphans") == 0 and self.healthy(previous):
             log("previous release restored")
-            return self._record("restored", EXIT_RESTORED, fetched, previous, started, backup)
+            return self._record("restored", EXIT_RESTORED, fetched, previous, started, backup, reason)
         log("restore failed; act manually")
-        return self._record("restore_failed", EXIT_RESTORE_FAILED, fetched, previous, started, backup)
+        return self._record("restore_failed", EXIT_RESTORE_FAILED, fetched, previous, started, backup, reason)
 
     def _record(
         self,
@@ -439,6 +448,7 @@ class Engine:
         previous: Release | None,
         started: str,
         backup: str | None,
+        reason: str | None = None,
     ) -> dict:
         record = {
             "schema": contracts.DEPLOYMENT_SCHEMA,
@@ -467,6 +477,7 @@ class Engine:
         flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0)
         with os.fdopen(os.open(self.base / "deployments.jsonl", flags, 0o600), "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
+        self.notifier.send(result, af_notify.deployment_text(record, reason), record)
         return record
 
 
@@ -478,6 +489,14 @@ def read_runtime(path: Path) -> dict[str, str]:
         if match:
             values[match[1]] = match[2]
     return values
+
+
+def read_json(path: Path) -> dict:
+    """A JSON object from a host state file, or {} when the file does not exist."""
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
 
 
 def write_json(path: Path, data: dict) -> None:

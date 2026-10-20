@@ -31,6 +31,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import af_engine
+import af_notify
 import af_oci
 import af_settings
 import contracts
@@ -55,23 +56,18 @@ def registry_for(host: af_engine.HostConfig) -> af_oci.Registry:
     return af_oci.Registry(af_oci.credentials_file(host.registry_credentials))
 
 
-def read_json(path: Path) -> dict:
-    if not path.is_file():
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, dict) else {}
-
-
 class Agent:
     def __init__(
         self,
         *,
         engine: EngineFactory = af_engine.Engine,
         registry: Callable[[af_engine.HostConfig], af_oci.Registry] = registry_for,
+        notifier: Callable[[af_engine.HostConfig], af_notify.Notifier] = lambda host: af_notify.from_file(host.notify, log),
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.engine = engine
         self.registry = registry
+        self.notifier = notifier
         self.clock = clock
 
     def poll(self, directory: Path) -> int:
@@ -101,10 +97,10 @@ class Agent:
         except af_oci.RegistryError as error:
             log(f"{label}: release pointer unavailable: {error}")
             return af_engine.EXIT_FAILED
-        if digest == read_json(host.base / "deployment.json").get("release"):
+        if digest == af_engine.read_json(host.base / "deployment.json").get("release"):
             return af_engine.EXIT_OK
         state_path = host.base / AGENT_STATE
-        state = read_json(state_path)
+        state = af_engine.read_json(state_path)
         if state.get("refused") == digest and self.clock() - state.get("refused_at", 0) < REFUSED_RETRY_SECONDS:
             return af_engine.EXIT_FAILED  # still refused; logged when it happened
         log(f"{label}: release pointer moved to {digest}; running the engine")
@@ -115,6 +111,8 @@ class Agent:
                 log(f"{label}: another deployment holds the lock; next poll retries")
                 return af_engine.EXIT_OK
             log(f"{label}: refused: {error}")
+            if state.get("refused") != digest:
+                self.notifier(host).send("refused", f"{host.project} {host.environment}: refused {digest}: {error}")
             af_engine.write_json(state_path, {"refused": digest, "refused_at": self.clock()})
             return af_engine.EXIT_FAILED
         state_path.unlink(missing_ok=True)
@@ -157,7 +155,7 @@ def receive(
         if (host.project, host.environment) != (project, environment):
             raise af_engine.EngineError(f"{path.name} names another project or environment", af_engine.EXIT_REFUSED)
         if action == "status":
-            print(json.dumps(read_json(host.base / "deployment.json"), indent=2, sort_keys=True))
+            print(json.dumps(af_engine.read_json(host.base / "deployment.json"), indent=2, sort_keys=True))
             return af_engine.EXIT_OK
         record = engine(host, trigger="push", actor=actor).deploy()
         return int(record["exit_code"])
