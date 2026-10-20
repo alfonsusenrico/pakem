@@ -65,6 +65,7 @@ class FakeDocker:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
+        self.arguments: list[list[str]] = []
         self.web: dict[str, tuple[str, int]] = {}  # container id -> (commit, port)
         self.fail: set[tuple[str, str]] = set()  # (step, commit)
         self.unhealthy: set[str] = set()
@@ -80,6 +81,7 @@ class FakeDocker:
         self.web[f"web{self.counter:04d}"] = (commit, port)
 
     def __call__(self, arguments: list[str], env: dict, cwd: Path | None, timeout: int) -> int:
+        self.arguments.append(arguments)
         commit = env.get("AF_COMMIT", "")
         if arguments[0] == "caddy":
             step = "reload"
@@ -224,6 +226,15 @@ class Sequence(unittest.TestCase):
         self.assertEqual(self.host.current_commit(), A)
         self.assertIsNone(record["previous_commit"])
         self.assertEqual(contracts.validate_deployment_record(record), [])
+
+    def test_migrations_start_their_dependencies_and_preflight_does_not(self) -> None:
+        self.host.publish(A, created="2026-10-20T00:00:00Z")
+        self.host.deploy()
+        runs = [call for call in self.host.docker.arguments if "run" in call]
+        migrate = next(call for call in runs if "app.migrate" in call)
+        preflight = next(call for call in runs if "app.migrate" not in call)
+        self.assertNotIn("--no-deps", migrate)
+        self.assertIn("--no-deps", preflight)
 
     def test_retention_removes_old_releases_and_their_images(self) -> None:
         commits = [f"{n:x}" * 40 for n in range(1, 9)]

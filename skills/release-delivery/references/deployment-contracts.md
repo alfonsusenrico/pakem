@@ -116,7 +116,8 @@ The engine is the only program that changes a running environment. Sequence:
    routes move removes only the new containers and leaves it serving, exit 1);
 8. `backup` hook (required when the environment says so and the release has a `migrate`
    command), so a `stop-start` backup is taken with nothing writing;
-9. migrate in a one-off container;
+9. migrate in a one-off container of `migrate_service`, started with its Compose dependencies
+   (a first deployment has no database running yet);
 10. start (`blue-green`: each routed service beside its running containers, then the
     health check on the new containers, the routes moved to them, and the old containers
     stopped within `drain_seconds`; then the remaining services, such as workers, are

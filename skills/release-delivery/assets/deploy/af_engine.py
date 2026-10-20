@@ -561,7 +561,8 @@ class Engine:
             backup = str(backup_dir)
         if migrations:
             service = candidate.config.get("migrate_service", candidate.config["health"]["service"])
-            if self.compose(candidate, "run", "--rm", "--no-deps", service, *candidate.config["migrate"]) != 0:
+            # With its Compose dependencies: a first deployment has no database running yet.
+            if self.compose(candidate, "run", "--rm", service, *candidate.config["migrate"]) != 0:
                 return fail("migration failed", backup)
         if blue_green:
             failure = self._switch_beside(candidate, domains, drain, fetched, previous, started, backup)
