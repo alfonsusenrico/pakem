@@ -204,6 +204,8 @@ def validate_project_config(config: dict) -> list[str]:
     health = config.get("health")
     if not isinstance(health, dict) or not all(isinstance(health.get(k), str) for k in ("service", "path", "revision_key")):
         problems.append(f"{label}: health needs service, path and revision_key")
+    elif not _match(SETTING, health.get("port_setting")) or not str(health["path"]).startswith("/"):
+        problems.append(f"{label}: health needs an absolute path and port_setting (a placement name)")
     for key in ("preflight", "migrate"):
         if key in config and not isinstance(config[key], (list, dict)):
             problems.append(f"{label}: {key} must be a command list or table")
