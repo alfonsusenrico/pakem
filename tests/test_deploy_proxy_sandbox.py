@@ -64,9 +64,9 @@ class CaddyRoutes(unittest.TestCase):
             time.sleep(0.1)
         release_dir = work / "release"
         release_dir.mkdir()
-        (release_dir / "runtime.env").write_text("PUBLIC_HOST='example.test'\nHTTP_PORT='9000'\n")
+        (release_dir / "runtime.env").write_text("PUBLIC_HOST='example.test'\n")
         self.release = af_engine.Release(
-            release_dir, {"commit": "6" * 40}, {"routes": [{"host_setting": "PUBLIC_HOST", "port_setting": "HTTP_PORT"}]}
+            release_dir, {"commit": "6" * 40}, {"routes": [{"host_setting": "PUBLIC_HOST", "service": "web", "port": 8000}]}
         )
         reload = ["docker", "exec", self.name, "caddy", "reload", "--config", "/etc/caddy/Caddyfile",
                   "--address", "unix//run/caddy/admin.sock"]
@@ -74,7 +74,11 @@ class CaddyRoutes(unittest.TestCase):
             project="example", environment="staging", base=work / "base", pointer="ghcr.io/o/example:release-staging",
             public_key=work / "unused.pub", proxy=af_engine.ProxyConfig(self.sites, reload, tls=False),
         )
-        self.engine = af_engine.Engine(config, verify=lambda reference: None)
+        # The upstream is Caddy's own :9000 site; Docker's answers for the web container point there.
+        def query(arguments: list[str], env: dict) -> tuple[int, str]:
+            return 0, "web-container\n" if arguments[1] == "ps" else "127.0.0.1:9000\n"
+
+        self.engine = af_engine.Engine(config, verify=lambda reference: None, query=query)
 
     def exec(self, *arguments: str) -> subprocess.CompletedProcess:
         return subprocess.run(["docker", "exec", self.name, *arguments], capture_output=True, text=True, check=False)
@@ -97,7 +101,8 @@ class CaddyRoutes(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            self.assertTrue(self.engine.write_routes(self.engine.route_text(self.release)))
+            text = self.engine.route_text(self.release, self.engine.route_domains(self.release), {})
+            self.assertTrue(self.engine.write_routes(text))
             self.assertEqual(self.get("example.test"), "upstream answered")
             good = (self.sites / "example-staging.caddy").read_text()
             # A file Caddy cannot parse is put back and the old routes keep serving.

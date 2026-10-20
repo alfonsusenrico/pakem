@@ -73,12 +73,12 @@ All in the repository, all part of the bundle.
 | `project` | the release record's `project` |
 | `compose_files` | Compose files in order |
 | `[[images]]` | `name`, `dockerfile`, `context`, `platforms` (default amd64 and arm64); Compose uses `image: ${AF_IMAGE_<NAME>}` |
-| `health` | `service`, `path`, `revision_key`, `port_setting`: the engine requests `http://127.0.0.1:<port><path>`, where the placement value `port_setting` is the loopback port; the JSON key `revision_key` must carry the full commit |
+| `health` | `service`, `path`, `revision_key`, `port`: the engine asks Docker which `127.0.0.1` port publishes the service's container `port` and requests `http://127.0.0.1:<that port><path>` on every running container of the service; the JSON key `revision_key` must carry the full commit |
 | `preflight` | in-image command checking configuration without printing values; `[]` disables |
 | `migrate` | one-off command and service; `[]` without a database |
 | `schema_version` | how CI finds the newest migration identifier (a glob over migration files) |
-| `switch` | `stop-start` (default) or `blue-green` (needs `[[routes]]` and side-by-side safety) |
-| `[[routes]]` | `host_setting` and `port_setting`: placement names holding the public domain and the loopback port serving it; on hosts with a `[proxy]` table the engine writes the proxy route after the health check |
+| `switch` | `stop-start` (default) or `blue-green`: routed services start beside the running ones, the proxy moves to them, then the old ones stop; needs a host `[proxy]`, the health service among the routed services, routed services published on ephemeral loopback ports (`127.0.0.1::<port>`) with no state inside them, and migrations the previous release can run against (section 9) |
+| `[[routes]]` | `host_setting` (a placement name holding the public domain), `service`, `port` (its container port); on hosts with a `[proxy]` table the engine points the domain at the loopback ports Docker published for the service's containers |
 | `drain_seconds` | how long running work may take to finish when stopping |
 | `[environments.<name>]` | `keep` (retained releases), `backup` (`required` or `optional`) |
 
@@ -109,15 +109,18 @@ The engine is the only program that changes a running environment. Sequence:
 5. preflight inside the image;
 6. `pre_migrate` hook;
 7. `stop-start`: stop the old release, letting running work finish within
-   `drain_seconds`; `blue-green`: the old release keeps serving;
+   `drain_seconds`; `blue-green`: the old release keeps serving (a failure before the
+   routes move removes only the new containers and leaves it serving, exit 1);
 8. `backup` hook (required when the environment says so and the release has a `migrate`
    command), so a `stop-start` backup is taken with nothing writing;
 9. migrate in a one-off container;
-10. start (`blue-green`: beside the old release); the health check must report the
-    record's commit; on hosts with a proxy, write the project's `[[routes]]` file and
-    reload the proxy (a refused reload puts the old file back and counts as a failure);
-11. `post_switch` hook (`blue-green` moves the route and then stops the old release), then
-    the `smoke` hook;
+10. start (`blue-green`: each routed service beside its running containers, then the
+    health check on the new containers, the routes moved to them, and the old containers
+    stopped within `drain_seconds`; then the remaining services, such as workers, are
+    recreated); the health check must report the record's commit; on hosts with a proxy,
+    write the project's `[[routes]]` file and reload the proxy (a refused reload puts the
+    old file back and counts as a failure);
+11. `post_switch` hook, then the `smoke` hook;
 12. promote `current`, write the deployment record, notify, apply retention.
 
 On failure after step 7: if the record's `schema_version` equals the previous release's,
@@ -185,7 +188,10 @@ Owner modes `root` and `self` keep the ownership and permission checks of
 ## 9. Migration rule
 
 Every release must work against the schema left by the release before it (expand, then
-contract across two releases). A release that cannot is a breaking release: its notes say
+contract across two releases). With `blue-green` the reverse must hold as well: the
+previous release keeps serving after this release's migrations ran, so migrations only
+add (columns, tables, indexes) and removals wait for a later release. Switched services
+finish their in-flight requests on SIGTERM within `drain_seconds`. A release that cannot is a breaking release: its notes say
 so, and its rollback is a restore from the pre-migration backup, never a redeploy.
 
 ## 10. Setting up a project (CI side)

@@ -30,10 +30,13 @@ SECRET_VALUE = "db-password-never-printed"
 PLACEMENT = "PUBLIC_HOST=example.test\nHTTP_PORT=18081\nDATA_DIR=/srv/data/example\n"
 
 
-def bundle(*, backup_hook: bool = True, post_switch_hook: bool = False, compose: bytes = b"services: {}\n") -> bytes:
+def bundle(
+    *, backup_hook: bool = True, post_switch_hook: bool = False, compose: bytes = b"services: {}\n", switch: str = "stop-start"
+) -> bytes:
+    release_toml = (EXAMPLES / "release.toml").read_bytes().replace(b'switch = "stop-start"', f'switch = "{switch}"'.encode())
     files = {
         "compose.yaml": compose,
-        "deploy/release.toml": (EXAMPLES / "release.toml").read_bytes(),
+        "deploy/release.toml": release_toml,
         "deploy/settings.toml": (EXAMPLES / "settings.toml").read_bytes(),
         "deploy/env/production.env": (EXAMPLES / "production.env").read_bytes(),
     }
@@ -52,13 +55,29 @@ def bundle(*, backup_hook: bool = True, post_switch_hook: bool = False, compose:
 
 
 class FakeDocker:
-    """Answers the engine's docker commands and tracks which commit is running."""
+    """Answers the engine's docker commands and models the web containers of the project.
+
+    Each web container runs one commit on its own loopback port; `running` is the commit the
+    project's web service serves (None when stopped, or while two commits run side by side).
+    """
+
+    STABLE_PORT = 18081
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
-        self.running: str | None = None
+        self.web: dict[str, tuple[str, int]] = {}  # container id -> (commit, port)
         self.fail: set[tuple[str, str]] = set()  # (step, commit)
         self.unhealthy: set[str] = set()
+        self.counter = 0
+
+    @property
+    def running(self) -> str | None:
+        commits = {commit for commit, _ in self.web.values()}
+        return commits.pop() if len(commits) == 1 else None
+
+    def start_web(self, commit: str, port: int) -> None:
+        self.counter += 1
+        self.web[f"web{self.counter:04d}"] = (commit, port)
 
     def __call__(self, arguments: list[str], env: dict, cwd: Path | None, timeout: int) -> int:
         commit = env.get("AF_COMMIT", "")
@@ -73,25 +92,47 @@ class FakeDocker:
         elif arguments[:3] == ["docker", "image", "rm"]:
             self.calls.append(("image-rm", arguments[3]))
             return 0
+        elif arguments[:2] in (["docker", "stop"], ["docker", "rm"]):
+            ids = [a for a in arguments[2:] if a.startswith("web")]
+            self.calls.append((f"container-{arguments[1]}", ",".join(ids)))
+            for container in ids:
+                self.web.pop(container, None)
+            return 0
         else:
             sub = arguments[arguments.index("--file") + 2 :]
             step = sub[0]
             if step == "run":
                 step = "migrate" if "app.migrate" in sub else "preflight"
+            elif step == "up" and "--scale" in sub:
+                step = "beside"
         self.calls.append((step, commit[:4]))
         if (step, commit) in self.fail:
             return 1
         if step == "up":
-            self.running = commit
+            if not any(c == commit for c, _ in self.web.values()):
+                self.web.clear()
+                self.start_web(commit, self.STABLE_PORT)
+        elif step == "beside":
+            self.start_web(commit, self.STABLE_PORT + 1 + self.counter)
         elif step == "stop":
-            self.running = None
+            self.web.clear()
         return 0
 
+    def query(self, arguments: list[str], env: dict) -> tuple[int, str]:
+        if arguments[:2] == ["docker", "ps"]:
+            service = next(a.rsplit("=", 1)[1] for a in arguments if a.startswith("label=com.docker.compose.service="))
+            return 0, "".join(f"{c}\n" for c in sorted(self.web)) if service == "web" else ""
+        if arguments[:2] == ["docker", "port"] and arguments[2] in self.web:
+            return 0, f"127.0.0.1:{self.web[arguments[2]][1]}\n"
+        return 1, ""
+
     def health(self, url: str) -> dict | None:
-        assert url == "http://127.0.0.1:18081/health/release"
-        if self.running is None or self.running in self.unhealthy:
-            return None
-        return {"revision": self.running}
+        port = int(url.split(":")[2].split("/")[0])
+        assert url.endswith("/health/release")
+        for commit, container_port in self.web.values():
+            if container_port == port and commit not in self.unhealthy:
+                return {"revision": commit}
+        return None
 
     def steps(self) -> list[str]:
         return [step for step, _ in self.calls]
@@ -150,6 +191,7 @@ class Host:
             registry=af_oci.Registry(),
             verify=lambda reference: None,
             runner=self.docker,
+            query=self.docker.query,
             health=self.docker.health,
             sleep=lambda seconds: None,
             health_attempts=2,
@@ -430,6 +472,70 @@ class ProxyRoutes(unittest.TestCase):
                       {"sites": "/s", "reload": ["c"], "extra": 1}):
             with self.subTest(proxy=proxy), self.assertRaises(af_engine.EngineError):
                 af_engine.ProxyConfig.parse(proxy)
+
+
+class BlueGreen(unittest.TestCase):
+    """The new release starts beside the old one; the old one serves until the routes move."""
+
+    def setUp(self) -> None:
+        self.registry = self.enterContext(FakeRegistry())
+        self.host = Host(self, self.registry)
+        self.sites = self.host.base.parent / "sites"
+        self.sites.mkdir()
+        self.host.config.proxy = af_engine.ProxyConfig(self.sites, ["caddy", "reload"])
+        self.route_file = self.sites / "example-production.caddy"
+        self.host.publish(A, created="2026-10-20T00:00:00Z", switch="blue-green")
+        self.assertEqual(self.host.deploy()["result"], "deployed")  # the first release starts normally
+        self.host.docker.calls.clear()
+
+    def upgrade(self) -> dict:
+        self.host.publish(B, created="2026-10-21T00:00:00Z", switch="blue-green")
+        return self.host.deploy()
+
+    def test_routes_move_to_the_new_container_before_the_old_one_stops(self) -> None:
+        record = self.upgrade()
+        self.assertEqual((record["result"], record["exit_code"]), ("deployed", 0))
+        steps = self.host.docker.steps()
+        self.assertNotIn("stop", steps)
+        self.assertEqual(steps[steps.index("migrate"):], ["migrate", "beside", "reload", "container-stop", "container-rm", "up"])
+        self.assertEqual(self.host.docker.running, B)
+        new_port = next(port for commit, port in self.host.docker.web.values())
+        self.assertNotEqual(new_port, FakeDocker.STABLE_PORT)
+        self.assertIn(f"reverse_proxy 127.0.0.1:{new_port}\n", self.route_file.read_text())
+        self.assertEqual(self.host.current_commit(), B)
+
+    def test_an_unhealthy_new_container_is_removed_and_the_old_one_keeps_serving(self) -> None:
+        routes = self.route_file.read_text()
+        self.host.docker.unhealthy.add(B)
+        record = self.upgrade()
+        self.assertEqual((record["result"], record["exit_code"]), ("failed", 1))
+        self.assertEqual(self.host.docker.running, A)
+        self.assertEqual(self.route_file.read_text(), routes)
+        self.assertNotIn("reload", self.host.docker.steps())
+        self.assertEqual(self.host.current_commit(), A)
+
+    def test_a_refused_route_change_keeps_the_old_container_serving(self) -> None:
+        routes = self.route_file.read_text()
+        self.host.docker.fail.add(("reload", ""))
+        record = self.upgrade()
+        self.assertEqual(record["result"], "failed")
+        self.assertEqual(self.host.docker.running, A)
+        self.assertEqual(self.route_file.read_text(), routes)
+
+    def test_a_failed_migration_never_stops_the_running_release(self) -> None:
+        self.host.docker.fail.add(("migrate", B))
+        record = self.upgrade()
+        self.assertEqual((record["result"], record["exit_code"]), ("failed", 1))
+        self.assertEqual(self.host.docker.running, A)
+        self.assertNotIn("stop", self.host.docker.steps())
+
+    def test_blue_green_needs_a_proxy_on_the_host(self) -> None:
+        self.host.config.proxy = None
+        self.host.publish(B, created="2026-10-21T00:00:00Z", switch="blue-green")
+        with self.assertRaises(af_engine.EngineError) as caught:
+            self.host.deploy()
+        self.assertEqual(caught.exception.exit_code, af_engine.EXIT_REFUSED)
+        self.assertEqual(self.host.docker.running, A)
 
 if __name__ == "__main__":
     unittest.main()

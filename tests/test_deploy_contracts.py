@@ -106,6 +106,24 @@ class ProjectConfig(unittest.TestCase):
         config = dict(self.config, switch="blue-green", routes=[])
         self.assertTrue(contracts.validate_project_config(config))
 
+    def test_blue_green_switches_the_health_service(self) -> None:
+        config = dict(self.config, switch="blue-green")
+        self.assertEqual(contracts.validate_project_config(config), [])
+        config["routes"] = [{"host_setting": "PUBLIC_HOST", "service": "worker", "port": 8000}]
+        self.assertIn("health service to be a routed service", "; ".join(contracts.validate_project_config(config)))
+
+    def test_routes_and_health_name_a_service_and_its_container_port(self) -> None:
+        for route in (
+            {"host_setting": "PUBLIC_HOST", "port_setting": "HTTP_PORT"},
+            {"host_setting": "PUBLIC_HOST", "service": "web", "port": 0},
+            {"host_setting": "PUBLIC_HOST", "service": "web", "port": True},
+            {"host_setting": "public_host", "service": "web", "port": 8000},
+        ):
+            with self.subTest(route=route):
+                self.assertTrue(contracts.validate_project_config(dict(self.config, routes=[route])))
+        health = dict(self.config["health"], port="8000")
+        self.assertTrue(contracts.validate_project_config(dict(self.config, health=health)))
+
     def test_production_with_migrations_requires_backup(self) -> None:
         config = copy.deepcopy(self.config)
         config["environments"]["production"]["backup"] = "optional"
