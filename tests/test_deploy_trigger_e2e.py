@@ -39,11 +39,11 @@ class TriggersEndToEnd(EngineSandbox):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            self.assertEqual(af_trigger.Agent().poll(pull_configs), 0)
+            first = af_trigger.Agent().poll(pull_configs)
             # A second pass finds nothing new and leaves the engine alone.
-            self.assertEqual(af_trigger.Agent().poll(pull_configs), 0)
+            second = af_trigger.Agent().poll(pull_configs)
             status = af_trigger.receive(push_configs, "sandbox", ["production"], "deploy production ci-bot")
-        self.assertEqual(status, 0)
+        self.assertEqual((first, second, status), (0, 0, 0), output.getvalue())
         self.assertNotIn("sandbox-secret", output.getvalue())
 
         self.assertEqual(self.served_revision("staging"), commit)
@@ -66,7 +66,7 @@ class TriggersEndToEnd(EngineSandbox):
         configs = self.work / "hosts"
         self.write_config(staging, configs)
         self.publish(commit, "2026-10-20T00:00:00Z", environments=("staging",))
-        self.assertEqual(self.deploy(staging)["result"], "deployed")
+        self.assertEqual(self.deploy(staging)["result"], "deployed", self.last_output)
 
         sent: list[str] = []
         notifier = af_notify.Notifier([])

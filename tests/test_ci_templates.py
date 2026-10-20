@@ -471,5 +471,15 @@ class AgentUnitTests(unittest.TestCase):
         self.assertIn("NoNewPrivileges=yes", service)
 
 
+
+class HostProxyTemplateTests(unittest.TestCase):
+    """The host Caddyfile: routes come only from engine-written site files; admin is not on TCP."""
+
+    def test_admin_api_is_a_restricted_unix_socket_and_sites_are_imported(self) -> None:
+        caddyfile = (DEPLOY_ROOT / "caddy" / "Caddyfile").read_text()
+        self.assertIn("admin unix//run/caddy/admin.sock|0660", caddyfile)
+        self.assertIn("import /etc/caddy/sites/*.caddy", caddyfile)
+        self.assertNotRegex(caddyfile, r"admin\s+(localhost|127\.0\.0\.1|:)")
+
 if __name__ == "__main__":
     unittest.main()

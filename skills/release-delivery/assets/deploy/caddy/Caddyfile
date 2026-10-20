@@ -1,0 +1,11 @@
+# Host Caddyfile for the agent-framework deployment standard (ADR 0009, ingress).
+# Install as /etc/caddy/Caddyfile. Each project environment's routes live in
+# /etc/caddy/sites/<project>-<environment>.caddy, written by af_engine; never edit those.
+# Sites with a public domain get automatic HTTPS; behind a tunnel set proxy.tls = false.
+{
+	# The admin API listens only on a unix socket: members of the caddy group (the `af`
+	# deploy user) may reload, other local users may not.
+	admin unix//run/caddy/admin.sock|0660
+}
+
+import /etc/caddy/sites/*.caddy
