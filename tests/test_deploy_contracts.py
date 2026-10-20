@@ -131,6 +131,13 @@ class ProjectConfig(unittest.TestCase):
         config["migrate"] = []
         self.assertEqual(contracts.validate_project_config(config), [])
 
+    def test_an_image_target_names_a_build_stage(self) -> None:
+        for target, valid in (("runtime", True), ("backup.v2", True), ("", False), ("a b", False), (3, False)):
+            with self.subTest(target=target):
+                config = copy.deepcopy(self.config)
+                config["images"][0]["target"] = target
+                self.assertEqual(contracts.validate_project_config(config) == [], valid)
+
     def test_standard_version_and_health_are_required(self) -> None:
         self.assertTrue(contracts.validate_project_config(dict(self.config, af_standard=2)))
         self.assertTrue(contracts.validate_project_config(dict(self.config, health={"service": "web"})))

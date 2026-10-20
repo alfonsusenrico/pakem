@@ -144,6 +144,18 @@ class Publishing(unittest.TestCase):
         self.assertEqual(record["schema_version"], "0010_accounts")
         self.assertFalse(any("test-key-material" in " ".join(call) for call in self.tools.calls))
 
+    def test_an_image_target_builds_that_stage(self) -> None:
+        root = project(self)
+        config = (root / "deploy/release.toml").read_text()
+        (root / "deploy/release.toml").write_text(
+            config.replace('dockerfile = "Dockerfile.worker"', 'dockerfile = "Dockerfile"\ntarget = "worker"')
+        )
+        self.publisher.publish(root, COMMIT, "https://github.com/owner/example", "https://ci.test/run/1")
+        web, worker = self.tools.tools("docker", "buildx")
+        self.assertNotIn("--target", web)
+        self.assertEqual(worker[worker.index("--target") + 1], "worker")
+        self.assertEqual(worker[worker.index("--file") + 1], str(root / "Dockerfile"))
+
     def test_promotion_reuses_the_verified_staging_record(self) -> None:
         staging = self.publisher.publish(project(self), COMMIT, "https://github.com/owner/example", "https://ci.test/run/1")
         builds_before = len(self.tools.tools("docker"))

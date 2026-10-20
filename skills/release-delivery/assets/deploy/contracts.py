@@ -33,6 +33,8 @@ DIGEST_REF = re.compile(r"[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+@sha256:[0-9a-f]{
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 SERVICE = re.compile(r"[a-z][a-z0-9_-]{0,62}")
 SETTING = re.compile(r"[A-Z][A-Z0-9_]{0,127}")
+# A Dockerfile build stage (`FROM ... AS <stage>`).
+STAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}")
 ENVIRONMENT = re.compile(r"[a-z][a-z0-9-]{0,31}")
 SCHEMA_VERSION = re.compile(r"[A-Za-z0-9._-]{1,128}")
 GENERATOR = re.compile(r"(token_urlsafe|token_hex):([1-9][0-9]{0,3})")
@@ -205,6 +207,8 @@ def validate_project_config(config: dict) -> list[str]:
         for image in images:
             if not isinstance(image, dict) or not _match(SERVICE, image.get("name")):
                 problems.append(f"{label}: every image needs a valid name")
+            elif "target" in image and not _match(STAGE, image["target"]):
+                problems.append(f"{label}: an image target must be a build stage name")
     health = config.get("health")
     if not isinstance(health, dict) or not all(isinstance(health.get(k), str) for k in ("service", "path", "revision_key")):
         problems.append(f"{label}: health needs service, path and revision_key")
