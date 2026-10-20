@@ -33,6 +33,12 @@ published checksum file and a local download.
 | shellcheck | `0.11.0` | `shellcheck-v0.11.0.linux.x86_64.tar.xz` | `8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198` |
 | hadolint | `2.15.1` | `hadolint-linux-x86_64` | `c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507` |
 
+| cosign | `v3.1.3` | `cosign-linux-amd64` | `4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71` |
+| oras | `1.3.5` | `oras_1.3.5_linux_amd64.tar.gz` | `f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22` |
+
+cosign and oras (release.yml, resolved 2026-10-19) were cross-checked against
+`cosign_checksums.txt` and `oras_1.3.5_checksums.txt` from the same releases.
+
 ## Tools run through uv or npm
 
 | Tool | Version | Where |
@@ -63,6 +69,8 @@ digest in its fixtures:
 
 | Image | Used by | Digest |
 | --- | --- | --- |
+| `tonistiigi/binfmt:qemu-v10.2.3` | GitHub release (arm64 emulation for multi-architecture builds; resolved 2026-10-19) | `sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0` |
+| `moby/buildkit:v0.33.1` | GitHub release (buildx builder; v0.34.0 was 12 days old on 2026-10-19) | `sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea` |
 | `docker:29.4.3-dind` | sandbox host (sshd, Docker in Docker) | `sha256:685b91dca8eab7de1dce1c303dbb7a763e4082d6a60db10968adf3295fbd2495` |
 | `busybox:1.37.0` | sandbox sample app | `sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e` |
 

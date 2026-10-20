@@ -21,6 +21,8 @@ DEPLOY_ROOT = REPO_ROOT / "skills" / "release-delivery" / "assets" / "deploy"
 DEPLOY_TEMPLATES = [
     GITHUB_ROOT / "workflows" / "deploy.yml",
     GITHUB_ROOT / "deploy.example.yml",
+    GITHUB_ROOT / "workflows" / "release.yml",
+    GITHUB_ROOT / "release.example.yml",
     GITLAB_ROOT / "deploy.yml",
 ]
 
@@ -37,7 +39,7 @@ IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 
 
 def github_workflow_files() -> list[Path]:
-    examples = [GITHUB_ROOT / "ci.example.yml", GITHUB_ROOT / "deploy.example.yml"]
+    examples = [GITHUB_ROOT / "ci.example.yml", GITHUB_ROOT / "deploy.example.yml", GITHUB_ROOT / "release.example.yml"]
     return sorted((GITHUB_ROOT / "workflows").glob("*.yml")) + examples
 
 
@@ -114,7 +116,10 @@ def job_blocks(workflow_text: str) -> dict[str, str]:
 class GitHubTemplateTests(unittest.TestCase):
     def test_expected_templates_exist(self) -> None:
         names = {path.name for path in (GITHUB_ROOT / "workflows").glob("*.yml")}
-        self.assertEqual(names, {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml"})
+        self.assertEqual(
+            names, {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml", "release.yml"}
+        )
+        self.assertTrue((GITHUB_ROOT / "release.example.yml").is_file())
         self.assertTrue((GITHUB_ROOT / "ci.example.yml").is_file())
         self.assertTrue((GITHUB_ROOT / "deploy.example.yml").is_file())
 
@@ -339,7 +344,8 @@ class DeployTemplateTests(unittest.TestCase):
 
     def test_deploy_templates_pin_hosts_and_name_no_servers(self) -> None:
         scripts = [path for path in sorted(DEPLOY_ROOT.iterdir()) if path.suffix in (".py", ".sh", ".md", ".toml")]
-        self.assertEqual(len(scripts), 12)
+        # A lower bound: the scan must cover the deploy tooling, not be emptied by a rename.
+        self.assertGreaterEqual(len(scripts), 11)
         examples = sorted((DEPLOY_ROOT / "contracts").iterdir())
         for path in DEPLOY_TEMPLATES + scripts + examples:
             text = path.read_text()
@@ -362,6 +368,44 @@ class DeployTemplateTests(unittest.TestCase):
             self.assertIn(option, text)
         self.assertIn('ssh-keygen -F "$known_name"', text)
         self.assertTrue(text.startswith("#!/bin/sh\n"))
+
+
+class ReleaseTemplateTests(unittest.TestCase):
+    """The contracts-v1 release workflow (build once, sign, move pointers)."""
+
+    def setUp(self) -> None:
+        self.workflow = (GITHUB_ROOT / "workflows" / "release.yml").read_text()
+        self.example = (GITHUB_ROOT / "release.example.yml").read_text()
+
+    def test_tools_and_images_are_pinned_and_recorded(self) -> None:
+        pins = PINS.read_text()
+        for line in self.workflow.splitlines():
+            image = re.match(r"^\s+AF_[A-Z_]+_IMAGE:\s*(\S+)$", line)
+            if image is not None:
+                self.assertRegex(image.group(1), r"@sha256:[0-9a-f]{64}$")
+                self.assertIn(image.group(1).split("@")[1], pins)
+        self.assertEqual(self.workflow.count("sha256sum --check --strict"), 2)
+
+    def test_only_the_release_job_may_write_packages(self) -> None:
+        self.assertRegex(self.workflow, r"(?m)^    permissions:\n      contents: read\n      packages: write$")
+        self.assertRegex(self.workflow, r"(?m)^permissions:\n  contents: read$")
+
+    def test_signing_key_reaches_the_script_only_through_env(self) -> None:
+        self.assertIn("COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}", self.workflow)
+        self.assertIn('rm -rf "$RUNNER_TEMP/af-docker"', self.workflow)
+
+    def test_releases_are_serialized_and_commits_come_from_the_release_branch(self) -> None:
+        self.assertIn("cancel-in-progress: false", self.workflow)
+        self.assertIn('git merge-base --is-ancestor "$COMMIT" "$RELEASE_REF"', self.workflow)
+
+    def test_example_publishes_main_promotes_tags_and_rolls_back_by_hand(self) -> None:
+        jobs = job_blocks(self.example)
+        self.assertEqual(set(jobs), {"verify", "publish", "promote", "rollback"})
+        self.assertIn("needs: verify", jobs["publish"])
+        self.assertIn("refs/heads/main", jobs["publish"])
+        self.assertIn("startsWith(github.ref, 'refs/tags/v')", jobs["promote"])
+        self.assertIn("version: ${{ github.ref_name }}", jobs["promote"])
+        self.assertIn("workflow_dispatch", jobs["rollback"])
 
 
 if __name__ == "__main__":

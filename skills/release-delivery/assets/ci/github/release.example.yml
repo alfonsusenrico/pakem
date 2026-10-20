@@ -1,0 +1,73 @@
+# Example caller for workflows/release.yml (contracts v1). Copy to .github/workflows/release.yml
+# next to the verification workflows; the reusable workflow itself goes to
+# .github/workflows/af-release.yml.
+#
+# - push to main      -> verify, build once, sign, move release-staging
+# - push tag vX.Y.Z   -> promote that commit's staging record to release-production
+# - manual run        -> roll an environment back to an earlier commit's record
+#
+# Protect `v*` tags (repository rulesets where the plan allows; otherwise only the owner
+# has write access). Hosts pick up the new pointer themselves (pull) or a push trigger
+# runs the engine after this workflow.
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to roll back.
+        type: choice
+        options: [staging, production]
+      commit:
+        description: Full SHA of the earlier commit to return to.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/verify-python.yml
+    permissions:
+      contents: read
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/af-release.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      mode: publish
+      commit: ${{ github.sha }}
+    secrets: inherit
+
+  promote:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/af-release.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      mode: promote
+      commit: ${{ github.sha }}
+      version: ${{ github.ref_name }}
+    secrets: inherit
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/af-release.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      mode: rollback
+      commit: ${{ inputs.commit }}
+      environment: ${{ inputs.environment }}
+    secrets: inherit
