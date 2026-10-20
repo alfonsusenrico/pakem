@@ -84,6 +84,10 @@ SWITCH_MODES = {"stop-start", "blue-green"}
 BACKUP_MODES = {"required", "optional"}
 
 
+def _port(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 < value < 65536
+
+
 def _match(pattern: re.Pattern[str], value: object) -> bool:
     return isinstance(value, str) and pattern.fullmatch(value) is not None
 
@@ -204,8 +208,8 @@ def validate_project_config(config: dict) -> list[str]:
     health = config.get("health")
     if not isinstance(health, dict) or not all(isinstance(health.get(k), str) for k in ("service", "path", "revision_key")):
         problems.append(f"{label}: health needs service, path and revision_key")
-    elif not _match(SETTING, health.get("port_setting")) or not str(health["path"]).startswith("/"):
-        problems.append(f"{label}: health needs an absolute path and port_setting (a placement name)")
+    elif not _port(health.get("port")) or not str(health["path"]).startswith("/"):
+        problems.append(f"{label}: health needs an absolute path and the service's container port")
     for key in ("preflight", "migrate"):
         if key in config and not isinstance(config[key], (list, dict)):
             problems.append(f"{label}: {key} must be a command list or table")
@@ -220,10 +224,15 @@ def validate_project_config(config: dict) -> list[str]:
     for route in routes:
         if (
             not isinstance(route, dict)
-            or set(route) != {"host_setting", "port_setting"}
-            or not all(_match(SETTING, route[key]) for key in ("host_setting", "port_setting"))
+            or set(route) != {"host_setting", "service", "port"}
+            or not _match(SETTING, route["host_setting"])
+            or not _match(SERVICE, route["service"])
+            or not _port(route["port"])
         ):
-            problems.append(f"{label}: every route needs exactly host_setting and port_setting (placement names)")
+            problems.append(f"{label}: every route needs exactly host_setting, service, and port")
+    if switch == "blue-green" and isinstance(health, dict) and routes and all(isinstance(r, dict) for r in routes):
+        if health.get("service") not in {route.get("service") for route in routes}:
+            problems.append(f"{label}: blue-green needs the health service to be a routed service")
     environments = config.get("environments")
     if not isinstance(environments, dict) or not environments:
         problems.append(f"{label}: at least one [environments.<name>] table is required")

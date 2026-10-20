@@ -151,6 +151,7 @@ def check_private_directory(path: Path, label: str) -> None:
 
 
 Runner = Callable[[list[str], dict[str, str], Path | None, int], int]
+Query = Callable[[list[str], dict[str, str]], tuple[int, str]]
 HealthProbe = Callable[[str], dict | None]
 
 
@@ -161,6 +162,15 @@ def run_command(arguments: list[str], env: dict[str, str], cwd: Path | None, tim
     except subprocess.TimeoutExpired:
         log(f"{arguments[0]} {arguments[1] if len(arguments) > 1 else ''} timed out")
         return 124
+
+
+def run_query(arguments: list[str], env: dict[str, str]) -> tuple[int, str]:
+    """Run a read-only docker query and return its exit code and standard output."""
+    try:
+        result = subprocess.run(arguments, env=env, capture_output=True, text=True, timeout=60, check=False)
+    except subprocess.TimeoutExpired:
+        return 124, ""
+    return result.returncode, result.stdout
 
 
 def probe_health(url: str) -> dict | None:
@@ -198,6 +208,7 @@ class Engine:
         registry: af_oci.Registry | None = None,
         verify: af_release.Verify | None = None,
         runner: Runner = run_command,
+        query: Query = run_query,
         health: HealthProbe = probe_health,
         sleep: Callable[[float], None] = time.sleep,
         health_attempts: int = HEALTH_ATTEMPTS,
@@ -213,6 +224,7 @@ class Engine:
         self.registry = registry or af_oci.Registry(credentials)
         self.verify = verify or af_release.CosignVerifier(host.public_key)
         self.runner = runner
+        self.query = query
         self.health = health
         self.sleep = sleep
         self.health_attempts = health_attempts
@@ -265,19 +277,51 @@ class Engine:
         env = {**self._env(release), **(extra or {})}
         return self.runner([str(path)], env, release.bundle, HOOK_TIMEOUT) == 0
 
-    def healthy(self, release: Release) -> bool:
+    # -- containers and health ---------------------------------------------------------
+
+    def _docker_env(self) -> dict[str, str]:
+        return {key: os.environ[key] for key in ("PATH", "HOME", "DOCKER_HOST", "DOCKER_CONFIG") if key in os.environ}
+
+    def containers(self, service: str) -> list[str]:
+        """IDs of the running containers of one service in this environment's Compose project."""
+        code, output = self.query(
+            [
+                "docker", "ps", "--quiet", "--no-trunc",
+                "--filter", f"label=com.docker.compose.project={self.host.compose_project}",
+                "--filter", f"label=com.docker.compose.service={service}",
+                "--filter", "status=running",
+            ],
+            self._docker_env(),
+        )
+        return sorted(output.split()) if code == 0 else []
+
+    def loopback_port(self, container: str, port: int) -> int | None:
+        """The host port Docker published for a container port, only if bound to 127.0.0.1."""
+        code, output = self.query(["docker", "port", container, f"{port}/tcp"], self._docker_env())
+        bindings = output.split() if code == 0 else []
+        if not bindings or any(not binding.startswith("127.0.0.1:") for binding in bindings):
+            return None
+        return int(bindings[0].rsplit(":", 1)[1])
+
+    def healthy(self, release: Release, containers: list[str] | None = None) -> bool:
+        """Every running container of the health service (or the given ones) must report the
+        release's commit on its own loopback port."""
         health = release.config["health"]
-        port = read_runtime(release.runtime).get(health["port_setting"], "")
-        if not port.isdigit():
-            return False
-        url = f"http://127.0.0.1:{port}{health['path']}"
         for attempt in range(self.health_attempts):
-            body = self.health(url)
-            if body is not None and body.get(health["revision_key"]) == release.record["commit"]:
+            targets = containers if containers is not None else self.containers(health["service"])
+            if targets and all(self._reports(release, target) for target in targets):
                 return True
             if attempt + 1 < self.health_attempts:
                 self.sleep(HEALTH_INTERVAL)
         return False
+
+    def _reports(self, release: Release, container: str) -> bool:
+        health = release.config["health"]
+        port = self.loopback_port(container, health["port"])
+        if port is None:
+            return False
+        body = self.health(f"http://127.0.0.1:{port}{health['path']}")
+        return body is not None and body.get(health["revision_key"]) == release.record["commit"]
 
     # -- proxy routes ------------------------------------------------------------------
 
@@ -286,28 +330,37 @@ class Engine:
         proxy = self.host.proxy
         return proxy.sites / f"{self.host.compose_project}.caddy" if proxy else None
 
-    def route_text(self, release: Release) -> str | None:
-        """The proxy site file for a release, or None when this host or project has no routes.
-
-        Domains and ports come from the release's runtime file and are checked before they
-        reach the Caddyfile, so a placement value can never inject proxy configuration.
-        """
+    def route_domains(self, release: Release) -> list[str] | None:
+        """Each route's domain, checked before anything stops; None when this host or project
+        has no routes. A placement value can never inject proxy configuration."""
         routes = release.config.get("routes") or []
         if self.host.proxy is None or not routes:
             return None
         if not self.host.proxy.sites.is_dir():
             raise EngineError("proxy.sites is not a directory", EXIT_REFUSED)
         values = read_runtime(release.runtime)
-        blocks = []
+        domains = []
         for route in routes:
             domain = values.get(route["host_setting"], "")
-            port = values.get(route["port_setting"], "")
             if not DOMAIN.fullmatch(domain):
                 raise EngineError(f"route {route['host_setting']} must hold a lowercase domain name", EXIT_REFUSED)
-            if not port.isdigit() or not 0 < int(port) < 65536:
-                raise EngineError(f"route {route['port_setting']} must hold a port number", EXIT_REFUSED)
+            domains.append(domain)
+        return domains
+
+    def route_text(self, release: Release, domains: list[str] | None, chosen: dict[str, list[str]]) -> str | None:
+        """The proxy site file: each domain to the loopback ports of its service's containers
+        (`chosen` names the containers per service; others are looked up)."""
+        if domains is None:
+            return None
+        blocks = []
+        for domain, route in zip(domains, release.config["routes"], strict=True):
+            targets = chosen.get(route["service"]) or self.containers(route["service"])
+            ports = [self.loopback_port(target, route["port"]) for target in targets]
+            if not ports or None in ports:
+                raise EngineError(f"service {route['service']} publishes no loopback port {route['port']}", EXIT_FAILED)
             address = domain if self.host.proxy.tls else f"http://{domain}"
-            blocks.append(f"{address} {{\n\treverse_proxy 127.0.0.1:{int(port)}\n}}\n")
+            upstreams = " ".join(f"127.0.0.1:{port}" for port in ports)
+            blocks.append(f"{address} {{\n\treverse_proxy {upstreams}\n}}\n")
         header = (
             f"# Managed by af_engine for {self.host.project} {self.host.environment}; "
             "changes here are overwritten.\n"
@@ -449,8 +502,8 @@ class Engine:
         log(f"deploying {fetched.record['commit'][:12]} ({fetched.record['version'] or 'unversioned'})")
         try:
             candidate = self.prepare(fetched, previous)
-            if candidate.config.get("switch", "stop-start") != "stop-start":
-                raise EngineError("blue-green switching is not in this engine version", EXIT_REFUSED)
+            if candidate.config.get("switch", "stop-start") == "blue-green" and self.host.proxy is None:
+                raise EngineError("blue-green switching needs a [proxy] on this host", EXIT_REFUSED)
             settings = af_settings.build_runtime(
                 candidate.bundle,
                 self.host.environment,
@@ -459,7 +512,7 @@ class Engine:
                 placement_file=None if self.placement_values is not None else self.base / "placement.env",
                 placement_values=self.placement_values,
             )
-            routes = self.route_text(candidate)
+            domains = self.route_domains(candidate)
         except (af_release.ReleaseError, af_settings.SettingsError) as error:
             raise EngineError(str(error), EXIT_REFUSED) from None
         if settings.generated:
@@ -479,32 +532,48 @@ class Engine:
         if not self.hook(candidate, "pre_migrate"):
             return self._fail_early("pre_migrate hook failed", fetched, previous, started)
 
-        # From here the old release is stopped; failures restore it or stop for the owner.
-        if previous is not None:
+        # stop-start: from here the old release is stopped; failures restore it or stop for the
+        # owner. blue-green: the old release keeps serving until the routes have moved.
+        blue_green = candidate.config.get("switch", "stop-start") == "blue-green" and previous is not None
+        drain = int(candidate.config.get("drain_seconds", 60))
+        if previous is not None and not blue_green:
             log("stopping the previous release")
-            drain = str(int(candidate.config.get("drain_seconds", 60)))
-            self.compose(previous, "stop", "--timeout", drain)
+            self.compose(previous, "stop", "--timeout", str(drain))
+
+        def fail(reason: str, backup: str | None) -> dict:
+            if blue_green:
+                return self._fail_beside(reason, [], fetched, previous, started, backup)
+            return self._fail_late(reason, candidate, fetched, previous, started, backup)
+
         backup = None
         migrations = bool(candidate.config.get("migrate"))
         environment = candidate.config["environments"].get(self.host.environment, {})
         backup_required = migrations and environment.get("backup", "optional") == "required"
         hook_present = (candidate.bundle / "deploy/hooks/backup").exists()
         if backup_required and not hook_present:
-            return self._fail_late("backup is required but the bundle has no backup hook", candidate, fetched, previous, started, None)
+            return fail("backup is required but the bundle has no backup hook", None)
         if hook_present and previous is not None:
             backup_dir = self.base / "backups" / started.replace(":", "").replace("-", "")
             backup_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             if not self.hook(candidate, "backup", {"AF_BACKUP_DIR": str(backup_dir)}) or not any(backup_dir.iterdir()):
-                return self._fail_late("backup hook failed or wrote nothing", candidate, fetched, previous, started, None)
+                return fail("backup hook failed or wrote nothing", None)
             backup = str(backup_dir)
         if migrations:
             service = candidate.config.get("migrate_service", candidate.config["health"]["service"])
             if self.compose(candidate, "run", "--rm", "--no-deps", service, *candidate.config["migrate"]) != 0:
-                return self._fail_late("migration failed", candidate, fetched, previous, started, backup)
+                return fail("migration failed", backup)
+        if blue_green:
+            failure = self._switch_beside(candidate, domains, drain, fetched, previous, started, backup)
+            if failure is not None:
+                return failure
         if self.compose(candidate, "up", "--detach", "--no-build", "--remove-orphans") != 0:
             return self._fail_late("start failed", candidate, fetched, previous, started, backup)
         if not self.healthy(candidate):
             return self._fail_late("health check did not report this release", candidate, fetched, previous, started, backup)
+        try:
+            routes = self.route_text(candidate, domains, {})
+        except EngineError as error:
+            return self._fail_late(str(error), candidate, fetched, previous, started, backup)
         if not self.write_routes(routes):
             return self._fail_late("the proxy refused the new routes", candidate, fetched, previous, started, backup)
         if not self.hook(candidate, "post_switch") or not self.hook(candidate, "smoke"):
@@ -516,6 +585,65 @@ class Engine:
         self.retain(keep, protect)
         log("deployed")
         return self._record("deployed", EXIT_OK, fetched, previous, started, backup)
+
+    def _switch_beside(
+        self,
+        candidate: Release,
+        domains: list[str] | None,
+        drain: int,
+        fetched: af_release.Release,
+        previous: Release | None,
+        started: str,
+        backup: str | None,
+    ) -> dict | None:
+        """Blue-green: start each routed service beside its running containers, check the new
+        ones, move the routes to them, then stop the old ones. A failure before the routes
+        move removes only the new containers. Returns a failure record, or None."""
+        services = sorted({route["service"] for route in candidate.config["routes"]})
+        old = {service: self.containers(service) for service in services}
+        log(f"starting {', '.join(services)} beside the running release")
+        for service in services:
+            count = len(old[service]) + max(len(old[service]), 1)
+            arguments = ("up", "--detach", "--no-build", "--no-deps", "--no-recreate", "--scale", f"{service}={count}", service)
+            if self.compose(candidate, *arguments) != 0:
+                return self._fail_beside("start beside the running release failed", self._new(services, old),
+                                         fetched, previous, started, backup)
+        new = self._new(services, old)
+        started_containers = [container for containers in new.values() for container in containers]
+        if not self.healthy(candidate, new[candidate.config["health"]["service"]]):
+            return self._fail_beside("health check did not report this release", started_containers,
+                                     fetched, previous, started, backup)
+        try:
+            text = self.route_text(candidate, domains, new)
+        except EngineError as error:
+            return self._fail_beside(str(error), started_containers, fetched, previous, started, backup)
+        if not self.write_routes(text):
+            return self._fail_beside("the proxy refused the new routes", started_containers,
+                                     fetched, previous, started, backup)
+        stale = [container for service in services for container in old[service]]
+        if stale:
+            log("routes moved; stopping the previous containers")
+            env = self._docker_env()
+            self.runner(["docker", "stop", "--time", str(drain), *stale], env, None, COMMAND_TIMEOUT)
+            self.runner(["docker", "rm", *stale], env, None, COMMAND_TIMEOUT)
+        return None
+
+    def _new(self, services: list[str], old: dict[str, list[str]]) -> dict[str, list[str]]:
+        return {service: [c for c in self.containers(service) if c not in old[service]] for service in services}
+
+    def _fail_beside(
+        self,
+        reason: str,
+        started_containers: list[str],
+        fetched: af_release.Release,
+        previous: Release | None,
+        started: str,
+        backup: str | None,
+    ) -> dict:
+        log(f"{reason}; the running release keeps serving")
+        if started_containers:
+            self.runner(["docker", "rm", "--force", *started_containers], self._docker_env(), None, COMMAND_TIMEOUT)
+        return self._record("failed", EXIT_FAILED, fetched, previous, started, backup, reason)
 
     def _fail_early(self, reason: str, fetched: af_release.Release, previous: Release | None, started: str) -> dict:
         log(f"{reason}; the running release was not touched")

@@ -39,7 +39,7 @@ RELEASE_TOML = textwrap.dedent(
     service = "web"
     path = "/health"
     revision_key = "revision"
-    port_setting = "HTTP_PORT"
+    port = 8000
 
     [[images]]
     name = "web"

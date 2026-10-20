@@ -11,7 +11,10 @@ migrate_service = "web"
 # How CI finds the newest migration identifier for the release record.
 schema_version = { glob = "src/app/migrations/*.sql" }
 
-# stop-start (default) or blue-green (needs [[routes]] and releases safe side by side).
+# stop-start (default) or blue-green: routed services start beside the running ones and the
+# proxy moves to them before the old ones stop. Blue-green needs a host proxy, routed
+# services published on ephemeral loopback ports ("127.0.0.1::8000"), no state inside those
+# services, and migrations the previous release can run against.
 switch = "stop-start"
 # Seconds running work may take to finish when the old release stops.
 drain_seconds = 60
@@ -20,8 +23,8 @@ drain_seconds = 60
 service = "web"
 path = "/health/release"
 revision_key = "revision"
-# Placement name holding the loopback port the engine checks: http://127.0.0.1:<port><path>
-port_setting = "HTTP_PORT"
+# The service's container port; the engine asks Docker which 127.0.0.1 port publishes it.
+port = 8000
 
 [[images]]
 name = "web"
@@ -35,10 +38,12 @@ dockerfile = "Dockerfile.worker"
 context = "."
 
 # Proxy routes, written by the engine on hosts with a [proxy] table: the domain in the
-# placement value host_setting is served from the loopback port in port_setting.
+# placement value host_setting goes to the loopback port Docker published for the
+# service's container port.
 [[routes]]
 host_setting = "PUBLIC_HOST"
-port_setting = "HTTP_PORT"
+service = "web"
+port = 8000
 
 [environments.staging]
 keep = 3

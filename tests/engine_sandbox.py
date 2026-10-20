@@ -104,7 +104,7 @@ RELEASE_TOML = textwrap.dedent(
     service = "web"
     path = "/health/release"
     revision_key = "revision"
-    port_setting = "HTTP_PORT"
+    port = 8000
 
     [[images]]
     name = "web"
@@ -122,8 +122,8 @@ RELEASE_TOML = textwrap.dedent(
 SETTINGS_TOML = textwrap.dedent(
     """\
     af_standard = 1
-    required = ["HTTP_PORT", "DATABASE_PASSWORD", "LOG_LEVEL"]
-    placement = ["HTTP_PORT"]
+    required = ["HTTP_PORT", "PUBLIC_HOST", "DATABASE_PASSWORD", "LOG_LEVEL"]
+    placement = ["HTTP_PORT", "PUBLIC_HOST"]
     secrets = ["DATABASE_PASSWORD"]
 
     [defaults]
@@ -188,7 +188,7 @@ class EngineSandbox(unittest.TestCase):
         (base / "secrets").mkdir(mode=0o700)
         self.ports[environment] = free_port()
         placement = base / "placement.env"
-        placement.write_text(f"HTTP_PORT={self.ports[environment]}\n")
+        placement.write_text(f"HTTP_PORT={self.ports[environment]}\nPUBLIC_HOST={environment}.example.test\n")
         placement.chmod(0o600)
         af_settings.set_secret(base / "secrets", "DATABASE_PASSWORD", b"sandbox-secret")
         self.addCleanup(
@@ -248,6 +248,9 @@ class EngineSandbox(unittest.TestCase):
         *,
         image_revision: str | None = None,
         environments: tuple[str, ...] = ("production",),
+        compose: str = COMPOSE,
+        release_toml: str = RELEASE_TOML,
+        settings_toml: str = SETTINGS_TOML,
     ) -> None:
         """Build, push, and sign a release the way CI will, and point the environments at it."""
         tag = f"{self.repository}/web:{commit[:12]}"
@@ -255,9 +258,9 @@ class EngineSandbox(unittest.TestCase):
         run("docker", "push", "-q", tag)
         image = run("docker", "inspect", "--format", "{{index .RepoDigests 0}}", tag).strip()
         files = {
-            "compose.yaml": COMPOSE,
-            "deploy/release.toml": RELEASE_TOML,
-            "deploy/settings.toml": SETTINGS_TOML,
+            "compose.yaml": compose,
+            "deploy/release.toml": release_toml,
+            "deploy/settings.toml": settings_toml,
             "deploy/env/staging.env": "LOG_LEVEL=debug\n",
             "deploy/env/production.env": "LOG_LEVEL=info\n",
             "deploy/hooks/backup": BACKUP_HOOK,
