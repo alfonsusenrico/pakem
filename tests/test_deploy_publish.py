@@ -68,6 +68,8 @@ class FakeTools:
             return f"Pushed {target}\nDigest: {self.digest()}\n"
         if tool == "oras" and command == "pull":
             tag = arguments[2].split(":", 1)[1]
+            if tag not in self.artifacts:
+                raise af_publish.PublishError(f"oras pull failed:\nError response from registry: {arguments[2]}: not found")
             output = Path(arguments[arguments.index("--output") + 1])
             (output / "record.json").write_bytes(self.artifacts[tag])
             return f"Pulled\nDigest: {self.digest()}\n"
@@ -153,8 +155,40 @@ class Publishing(unittest.TestCase):
         self.assertIn(f"record-{COMMIT}-production", self.tools.artifacts)
 
     def test_promotion_without_a_staging_record_fails(self) -> None:
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(af_publish.PublishError, "was not published"):
             self.publisher.promote(COMMIT, "v1.2.0", "https://ci.test/run/2", Path("release.pub"))
+
+    def test_promotion_waits_for_a_release_still_being_published(self) -> None:
+        now = [0.0]
+        root = project(self)
+
+        def sleep(seconds: float) -> None:
+            now[0] += seconds
+            if now[0] >= 90:  # the merge's publish finishes while the tag waits
+                self.publisher.sleep = lambda seconds: None
+                self.publisher.publish(root, COMMIT, "https://github.com/owner/example", "https://ci.test/run/1")
+
+        self.publisher.sleep, self.publisher.clock = sleep, lambda: now[0]
+        production = self.publisher.promote(COMMIT, "v1.2.0", "https://ci.test/run/2", Path("release.pub"), 600)
+        self.assertEqual(production["version"], "v1.2.0")
+        self.assertEqual(now[0], 90)
+
+    def test_promotion_gives_up_after_the_wait_and_never_retries_other_errors(self) -> None:
+        now = [0.0]
+        self.publisher.sleep = lambda seconds: now.__setitem__(0, now[0] + seconds)
+        self.publisher.clock = lambda: now[0]
+        with self.assertRaisesRegex(af_publish.PublishError, "was not published"):
+            self.publisher.promote(COMMIT, "v1.2.0", "https://ci.test/run/2", Path("release.pub"), 120)
+        self.assertEqual(now[0], 120)
+
+        def refuse(arguments: list[str], cwd: Path | None) -> str:
+            raise af_publish.PublishError("oras pull failed:\nunauthorized: authentication required")
+
+        calls = []
+        self.publisher.runner = lambda arguments, cwd: calls.append(arguments) or refuse(arguments, cwd)
+        with self.assertRaisesRegex(af_publish.PublishError, "unauthorized"):
+            self.publisher.promote(COMMIT, "v1.2.0", "https://ci.test/run/2", Path("release.pub"), 600)
+        self.assertEqual(len(calls), 1)
 
     def test_rollback_marks_the_record_and_moves_only_that_environment(self) -> None:
         self.publisher.publish(project(self), COMMIT, "https://github.com/owner/example", "https://ci.test/run/1")

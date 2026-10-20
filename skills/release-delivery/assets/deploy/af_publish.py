@@ -29,6 +29,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import tomllib
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -54,6 +55,10 @@ def log(message: str) -> None:
 
 def utc_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# How often a promotion looks again for a release that is still being published.
+RECORD_POLL_SECONDS = 30
 
 
 def run(arguments: list[str], cwd: Path | None = None) -> str:
@@ -133,7 +138,16 @@ def build_bundle(root: Path, config: dict) -> bytes:
 
 
 class Publisher:
-    def __init__(self, repository: str, *, runner: Runner = run, local: bool = False, work: Path | None = None) -> None:
+    def __init__(
+        self,
+        repository: str,
+        *,
+        runner: Runner = run,
+        local: bool = False,
+        work: Path | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         if not re.fullmatch(r"[a-z0-9.:-]+(/[a-z0-9._-]+)+", repository):
             raise PublishError("repository must be <registry>/<path> in lower case")
         self.repository = repository
@@ -141,6 +155,8 @@ class Publisher:
         self.local = local  # loopback registry rehearsal: plain http, single-arch docker build
         self.work = work or Path(tempfile.mkdtemp(prefix="af-publish-"))
         self._signing_config: Path | None = None
+        self.sleep = sleep
+        self.clock = clock
 
     # -- tools -------------------------------------------------------------------------
 
@@ -171,6 +187,22 @@ class Publisher:
         if problems:
             raise PublishError("; ".join(problems))
         return f"{self.repository}@{match[1]}", record
+
+    def wait_for_record(self, tag: str, wait_seconds: int) -> tuple[str, dict]:
+        """pull_record, retrying while the tag does not exist yet (a tag pushed before the
+        merge's publish finished); any other failure is raised at once."""
+        deadline = self.clock() + wait_seconds
+        while True:
+            try:
+                return self.pull_record(tag)
+            except PublishError as error:
+                missing = "not found" in str(error).lower() or "manifest unknown" in str(error).lower()
+                if not missing:
+                    raise
+                if self.clock() >= deadline:
+                    raise PublishError(f"{tag} was not published; publish the commit on main first") from None
+                log(f"{tag} is not published yet; checking again in {RECORD_POLL_SECONDS}s")
+                self.sleep(RECORD_POLL_SECONDS)
 
     def signing_config(self) -> Path:
         if self._signing_config is None:
@@ -248,8 +280,8 @@ class Publisher:
         log("release-staging now points at this commit")
         return record
 
-    def promote(self, commit: str, version: str, ci_run: str, public_key: Path) -> dict:
-        reference, staging = self.pull_record(f"record-{commit}")
+    def promote(self, commit: str, version: str, ci_run: str, public_key: Path, wait_seconds: int = 0) -> dict:
+        reference, staging = self.wait_for_record(f"record-{commit}", wait_seconds)
         self.verify(reference, public_key)
         if staging["commit"] != commit:
             raise PublishError("the staging record belongs to another commit")
@@ -295,6 +327,8 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--public-key", type=Path, required=True)
         if name == "promote":
             sub.add_argument("--version", required=True)
+            sub.add_argument("--wait-minutes", type=int, default=0, choices=range(0, 121), metavar="0-120",
+                             help="wait this long for the commit's release to be published")
         if name == "rollback":
             sub.add_argument("--environment", required=True)
     args = parser.parse_args(argv)
@@ -311,7 +345,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "promote":
             if not contracts.VERSION.fullmatch(args.version):
                 raise PublishError("--version must be vMAJOR.MINOR.PATCH")
-            publisher.promote(args.commit, args.version, args.ci_run, args.public_key)
+            publisher.promote(args.commit, args.version, args.ci_run, args.public_key, args.wait_minutes * 60)
         else:
             if not contracts.ENVIRONMENT.fullmatch(args.environment):
                 raise PublishError("--environment is invalid")

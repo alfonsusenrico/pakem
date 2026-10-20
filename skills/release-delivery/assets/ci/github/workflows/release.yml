@@ -38,6 +38,10 @@ on:
         description: Ref that promoted and rolled-back commits must be ancestors of.
         type: string
         default: origin/main
+      publish_wait_minutes:
+        description: How long a promotion waits for the commit's release to be published (a tag pushed right after the merge).
+        type: number
+        default: 30
       runner:
         description: Runner label.
         type: string
@@ -146,6 +150,7 @@ jobs:
           ENVIRONMENT: ${{ inputs.environment }}
           TOOLS_DIR: ${{ inputs.tools_dir }}
           PUBLIC_KEY: ${{ inputs.public_key }}
+          PUBLISH_WAIT: ${{ inputs.publish_wait_minutes }}
           SOURCE: ${{ github.server_url }}/${{ github.repository }}
           CI_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
@@ -158,7 +163,7 @@ jobs:
                 --source "$SOURCE" --ci-run "$CI_RUN" ;;
             promote)
               python3 "$TOOLS_DIR/af_publish.py" promote --repository "$repository" --commit "$COMMIT" \
-                --version "$VERSION" --ci-run "$CI_RUN" --public-key "$PUBLIC_KEY" ;;
+                --version "$VERSION" --ci-run "$CI_RUN" --public-key "$PUBLIC_KEY" --wait-minutes "$PUBLISH_WAIT" ;;
             rollback)
               python3 "$TOOLS_DIR/af_publish.py" rollback --repository "$repository" --commit "$COMMIT" \
                 --environment "$ENVIRONMENT" --ci-run "$CI_RUN" --public-key "$PUBLIC_KEY" ;;
