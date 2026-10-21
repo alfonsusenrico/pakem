@@ -81,7 +81,7 @@ if [ -z "$VERSION" ]; then
   VERSION="$(git ls-remote --tags --refs "$REPO" 'v*' 2>/dev/null |
     "$PYTHON" -c '
 import re, sys
-tags = [line.rsplit("/", 1)[-1] for line in sys.stdin if line.strip()]
+tags = [line.strip().rsplit("/", 1)[-1] for line in sys.stdin if line.strip()]
 releases = [t for t in tags if re.fullmatch(r"v\d+\.\d+\.\d+", t)]
 releases.sort(key=lambda t: tuple(int(n) for n in t[1:].split(".")))
 print(releases[-1] if releases else "")')"
