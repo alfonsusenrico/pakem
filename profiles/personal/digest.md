@@ -1,4 +1,4 @@
-Personal and freelance rules (agent-framework profile `personal`):
+Personal and freelance rules (Pakem profile `personal`):
 
 - Commit as Alfonsus Enrico <enrico.soebijanto@gmail.com>; set it repo-locally
   before the first commit. A client-issued identity needs an `## Overrides` entry.

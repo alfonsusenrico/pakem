@@ -1,4 +1,4 @@
-# agent-framework CI template: deploy or roll back one commit to one environment.
+# Pakem CI template: deploy or roll back one commit to one environment.
 # Capability: deployed. Runs the framework deploy scripts copied into the project
 # (tools_dir, default deploy/af; release-delivery assets/deploy): Tailscale for private
 # network access, SSH with a pinned host key and a project deploy key, the runtime from

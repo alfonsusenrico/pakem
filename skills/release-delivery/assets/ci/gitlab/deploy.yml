@@ -1,4 +1,4 @@
-# agent-framework CI template (GitLab): deploy, roll back, and smoke-check one environment.
+# Pakem CI template (GitLab): deploy, roll back, and smoke-check one environment.
 # Capability: deployed. The jobs run the framework deploy scripts copied into the project
 # (AF_TOOLS_DIR, default deploy/af; release-delivery assets/deploy). The runner must reach
 # the host's private address (for example a runner on the tailnet). SSH uses the File-type

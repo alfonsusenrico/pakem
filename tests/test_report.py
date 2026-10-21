@@ -45,7 +45,7 @@ class ReportTests(IsolatedTestCase):
 
         text = report_path.read_text()
         self.assertEqual(text, (self.output / "latest.md").read_text())
-        self.assertIn("# Agent framework drift report", text)
+        self.assertIn("# Pakem drift report", text)
         self.assertIn(f"| {self.clean} | ok | 0 | 0 |", text)
         self.assertIn(f"| {self.broken} | ERRORS | 1 |", text)
         self.assertIn(f"### {self.broken}", text)

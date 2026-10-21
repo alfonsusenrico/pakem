@@ -1,4 +1,4 @@
-# Agent Framework Kernel
+# Pakem Kernel
 
 Universal rules for coding agents working for the owner. Project files add facts
 and rules; they never weaken a floor.

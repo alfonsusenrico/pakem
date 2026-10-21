@@ -1,4 +1,4 @@
-# agent-framework CI template: publish, promote, or roll back a release (contracts v1).
+# Pakem CI template: publish, promote, or roll back a release (contracts v1).
 # Capability: deployed. Runs af_publish.py from the framework deploy assets copied into the
 # project (tools_dir, default deploy/af). The image is built once on `main` and promoted by
 # digest; hosts pull the signed release record from `release-<environment>`.

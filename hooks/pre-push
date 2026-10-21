@@ -1,5 +1,5 @@
 #!/bin/sh
-# agent-framework pre-push hook: re-validate pushed commit messages and keep
+# Pakem pre-push hook: re-validate pushed commit messages and keep
 # pushes to protected branches to documentation-only changes.
 # Self-contained on purpose (it is copied into each repository's .githooks/).
 # Protected branches come from the multi-valued git config key

@@ -1,4 +1,4 @@
-# agent-framework
+# Pakem
 
 Rules for agents editing this repository. The kernel itself is `kernel/KERNEL.md`;
 it is installed into each host by `tools/pakem install`, not loaded from here.

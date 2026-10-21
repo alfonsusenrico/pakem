@@ -1,4 +1,4 @@
-# Python tooling defaults from agent-framework (assets/tooling/python).
+# Python tooling defaults from Pakem (assets/tooling/python).
 # Merge these tables into the project's pyproject.toml; see README.md for setup.
 
 [tool.ruff]

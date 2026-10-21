@@ -1,4 +1,4 @@
-# Project caller for the agent-framework CI templates; save as .github/workflows/ci.yml.
+# Project caller for the Pakem CI templates; save as .github/workflows/ci.yml.
 # Copied workflows: uses: ./.github/workflows/<name>.yml
 # Shared CI repository: uses: <owner>/<ci-repo>/.github/workflows/<name>.yml@<40-char-sha> # vX.Y.Z
 name: ci

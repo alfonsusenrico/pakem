@@ -356,7 +356,7 @@ def fixture_agents_text(framework: Framework, scenario: Scenario) -> str:
     project_text = (
         f"# {scenario.scenario_id}\n"
         "\n"
-        "Throwaway fixture repository for an agent-framework compliance eval.\n"
+        "Throwaway fixture repository for a Pakem compliance eval.\n"
         "\n"
         f"Capabilities: {scenario.capabilities}\n"
         "\n"

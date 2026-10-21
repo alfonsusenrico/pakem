@@ -1,6 +1,6 @@
 ---
 name: instruction-maintenance
-description: Use when editing AGENTS.md, CLAUDE.md, GEMINI.md, rules, skills, or the agent framework itself; when instructions conflict, exceed size budgets, or are ignored; or when a lesson from a project should become a framework rule.
+description: Use when editing AGENTS.md, CLAUDE.md, GEMINI.md, rules, skills, or Pakem itself; when instructions conflict, exceed size budgets, or are ignored; or when a lesson from a project should become a framework rule.
 ---
 
 # Instruction Maintenance

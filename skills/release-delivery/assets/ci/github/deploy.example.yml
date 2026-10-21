@@ -1,4 +1,4 @@
-# Project caller for the agent-framework deploy workflow; save as .github/workflows/release.yml
+# Project caller for the Pakem deploy workflow; save as .github/workflows/release.yml
 # next to a copy of workflows/deploy.yml (.github/workflows/deploy.yml) and copy the
 # release-delivery assets/deploy scripts into deploy/af/.
 # Staging deploys every push to main; protect main so only commits whose checks passed

@@ -1,6 +1,6 @@
 ---
 name: pakem-update
-description: Use when the owner says the agent framework was updated or installed, runs /pakem-update, or asks the agent to reload its framework rules in a running session. Re-reads the installed kernel and skills, reports what changed, and aligns the current project with it.
+description: Use when the owner says Pakem was updated or installed, runs /pakem-update, or asks the agent to reload its framework rules in a running session. Re-reads the installed kernel and skills, reports what changed, and aligns the current project with it.
 ---
 
 # Reload the framework in a running session

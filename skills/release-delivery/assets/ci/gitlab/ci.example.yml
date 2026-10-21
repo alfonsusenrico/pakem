@@ -1,4 +1,4 @@
-# Project caller for the agent-framework GitLab CI templates; save as .gitlab-ci.yml.
+# Project caller for the Pakem GitLab CI templates; save as .gitlab-ci.yml.
 include:
   # Shared CI project holding copies of the framework release-delivery assets/ci/gitlab files, pinned to a tag or SHA:
   - project: my-group/agent-profile-ci

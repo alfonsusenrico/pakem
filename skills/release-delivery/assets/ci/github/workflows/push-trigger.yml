@@ -1,4 +1,4 @@
-# agent-framework CI template: tell one host to deploy its environment now (contracts v1,
+# Pakem CI template: tell one host to deploy its environment now (contracts v1,
 # push trigger). Capability: deployed. For hosts that cannot run the pull agent. The host
 # key runs only `af_trigger.py receive` (a forced command); this job sends
 # `deploy <environment> <actor>`, never release data, and the host's engine reads the signed

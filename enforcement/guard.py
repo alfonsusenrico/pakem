@@ -900,7 +900,7 @@ def main(argv: list[str] | None = None) -> int:
         decision = fallback_decision(raw_input)
         if decision.verdict is None:
             print(
-                f"agent-framework guard: analysis failed ({type(exc).__name__}); not blocking",
+                f"pakem guard: analysis failed ({type(exc).__name__}); not blocking",
                 file=sys.stderr,
             )
     emit(args.host, decision)

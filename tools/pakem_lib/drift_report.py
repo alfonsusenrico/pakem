@@ -198,7 +198,7 @@ def render_report(
     except PakemError as exc:
         version = f"unknown ({exc})"
     lines = [
-        "# Agent framework drift report",
+        "# Pakem drift report",
         "",
         f"- Generated: {generated.strftime('%Y-%m-%d %H:%M %z')}",
         f"- Framework: `{display_path(framework.root)}` v{version}, {source_summary}",

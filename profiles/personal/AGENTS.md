@@ -1,6 +1,6 @@
 # personal profile
 
-The owner's personal and freelance profile for agent-framework. It adds how the owner
+The owner's personal and freelance profile for Pakem. It adds how the owner
 runs freelance engagements and works in client repositories on top of the framework
 kernel and skills; it never repeats or weakens them.
 

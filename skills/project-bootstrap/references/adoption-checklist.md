@@ -6,7 +6,7 @@ Last reviewed: 2026-10-07
 Review by: 2027-04-07
 Sources: framework review of owner repositories (2026-10-07)
 
-Do this as its own change on a `chore/adopt-agent-framework` branch, in a worktree next
+Do this as its own change on a `chore/adopt-pakem` branch, in a worktree next
 to the repository (`../<repo>-adopt`), never under `/tmp`, which the system cleans.
 
 1. Remove any legacy `<!-- owner-baseline:start -->` block and any old framework digest

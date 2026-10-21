@@ -1,4 +1,4 @@
-# agent-framework CI template: verify a Python project managed by uv.
+# Pakem CI template: verify a Python project managed by uv.
 # Capability: always. Runs: locked install, format check, lint, type check, tests.
 # Expects the tooling from the project-bootstrap skill assets/tooling/python (ruff, pyright, pytest as dev dependencies).
 name: verify-python

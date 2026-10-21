@@ -13,7 +13,7 @@ and lived in an unversioned workspace owned by that work context.
 ## Decision
 
 The universal kernel, skills, standards, templates, and tooling live in a personal
-repository (`agent-framework`). Organization- or client-specific platform how-tos
+repository (Pakem, repository `pakem`). Organization- or client-specific platform how-tos
 live in separate profile repositories owned by that organization, which declare
 the framework versions they support. The core never contains organization content.
 
