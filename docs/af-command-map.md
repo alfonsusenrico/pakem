@@ -83,6 +83,9 @@ owner actions it may report, and what `af project check` verifies afterwards.
 - **Automatic:** asks the project's fixed facts, then writes the standard files:
   - **Forge:** GitHub or GitLab; public or private.
   - **Release kind:** `service`, `artifact` or `none`.
+  - **Delivery:** `us`, `others` (who releases it, and where our work ends), or `nobody`,
+    written to `AGENTS.md`. With `others`, CI and the release steps are the team's;
+    `af project init` writes no deploy files and work stops at the merge request.
   - **Environments:** production only, or staging too.
   - **Builder:** the host builds from signed source; a GitLab runner; or GitHub-hosted
     runners on public repositories.
@@ -147,7 +150,8 @@ owner actions it may report, and what `af project check` verifies afterwards.
     release; `rollback` marks a version withdrawn.
   - `none`: tag only.
 - **Gaps:** none at release time; all are settled at init. A release refuses while
-  required gaps are open.
+  required gaps are open, and refuses a project whose `Delivery:` is `others` or `nobody`,
+  naming who delivers it.
 - **Check:** the deployment record, the health response reports the commit, and the
   notice was sent.
 
