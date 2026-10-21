@@ -100,6 +100,13 @@ Compose mounts file secrets with the host file's owner and mode, so every servic
 reads secrets declares `group_add: ["${AF_SECRETS_GID}"]` (the engine sets it to the deploy
 user's group) and then reads them as any container user, without root.
 
+A service that joins another project's network (an external network named by a placement
+setting) also sees that project's service names, and Docker may answer a name both
+networks carry with the other project's container. Reach your own services there through
+project-unique network aliases (for example `<project>-db` as the database host) and keep
+bare names such as `db`, `api`, or `worker` for nothing on a shared network. Rehearse
+with a stand-in network that carries the other project's real service names.
+
 ## 5. Engine interface
 
 The engine is the only program that changes a running environment. Sequence:
