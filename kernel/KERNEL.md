@@ -52,9 +52,9 @@ and rules; they never weaken a floor.
   hypotheses.
 - Ask only when a missing answer changes scope, behaviour, compatibility,
   acceptance, or authority; otherwise continue through routine obstacles.
-- Every project uses native OpenSpec; meaningful changes need an approved plan
-  before implementation (`default:openspec`). Once approved, execute without
-  asking again; surface material scope changes first.
+- Every project uses native OpenSpec; meaningful changes need a plan the owner
+  approved in the session, recorded with its date (`default:openspec`). Then execute
+  without asking again; keep the specs current and surface material changes first.
 - Standards attach to the capabilities listed in the project `AGENTS.md`. If a
   change adds a capability, say so before implementing, then include the
   standards it requires or record the gap as debt with a payback plan.
@@ -110,9 +110,10 @@ and rules; they never weaken a floor.
 - Commit subjects use Conventional Commits, subject line only: `type(scope):
   summary`, types feat, fix, docs, refactor, test, chore, ci, perf, build, revert.
   No body and no trailers, including AI attribution (`default:commits`).
-- Within approved work you may commit, push the topic branch once checks pass,
-  run local services on loopback, and add project-local dependencies.
-- Open a merge request for the pushed branch and report its URL (`default:mr-policy`).
+- Within approved work you may commit locally, run local services on loopback, and
+  add project-local dependencies.
+- Push and open one merge request, specs and code together, only when the work is
+  done and accepted by the owner; never one for plans alone (`default:mr-policy`).
   Never rewrite shared history or force-push without the owner's authorization.
 
 ## 7. Continuity

@@ -14,11 +14,15 @@ owner approves before implementation.
 2. **Brainstorm** - interview, research, challenge, recommend (section 2).
 3. **Research and blueprint** - record findings, prototypes, and evidence in
    `research/` (section 3). Larger work gets a phased plan (section 4).
-4. **Spec** - one OpenSpec change per independently shippable outcome (section 5).
-5. **Approval** - the owner approves the change before any implementation.
-6. **Implement** - topic branch; tasks completed with their evidence.
+4. **Spec** - one OpenSpec change per independently shippable outcome (section 5),
+   written on the implementation branch and kept local.
+5. **Approval** - the owner approves the change in the session before any
+   implementation; nothing is pushed for review at this stage.
+6. **Implement** - on the same branch; tasks completed with their evidence; the plan
+   and specs updated with every change.
 7. **Verify** - `verification.md` per change (section 7).
-8. **Archive** - sync and archive (section 8).
+8. **Accept and deliver** - revise until the owner accepts the result, sync and
+   archive (section 8), then push and open one merge request with specs and code.
 9. **Lessons** - general lessons become framework candidates
    (`instruction-maintenance`).
 
@@ -104,15 +108,18 @@ verification gate. Get it approved, then propose changes phase by phase.
   warning recorded as follow-up work.
 - **Tasks**: grouped in phases; each phase ends with an "Expected Result" line;
   every task names the evidence that proves it (command, test, HTTP check, browser
-  check). The last task pushes the branch, opens the merge request, and reports its
-  URL.
+  check). The last task, after the owner accepts the result, archives the change,
+  pushes the branch, opens the one merge request, and reports its URL.
 - Keep an unknown cause explicitly unknown: plan reproduction and diagnosis first
   (`root-cause-debugging`), then update the design with the supported explanation.
 
 ## 6. Approval and change control
 
-- Present the change for approval before implementation. Once approved, execute
-  without asking again.
+- Present the change for approval in the session before implementation; do not open
+  a merge request for plans or specs alone. Record the approval and its date in the
+  proposal and `PROJECT_STATE.md`. Once approved, execute without asking again.
+- Keep the branch local until the owner accepts the result, unless the owner asks for
+  a backup push.
 - Material changes to scope, behaviour, compatibility, or acceptance are surfaced
   and approved before they are implemented; update the active artifacts first.
 - Mark a task complete only when its implementation and its named evidence are
@@ -128,7 +135,10 @@ structure only, never application correctness.
 
 ## 8. Sync and archive
 
-- Archive once the spec deltas are synced and the verification record is complete.
+- Archive once the spec deltas are synced and the verification record is complete,
+  in the same merge request as the implementation. Steps that can only happen after
+  the merge (a deployment, a production check) are recorded in `PROJECT_STATE.md` and
+  verified there, not in a separate archive merge request.
 - When archiving several older changes, archive them in dependency order, check each
   command's exit status before the next, and write a real `## Purpose` for any main spec
   created from them (archives of legacy deltas leave it empty).
