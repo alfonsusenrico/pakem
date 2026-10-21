@@ -279,6 +279,20 @@ authorized keys) stay manual.
    check. With a tunnel in front that terminates TLS, set `tls = false`.
 7. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
    `af_engine.py status --config ...`.
+8. Optional, for private repositories whose checks must stay free (ADR 0010): a
+   self-hosted GitHub Actions runner with `/opt/af/af_runner.sh`. `install` creates the
+   `ci-runner` user (no sudo; not in `docker`, `af`, or `adm`) with its own rootless Docker
+   from the same source as the host's Docker, caps its systemd slice (2 CPUs and 4 GB by
+   default), and downloads the checksum-pinned runner. `add-repo <owner>/<repo>` registers
+   one repository with a token piped from the owner's GitHub login
+   (`gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token`);
+   `remove-repo` takes a removal token the same way; `check` proves the isolation. Jobs
+   use `runs-on: [self-hosted, linux, x64, pakem]`. Job containers reach the host's loopback
+   at `10.0.2.2` (a job's own steps already can), and `--network host` means the runner's
+   private network, so a test that starts a container publishes its port to `127.0.0.1`
+   and runs it as the container's root (the runner user on the host). Never register a public repository:
+   anyone could run code on the host through a pull request. A host that serves clients
+   does not get a runner.
 
 ## 12. Reaching other projects
 

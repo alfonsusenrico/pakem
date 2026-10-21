@@ -37,11 +37,16 @@ published checksum file and a local download.
 | --- | --- | --- | --- |
 | cosign | `v3.1.3` | `cosign-linux-amd64` | `4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71` |
 | cosign | `v3.1.3` | `cosign-linux-arm64` | `c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a` |
+| GitHub Actions runner | `v2.338.0` | `actions-runner-linux-x64-2.338.0.tar.gz` | `af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32` |
+| GitHub Actions runner | `v2.338.0` | `actions-runner-linux-arm64-2.338.0.tar.gz` | `628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f041b` |
 | oras | `1.3.5` | `oras_1.3.5_linux_amd64.tar.gz` | `f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22` |
 
 cosign and oras (release.yml, resolved 2026-10-19; cosign arm64 for af_bootstrap.sh,
 2026-10-20) were cross-checked against `cosign_checksums.txt` and
 `oras_1.3.5_checksums.txt` from the same releases.
+
+The GitHub Actions runner (af_runner.sh, resolved 2026-10-21) was cross-checked between the
+release notes' SHA-256 lines and GitHub's asset digests for `v2.338.0`.
 
 ## Host packages (af_bootstrap.sh)
 

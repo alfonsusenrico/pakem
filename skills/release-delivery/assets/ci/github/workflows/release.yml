@@ -43,9 +43,16 @@ on:
         type: number
         default: 30
       runner:
-        description: Runner label.
+        description: Runner label (a self-hosted runner takes one label, for example `pakem`).
         type: string
         default: ubuntu-24.04
+      multi_architecture:
+        description: >-
+          Set up arm64 emulation and a BuildKit container for images listing several platforms.
+          Set false when every image builds only for the runner's own architecture (ADR 0010);
+          a rootless self-hosted runner cannot install the emulation.
+        type: boolean
+        default: true
       timeout_minutes:
         description: Job timeout in minutes.
         type: number
@@ -136,7 +143,7 @@ jobs:
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
 
       - name: Prepare multi-architecture builds
-        if: inputs.mode == 'publish'
+        if: inputs.mode == 'publish' && inputs.multi_architecture
         run: |
           docker run --rm --privileged "$AF_BINFMT_IMAGE" --install arm64
           docker buildx create --use --name af-release --driver docker-container \
