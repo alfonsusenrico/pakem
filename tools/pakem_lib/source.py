@@ -1,7 +1,8 @@
 """Provenance checks for what `pakem install` copies: the framework checkout and git profiles.
 
-The framework is installed from merged `main` only. Two independent waivers exist so
-a branch can still be tested deliberately:
+The framework is installed from merged `main` only: a `main` checkout, or a release tag
+(`vX.Y.Z`, what the installer checks out) whose commit is part of `origin/main`. Two
+independent waivers exist so a branch can still be tested deliberately:
 
 - `--allow-dirty` waives uncommitted changes, and a framework root that is not a git
   work tree at all (in both cases the content cannot be tied to a commit);
@@ -18,6 +19,7 @@ which case `--apply` refuses; the framework waivers do not apply to profiles.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +31,7 @@ REMOTE_BRANCH_REF = f"refs/remotes/{REMOTE}/{INSTALL_BRANCH}"
 
 WAIVER_DIRTY = "--allow-dirty"
 WAIVER_UNMERGED = "--allow-unmerged"
+RELEASE_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
 
 
 @dataclass(frozen=True)
@@ -98,14 +101,39 @@ def _remote_findings(root: Path, head: str) -> tuple[list[SourceFinding], str]:
     return [SourceFinding(message, WAIVER_UNMERGED)], f"differs from {REMOTE}/{INSTALL_BRANCH}"
 
 
+def _release_tag(root: Path) -> str | None:
+    """The newest release tag pointing at HEAD, if any."""
+    tags = run_git(root, "tag", "--points-at", "HEAD").stdout.split()
+    releases = [tag for tag in tags if RELEASE_TAG.fullmatch(tag)]
+    if not releases:
+        return None
+    return max(releases, key=lambda tag: tuple(int(part) for part in RELEASE_TAG.fullmatch(tag).groups()))
+
+
+def _release_findings(root: Path, tag: str, head: str) -> tuple[list[SourceFinding], str]:
+    """A detached release tag installs when its commit is part of origin/main."""
+    remote_head = _resolve(root, REMOTE_BRANCH_REF)
+    if remote_head is None:
+        message = f"release {tag} cannot be checked against {REMOTE}/{INSTALL_BRANCH}; fetch to refresh"
+        return [SourceFinding(message, WAIVER_UNMERGED)], f"{REMOTE}/{INSTALL_BRANCH} unknown"
+    merged = run_git(root, "merge-base", "--is-ancestor", head, remote_head, check=False).returncode == 0
+    if not merged:
+        message = f"release {tag} is not part of {REMOTE}/{INSTALL_BRANCH}; install a published release"
+        return [SourceFinding(message, WAIVER_UNMERGED)], f"not in {REMOTE}/{INSTALL_BRANCH}"
+    return [], f"part of {REMOTE}/{INSTALL_BRANCH}"
+
+
 def framework_source_status(root: Path) -> SourceStatus:
     if not is_git_work_tree(root):
         message = f"framework root {root} is not a git work tree; installed content cannot be tied to a commit"
         return SourceStatus([SourceFinding(message, WAIVER_DIRTY)], "not a git work tree")
 
     findings: list[SourceFinding] = []
-    branch_findings, branch = _branch_findings(root, "framework checkout", WAIVER_UNMERGED)
-    findings += branch_findings
+    tag = _release_tag(root) if _current_branch(root) is None else None
+    branch = None
+    if tag is None:
+        branch_findings, branch = _branch_findings(root, "framework checkout", WAIVER_UNMERGED)
+        findings += branch_findings
     if _has_uncommitted_changes(root):
         message = "framework git tree has uncommitted changes; installed content would not match a commit"
         findings.append(SourceFinding(message, WAIVER_DIRTY))
@@ -114,6 +142,10 @@ def framework_source_status(root: Path) -> SourceStatus:
     if head is None:
         findings.append(SourceFinding("framework checkout has no commits", WAIVER_DIRTY))
         return SourceStatus(findings, "no commits")
+    if tag is not None:
+        remote_findings, remote_summary = _release_findings(root, tag, head)
+        findings += remote_findings
+        return SourceStatus(findings, f"release {tag} @ {_short(head)}; {remote_summary}")
     remote_findings, remote_summary = _remote_findings(root, head)
     findings += remote_findings
     summary = f"{branch or 'detached HEAD'} @ {_short(head)}; {remote_summary}"

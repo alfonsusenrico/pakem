@@ -32,7 +32,7 @@ as revised by ADR 0010 (accepted 2026-10-21):
   releases; a release refuses a commit whose checks did not pass.
 - Nothing billed unless the project approves it (`default:no-billed`).
 - The direct delivery mode and the `pakem release` commands are being built
-  (`docs/pakem-command-map.md`); until they ship, the registry mode in the contracts is valid
+  (ADR 0010, `docs/adr/0010-project-chosen-builders-and-no-billed-services.md`); until they ship, the registry mode in the contracts is valid
   only where its CI minutes and registry are free.
 
 One release engine per host, signed releases, build once, health checks that prove the

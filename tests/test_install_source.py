@@ -68,6 +68,31 @@ class FrameworkSourceTests(IsolatedTestCase):
         self.assert_fails(refused, code=2)
         self.assertIn("detached HEAD, not main", refused.stderr)
 
+    def test_release_tag_in_origin_main_installs(self) -> None:
+        self.add_origin()
+        git(self.framework, "tag", "v2.0.0", home=self.home)
+        self.commit("feat: later work")
+        git(self.framework, "push", "-q", "origin", "main", home=self.home)
+        git(self.framework, "fetch", "-q", "origin", home=self.home)
+        git(self.framework, "checkout", "-q", "v2.0.0", home=self.home)
+        completed = self.pakem("install", "--apply")
+        self.assert_ok(completed)
+        self.assertIn("release v2.0.0 @ ", completed.stdout)
+        self.assertIn("part of origin/main", completed.stdout)
+        self.assertNotIn("WARNING", completed.stdout)
+        self.assertTrue(self.installed())
+
+    def test_release_tag_outside_origin_main_refuses_apply(self) -> None:
+        self.add_origin()
+        git(self.framework, "checkout", "-q", "-b", "feat/topic", home=self.home)
+        self.commit("feat: unpublished")
+        git(self.framework, "tag", "v9.0.0", home=self.home)
+        git(self.framework, "checkout", "-q", "v9.0.0", home=self.home)
+        refused = self.pakem("install", "--apply")
+        self.assert_fails(refused, code=2)
+        self.assertIn("release v9.0.0 is not part of origin/main", refused.stderr)
+        self.assertFalse(self.installed())
+
     def test_local_commits_ahead_of_origin_refuse_apply(self) -> None:
         self.add_origin()
         self.commit("docs: unpushed")
