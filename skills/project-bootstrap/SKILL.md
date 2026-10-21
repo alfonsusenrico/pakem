@@ -29,7 +29,7 @@ capabilities, and stack. Record the decision in `research/notes/`.
    design surface, overrides, references. Keep project content under 8,000
    characters. The kernel is installed globally, so `AGENTS.md` carries no copy of
    it; when a profile applies (organization or freelance), add its pinned block
-   with `af project sync <repo> --profile <dir> --apply`. Write it when onboarding is
+   with `pakem project sync <repo> --profile <dir> --apply`. Write it when onboarding is
    settled, and keep it current: a change that alters a command, capability, the
    architecture map, a project rule, an override, or a runtime setting updates
    `AGENTS.md` in the same change.
@@ -48,7 +48,7 @@ capabilities, and stack. Record the decision in `research/notes/`.
 9. **OpenSpec**: `openspec init` with the native `core` profile, then fill
    `openspec/config.yaml` from the [config template](assets/project/openspec-config.yaml.tmpl).
 10. **Hooks**: install the framework `commit-msg` and `pre-push` hooks
-    (`af hooks install <repo> --apply`) so commits stay Conventional and subject-only.
+    (`pakem hooks install <repo> --apply`) so commits stay Conventional and subject-only.
 11. **CI**: add CI from the `release-delivery` skill templates for the declared
     capabilities; CI exists before the first feature lands.
 12. **First commit**: `chore: bootstrap project` on `main`, then branch for the first
@@ -65,6 +65,18 @@ declaration. Each capability switches on the standards listed in the framework's
 capability registry; the relevant skills (`backend-engineering`,
 `sensitive-operations`, `genai-engineering`, `release-delivery`, `ui-ux-quality`)
 name them. Update the line whenever a change adds a capability.
+
+Also declare `Delivery:`, who releases the project. `deployed` keeps meaning "runs as a
+service" and switches on its runtime standards either way.
+
+- `us`: we release it; `release-delivery` applies in full.
+- `others (<who>)`: another person or team releases it. Our work ends at commits,
+  branches, and the merge request: follow the team's branch, review, and release
+  conventions; never change their pipelines, deploy files, or environments unless asked;
+  propose release-related changes to them instead of making them.
+- `nobody`: a library, tool, or experiment with no release beyond version tags.
+
+When the line is missing or unclear, ask it as a gap; never assume `us`.
 
 ## 4. Other templates
 

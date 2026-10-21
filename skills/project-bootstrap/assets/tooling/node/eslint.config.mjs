@@ -1,5 +1,5 @@
 // @ts-check
-// ESLint flat config for TypeScript projects without Next.js (agent-framework
+// ESLint flat config for TypeScript projects without Next.js (Pakem
 // assets/tooling/node). Next.js projects use the variant in README.md instead.
 import eslint from "@eslint/js";
 import prettier from "eslint-config-prettier/flat";

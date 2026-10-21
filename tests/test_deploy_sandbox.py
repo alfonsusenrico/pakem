@@ -8,7 +8,7 @@ deploys a tiny sample app through deploy_remote.sh, and checks promote, health,
 automatic restore, manual rollback, retention, the lock, and the root owner mode.
 
 Every container, volume, and image it creates carries the label
-io.agent-framework.sandbox=<run id>; teardown removes them even when a step fails and
+io.pakem.sandbox=<run id>; teardown removes them even when a step fails and
 then fails the run if anything labelled remains. The sample app's base image is pulled
 inside the sandbox and disappears with it; the docker:dind base image stays cached.
 """
@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from support import DEPLOY_ASSETS, REPO_ROOT, git, init_repo  # noqa: E402
 
 ENABLED = os.environ.get("AF_SANDBOX") == "1"
-LABEL_KEY = "io.agent-framework.sandbox"
+LABEL_KEY = "io.pakem.sandbox"
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "deploy_sandbox"
 SCRIPT = DEPLOY_ASSETS / "deploy_remote.sh"
 HOST_TOOL = "/usr/local/libexec/af-deploy/release_host.py"

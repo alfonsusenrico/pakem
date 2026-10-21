@@ -10,4 +10,4 @@ Verified 2026-10-07. Re-verify quarterly; machine-readable targets live in
 | Antigravity CLI (agy 1.2.13) | `~/.gemini/GEMINI.md`; avoid multiple global rule files | `GEMINI.md`, `AGENTS.md`, `.agents/rules/*.md` walking to repo root | `~/.gemini/config/skills` | 24,000 bytes per rule file; 20,000-token rules budget | `~/.gemini/config/hooks.json` PreToolUse (Go regexp matchers) | agy built-in skill `agy-customizations` |
 
 Best-effort hosts (Kiro, OpenCode, Gemini CLI, others) read `AGENTS.md` and Agent
-Skills directories but are not installed or verified by `af`.
+Skills directories but are not installed or verified by `pakem`.

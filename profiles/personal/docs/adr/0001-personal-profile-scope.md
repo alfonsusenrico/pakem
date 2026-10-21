@@ -28,7 +28,7 @@ proposal generator and a freelance marketplace backend engagement.
 ## Consequences
 
 Personal and freelance repositories sync the profile digest with
-`af project sync <repo> --profile profiles/personal` (path from the framework root).
-`af install --profile profiles/personal` checks the same git checkout as the core, so
+`pakem project sync <repo> --profile profiles/personal` (path from the framework root).
+`pakem install --profile profiles/personal` checks the same git checkout as the core, so
 the profile is installed from merged `main` together with it. Lessons from client engagements
 reach this profile only as general patterns.

@@ -26,7 +26,7 @@ Record in the project `AGENTS.md` (kept private):
 Then set up the repository:
 
 1. Exclude the process artifacts and install the hooks locally, protecting the
-   team's branches: `af hooks install <repo> --local-only --protect <integration>
+   team's branches: `pakem hooks install <repo> --local-only --protect <integration>
    --protect main --apply` (`project-bootstrap`, `references/git.md`).
 2. Set the identity from the profile digest unless an override says otherwise.
 3. Run `git status --ignored` and confirm the process artifacts are listed as

@@ -1,4 +1,4 @@
-# agent-framework CI template (GitLab): verify a Node or TypeScript project managed by npm.
+# Pakem CI template (GitLab): verify a Node or TypeScript project managed by npm.
 # Capability: always. Runs: npm ci, format check, lint, type check, tests, build.
 # Use: include this file, then `extends: .af:verify-node` and set the variables below.
 # Build-time values come from job variables; secrets come only from masked, protected

@@ -13,7 +13,7 @@ decision and its reason.
 ## Decision
 
 Changes to this repository are recorded as ADRs (for decisions), CHANGELOG entries,
-and semantic version tags, and are gated by `af lint` and the unit tests. The
+and semantic version tags, and are gated by `pakem lint` and the unit tests. The
 repository `AGENTS.md` records this as an explicit override of `default:openspec`.
 OpenSpec remains the default taught to projects.
 

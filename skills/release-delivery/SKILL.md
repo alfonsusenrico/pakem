@@ -7,6 +7,12 @@ description: Use when setting up or changing CI pipelines, preparing a release, 
 
 Production actions need the owner's explicit instruction (`sensitive-operations`).
 
+This skill applies in full when the project's `AGENTS.md` says `Delivery: us`. With
+`Delivery: others`, keep CI green and stop at the merge request; follow the team's release
+process and never change their pipelines, deploy files, or environments unless asked.
+With `Delivery: nobody`, only checks and version tags apply. A missing `Delivery:` line
+is a gap to ask, not a default.
+
 ## 1. CI
 
 Every repository has CI from the first commit. Use the CI templates
@@ -31,8 +37,8 @@ as revised by ADR 0010 (accepted 2026-10-21):
 - Checks run on every push, merge request, and tag on a free runner, separately from
   releases; a release refuses a commit whose checks did not pass.
 - Nothing billed unless the project approves it (`default:no-billed`).
-- The direct delivery mode and the `af release` commands are being built
-  (`docs/af-command-map.md`); until they ship, the registry mode in the contracts is valid
+- The direct delivery mode and the `pakem release` commands are being built
+  (ADR 0010, `docs/adr/0010-project-chosen-builders-and-no-billed-services.md`); until they ship, the registry mode in the contracts is valid
   only where its CI minutes and registry are free.
 
 One release engine per host, signed releases, build once, health checks that prove the

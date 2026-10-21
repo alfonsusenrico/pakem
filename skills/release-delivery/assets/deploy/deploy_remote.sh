@@ -1,5 +1,5 @@
 #!/bin/sh
-# Deploy one commit to one environment over SSH (agent-framework deploy template).
+# Deploy one commit to one environment over SSH (Pakem deploy template).
 #
 # Runs in CI from the repository checkout. It validates every input before connecting,
 # archives the exact commit with `git archive`, materializes the runtime file from the

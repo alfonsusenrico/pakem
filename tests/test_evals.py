@@ -1,4 +1,4 @@
-"""af eval run: scenarios, fixtures, graders, dry run, --apply with a fake host, results.
+"""pakem eval run: scenarios, fixtures, graders, dry run, --apply with a fake host, results.
 
 No test calls a model. Apply-mode tests put only a dedicated bin directory (fake
 claude, codex, and agy plus a git symlink) and /usr/bin:/bin on PATH, and assert
@@ -18,12 +18,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from support import AF, REPO_ROOT, IsolatedTestCase, git, isolated_env, write
+from support import PAKEM, REPO_ROOT, IsolatedTestCase, git, isolated_env, write
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from af_lib import evals  # noqa: E402
-from af_lib.common import AfError, Framework  # noqa: E402
+from pakem_lib import evals  # noqa: E402
+from pakem_lib.common import PakemError, Framework  # noqa: E402
 
 FAKE_AGENT = REPO_ROOT / "tests" / "fake_agent.py"
 HOST_BINARIES = ("claude", "codex", "agy")
@@ -98,10 +98,10 @@ class ScenarioTests(EvalTestCase):
         for label, text in cases.items():
             with self.subTest(label):
                 path = write(self.base / "scenarios" / "demo.toml", text)
-                with self.assertRaises(AfError):
+                with self.assertRaises(PakemError):
                     evals.load_scenario(path)
         mismatched = write(self.base / "scenarios" / "other.toml", valid + '[[graders]]\nkind = "commit_format"\n')
-        with self.assertRaises(AfError):
+        with self.assertRaises(PakemError):
             evals.load_scenario(mismatched)
 
     def test_host_commands_never_skip_permissions(self) -> None:
@@ -128,7 +128,7 @@ class FixtureTests(EvalTestCase):
     def test_fixture_repository(self) -> None:
         scenario, repo, baseline, token = self.fixture("capability-trigger")
         agents = (repo / "AGENTS.md").read_text()
-        self.assertNotIn("agent-framework:digest", agents)
+        self.assertNotIn(":digest", agents)
         self.assertIn("Capabilities: database\n", agents)
         self.assertEqual((repo / ".env").read_text(), f"APP_NAME=eval-fixture\nDUMMY_TOKEN={token}\n")
         self.assertTrue((repo / "app.py").is_file())
@@ -150,7 +150,7 @@ class FixtureTests(EvalTestCase):
     def test_existing_fixture_directory_is_refused(self) -> None:
         repo = self.base / "taken"
         repo.mkdir()
-        with self.assertRaises(AfError):
+        with self.assertRaises(PakemError):
             evals.build_fixture(self.repo_framework, self.scenarios["commit-format"], repo, evals.new_token())
 
 
@@ -427,7 +427,7 @@ class StatusAndResultsTests(unittest.TestCase):
         with self.subTest("path"):
             path = evals.results_path(Path("out"), "9.8.7", "claude", context.started_at)
             self.assertEqual(path, Path("out") / "9.8.7-claude-2026-10-08.md")
-        temporary = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="af-eval-results-")))
+        temporary = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="pakem-eval-results-")))
         path = temporary / "results.md"
         evals.append_results(path, context, [scenario], results)
         evals.append_results(path, context, [scenario], results)
@@ -441,7 +441,7 @@ class StatusAndResultsTests(unittest.TestCase):
 
 
 class EvalCommandTests(IsolatedTestCase):
-    """The af eval run command in a subprocess, with fake host CLIs only."""
+    """The pakem eval run command in a subprocess, with fake host CLIs only."""
 
     def setUp(self) -> None:
         super().setUp()
@@ -477,7 +477,7 @@ class EvalCommandTests(IsolatedTestCase):
                 "FAKE_AGENT_LOG": str(self.log),
             },
         )
-        command = [sys.executable, str(AF), "--root", str(REPO_ROOT), "eval", "run", *args]
+        command = [sys.executable, str(PAKEM), "--root", str(REPO_ROOT), "eval", "run", *args]
         return subprocess.run(command, capture_output=True, text=True, env=env, cwd=str(self.base))
 
     def results_text(self, host: str) -> str:
@@ -492,14 +492,14 @@ class EvalCommandTests(IsolatedTestCase):
         return self.log.read_text().splitlines()
 
     def assert_no_fixtures_left(self) -> None:
-        self.assertEqual([path.name for path in self.tmp.iterdir() if path.name.startswith("af-eval-")], [])
+        self.assertEqual([path.name for path in self.tmp.iterdir() if path.name.startswith("pakem-eval-")], [])
 
     def test_dry_run_prints_plan_and_writes_nothing(self) -> None:
         results_before = sorted((REPO_ROOT / "evals" / "results").glob("*"))
         completed = self.eval_run("--host", "claude", "--results-dir", str(self.results))
         self.assert_ok(completed)
         output = completed.stdout
-        self.assertIn("af eval run (dry-run) host=claude scenarios=5 repeat=3 runs=15", output)
+        self.assertIn("pakem eval run (dry-run) host=claude scenarios=5 repeat=3 runs=15", output)
         self.assertEqual(output.count("  fixture: "), 15)
         self.assertEqual(output.count("  command: "), 15)
         self.assertEqual(output.count("  timeout: "), 15)

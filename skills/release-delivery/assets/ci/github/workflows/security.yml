@@ -1,4 +1,4 @@
-# agent-framework CI template: static security checks.
+# Pakem CI template: static security checks.
 # Capability: always (required by `deployed`). Runs: gitleaks secret scan, dependency audits
 # (pip-audit for uv projects, npm audit for npm projects), and CI/shell/Dockerfile lint
 # (actionlint, shellcheck, hadolint) for files that exist.

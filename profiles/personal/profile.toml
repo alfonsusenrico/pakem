@@ -1,4 +1,4 @@
-# Personal and freelance profile for agent-framework (contract: tools/af_lib/profiles.py).
+# Personal and freelance profile for Pakem (contract: tools/pakem_lib/profiles.py).
 name = "personal"
 version = "0.2.0"
 requires_framework = ">=0.1,<2.0"

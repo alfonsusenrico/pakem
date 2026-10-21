@@ -1,4 +1,4 @@
-"""af report: read-only Markdown drift report, latest.md, pruning, and config errors."""
+"""pakem report: read-only Markdown drift report, latest.md, pruning, and config errors."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ class ReportTests(IsolatedTestCase):
         super().setUp()
         self.org = self.base / "org"
         self.clean = activate_hooks(init_repo(self.org / "clean", self.home), self.home)
-        self.assert_ok(self.af("project", "sync", str(self.clean), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.clean), "--apply"))
         (self.clean / "research").mkdir()
         self.broken = init_repo(self.org / "broken", self.home)
         write(self.broken / ".env", f"API_KEY={SECRET_VALUE}\n")
@@ -29,7 +29,7 @@ class ReportTests(IsolatedTestCase):
         return write(path or self.base / "report.toml", text)
 
     def report(self, *extra: str, config: Path | None = None):
-        return self.af("report", "--config", str(config or self.config), "--output-dir", str(self.output), *extra)
+        return self.pakem("report", "--config", str(config or self.config), "--output-dir", str(self.output), *extra)
 
     def written_reports(self) -> list[str]:
         return sorted(path.name for path in self.output.iterdir() if REPORT_NAME.match(path.name))
@@ -41,17 +41,17 @@ class ReportTests(IsolatedTestCase):
         self.assertEqual(len(names), 1)
         report_path = self.output / names[0]
         self.assertIn(str(report_path), completed.stdout)
-        self.assertIn("af report: 2 repo(s)", completed.stdout)
+        self.assertIn("pakem report: 2 repo(s)", completed.stdout)
 
         text = report_path.read_text()
         self.assertEqual(text, (self.output / "latest.md").read_text())
-        self.assertIn("# Agent framework drift report", text)
+        self.assertIn("# Pakem drift report", text)
         self.assertIn(f"| {self.clean} | ok | 0 | 0 |", text)
         self.assertIn(f"| {self.broken} | ERRORS | 1 |", text)
         self.assertIn(f"### {self.broken}", text)
         self.assertIn("ERROR: AGENTS.md not found", text)
-        self.assertIn("| af lint |", text)
-        self.assertIn("| af doctor: installed state |", text)
+        self.assertIn("| pakem lint |", text)
+        self.assertIn("| pakem doctor: installed state |", text)
         self.assertIn("nothing installed according to the manifest", text)
         self.assertIn("not a git work tree", text)
         self.assertNotIn(SECRET_VALUE, text)
@@ -76,7 +76,7 @@ class ReportTests(IsolatedTestCase):
         config = self.write_config(f'repos_dirs = ["{self.clean}"]\nrepos = ["{single}", "{self.clean}"]\n')
         completed = self.report(config=config)
         self.assert_ok(completed)
-        self.assertIn("af report: 2 repo(s)", completed.stdout)
+        self.assertIn("pakem report: 2 repo(s)", completed.stdout)
         text = (self.output / "latest.md").read_text()
         self.assertEqual(text.count(f"### {self.clean}\n"), 1)
         self.assertIn(f"### {single}\n", text)
@@ -97,8 +97,8 @@ class ReportTests(IsolatedTestCase):
         completed = self.report(config=config)
         self.assert_ok(completed)
         text = (self.output / "latest.md").read_text()
-        self.assertIn("af doctor could not run: missing profile.toml", text)
-        self.assertIn("| af lint | ERRORS |", text)
+        self.assertIn("pakem doctor could not run: missing profile.toml", text)
+        self.assertIn("| pakem lint | ERRORS |", text)
 
     def test_prunes_oldest_reports_only(self) -> None:
         old_names = [f"2020-01-0{day}-0800.md" for day in range(1, 6)]
@@ -126,17 +126,17 @@ class ReportTests(IsolatedTestCase):
         self.assertIn("2020-01-03-0800.md", self.written_reports())
 
     def test_default_config_and_output_locations(self) -> None:
-        write(self.home / ".config" / "agent-framework" / "report.toml", f'repos_dirs = ["{self.org}"]\n')
-        completed = self.af("report")
+        write(self.home / ".config" / "pakem" / "report.toml", f'repos_dirs = ["{self.org}"]\n')
+        completed = self.pakem("report")
         self.assert_ok(completed)
-        reports = self.home / ".local" / "state" / "agent-framework" / "reports"
+        reports = self.home / ".local" / "state" / "pakem" / "reports"
         self.assertTrue((reports / "latest.md").is_file())
         self.assertIn(str(reports), completed.stdout)
 
     def test_missing_config_explains_with_example(self) -> None:
-        completed = self.af("report")
+        completed = self.pakem("report")
         self.assert_fails(completed, code=2)
-        self.assertIn("report config not found: ~/.config/agent-framework/report.toml", completed.stderr)
+        self.assertIn("report config not found: ~/.config/pakem/report.toml", completed.stderr)
         self.assertIn("repos_dirs = [", completed.stderr)
         self.assertFalse((self.home / ".local").exists())
 
@@ -165,7 +165,7 @@ class ReportTests(IsolatedTestCase):
         self.assertIn("could not write the report", completed.stderr)
 
     def test_doctor_repos_reports_the_same_repo_findings(self) -> None:
-        completed = self.af("doctor", "--repos", str(self.org))
+        completed = self.pakem("doctor", "--repos", str(self.org))
         self.assert_fails(completed, code=1)
         self.assertIn("Project repos (2):", completed.stdout)
         self.assertIn(f"ok        {self.clean}  (0 error(s), 0 warning(s))", completed.stdout)

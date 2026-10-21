@@ -1,79 +1,167 @@
-# agent-framework
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img alt="Pakem: one standard for every coding agent" src="docs/assets/banner-light.svg" width="100%">
+  </picture>
+</p>
 
-A personal, versioned framework that coding agents read so every project is built
-to the same standard, whatever the employer, client, or host tool.
+<p align="center">
+  <b>A framework for coding agents.</b> One set of rules, skills, and automation for Claude Code,
+  Codex, and Gemini, on every device and in every project.
+</p>
 
-## Layers
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#what-you-get">Features</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#roadmap">Roadmap</a>
+</p>
 
-| Layer | Location | Loaded |
-| --- | --- | --- |
-| Kernel | `kernel/KERNEL.md` | Always, installed into each host's global instructions |
-| Skills | `skills/<name>/` | On demand, when a task matches a skill description |
-| Standards | `skills/*/references/`, indexed in `standards/` | When a skill points to them |
-| Profiles | `profiles/personal/` (freelance practice); organization profiles in separate repositories (`profile.toml`) | Organization, client, or freelance how-tos, opt-in |
-| Project | each repository's `AGENTS.md` | Project facts, plus a pinned profile block where a profile applies |
+---
 
-Precedence: host and system rules > owner instruction > approved specs > project
-`AGENTS.md` > profile > kernel. Floors cannot be weakened; labelled defaults can be
-overridden in a project's `## Overrides` section.
+## Tired of teaching your coding agents the same rules on every project?
 
-## Supported hosts
+You open a new project and explain it all again: how you commit, when to open a pull
+request, that secrets never get printed, that production needs your say. Then a second
+agent on another machine does it a little differently. A week later one of them has
+forgotten half of it.
 
-Claude Code, Codex, and Antigravity CLI are installed and verified
-(`hosts/targets.toml`, `docs/host-matrix.md`). Other tools that read `AGENTS.md` and
-Agent Skills work on a best-effort basis.
+**Pakem gives every coding agent you use the same standard, once.** Install it on a
+device and every agent there (Claude Code, Codex, Gemini) starts each session knowing
+your rules, your workflow, and the skills to apply them. Adopt a project and it carries
+that standard in its own files, so every agent that opens it, on any machine, works the
+same way.
 
-## Use
+> **Why "Pakem"?** In Javanese wayang, the *pakem* is the canonical story every
+> *dalang* (puppeteer) follows, while each performance still improvises its own scenes.
+> Pakem does the same for your coding agents: one shared standard, and room for each
+> project to be itself.
+
+## What you get
+
+- **One kernel for every agent.** A short, versioned set of rules installed into each
+  agent's own instructions file, so Claude Code, Codex, and Gemini follow the same
+  standard.
+- **Floors that never bend.** Secrets are never printed, production changes only on
+  your word, nothing the agent did not create is deleted without asking, and an agent
+  never merges its own work.
+- **Free by default.** Agents use only free services and tiers; a project approves any
+  paid service, with its budget, in its own `AGENTS.md`.
+- **Skills for real work.** Debugging, planning, backend, UI, GenAI, releases, reviews,
+  handoffs, sensitive operations. Each is loaded only when the task needs it.
+- **Plans you agree on first.** Specs are written with you, approved in the session, and
+  shipped with the code in one pull request once you accept the result.
+- **Interviews that end.** When a project needs answers only you have, the agent asks
+  them in one batch with defaults, follows up once at most, and records what is still
+  pending instead of guessing.
+- **Projects that stay in sync.** Each project pins the standard it follows; `pakem
+  project check` and a weekly drift report show what is out of date.
+- **Live updates.** After you update Pakem, type `/pakem-update` in a running session: the
+  agent re-reads the new rules, tells you what changed, and aligns its project (fixing
+  its own, proposing in shared ones, never refactoring on its own).
+- **Guardrails, not just advice.** Optional hooks block risky commands per agent, and git
+  hooks keep commit messages consistent.
+- **A deployment standard.** One release engine per server: signed releases, backups
+  before migrations, health checks that prove the running version, automatic restore,
+  notifications.
+- **Honest by design.** Agents report what passed, what failed, and what they did not
+  run. Your coding friend, but a frank one.
+
+## Install
 
 ```sh
-tools/af lint                       # check the framework itself
-tools/af lint --profile <dir>       # also check a profile directory (repeatable)
-tools/af install                    # preview what would be installed
-tools/af install --apply            # install kernel and skills (owner approval)
-tools/af project sync <repo>        # preview pinned blocks for a project
-tools/af changelog                  # pending changes/ fragments; --release X.Y.Z [--apply] releases them
-tools/af hooks install <repo>       # preview commit-msg / pre-push hooks
-tools/af doctor --repos <dir>       # drift, duplicate, and orphaned-skill report
-tools/af report                     # read-only Markdown drift report (config: docs/report.example.toml)
-tools/af schedule install           # preview the weekly launchd job for af report (macOS)
-tools/af schedule install --apply   # write the plist and load it with launchctl (owner approval)
-tools/af schedule status            # plist and launchd state (read-only)
-tools/af schedule uninstall --apply # unload and remove the plist af wrote
-tools/af eval run --host claude     # preview compliance evals; --apply runs live (owner approval, evals/README.md)
+curl -fsSL https://raw.githubusercontent.com/alfonsusenrico/pakem/main/install.sh | sh
 ```
 
-`af report` reads `~/.config/agent-framework/report.toml` (template:
-`docs/report.example.toml`), runs the `af lint`, `af doctor`, and per-repository
-`af project check` checks without fetching or changing anything, and writes
-`YYYY-MM-DD-HHMM.md` plus `latest.md` to `~/.local/state/agent-framework/reports/`,
-keeping the newest `keep` dated reports (default 12). It exits 0 whenever the report
-was written; problems are in the report. `af schedule install --apply` runs it weekly
-(default Monday 08:00, `--weekday/--hour/--minute`) from the checkout that installed
-it, so install the schedule from the main checkout.
+The installer:
 
-`af install --apply` installs from merged `main` only: the checkout must be on `main`,
-clean, and, when an `origin` remote exists, at the same commit as the local
-`origin/main` ref (no fetch is made; fetch first so that ref is current). A dry run
-prints the same findings as warnings. Install flags:
+1. checks for `git` and Python 3.11 or newer, and tells you how to get them if missing;
+2. downloads the latest Pakem release into `~/.local/share/pakem/source`;
+3. adds the `pakem` command (and its short alias `pk`) to `~/.local/bin`;
+4. installs the kernel and skills into every coding agent it finds, after showing you
+   the plan and asking first.
 
-| Flag | Effect |
-| --- | --- |
-| `--hosts a,b` | limit to these host ids from `hosts/targets.toml` |
-| `--profile DIR` | also install this profile's skills (repeatable) |
-| `--force` | back up and replace, or back up and remove, locally edited managed files |
-| `--allow-dirty` | allow uncommitted changes, or a framework root that is not a git work tree |
-| `--allow-unmerged` | allow a branch other than `main`, a detached HEAD, or a HEAD that differs from `origin/main` |
-| `--strict-source` | refuse `--apply` when a `--profile` git checkout is not on a clean `main` (default: warn) |
+Prefer to read it first? [`install.sh`](install.sh) is short, or run it with
+`sh -s -- --dry-run`. Pin a version with `PAKEM_VERSION=v2.0.0`.
 
-The two `--allow-*` flags are independent: testing a branch with uncommitted edits
-needs both. They waive checks on the framework checkout only; profile findings are
-warnings unless `--strict-source` is given.
+To remove Pakem: `pakem uninstall --apply` (restores your agents' files), then delete
+`~/.local/share/pakem` and the two commands in `~/.local/bin`.
 
-Skills that `af` installed and whose source no longer exists are removed
-(`remove-managed`) when their installed copy is unchanged; an edited copy blocks
-the install unless `--force` backs it up first. Skills from a profile that is not
-passed with `--profile` are kept. If any write fails, the run restores every target
-it had already written and leaves the manifest unchanged.
+**Then open your coding agent and say:** *"Set up this project with Pakem."* The agent
+adopts the project, asks only what it cannot find out itself, and writes the project's
+`AGENTS.md`.
 
-Decisions live in `docs/adr/`; changes in `changes/` fragments until a release
-moves them into `CHANGELOG.md` (`changes/README.md`).
+## Commands
+
+`pk` is the short form of `pakem`; every command previews by default and changes nothing
+until you add `--apply`.
+
+| Command | What it does |
+|---|---|
+| `pakem install` | Install the kernel and skills into every supported agent on this device |
+| `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |
+| `pakem doctor` | Compare what is installed with this version of Pakem |
+| `pakem project sync` | Write or refresh the standard block in a project's `AGENTS.md` |
+| `pakem project check` | Check a project against the standard |
+| `pakem report` | Write a read-only drift report across your projects |
+| `pakem schedule` | Run the drift report weekly (macOS) |
+| `pakem hooks` | Install the git hooks (commit message format, pre-push checks) |
+| `pakem enforce` | Install per-agent guardrails that block risky commands |
+| `pakem eval` | Measure how well each agent follows the kernel |
+| `pakem lint` | Check Pakem itself (budgets, links, consistency) |
+| `pakem changelog` | Show pending changes or cut a release |
+
+## How it works
+
+```mermaid
+flowchart LR
+  K["Pakem<br/>kernel + skills"] -->|pakem install| A1["Claude Code"]
+  K --> A2["Codex"]
+  K --> A3["Gemini"]
+  K -->|pakem project sync| P["Your project<br/>AGENTS.md"]
+  P --> G["Project-specific answers<br/>(the agent asks you)"]
+```
+
+- **A standard core.** The kernel and skills hold what is true for every project: how to
+  plan, test, release, handle secrets, and report.
+- **Adaptive edges.** What only a project can decide (how it is deployed, what "healthy"
+  means, which services it may pay for) is asked once, recorded in the project, and
+  never guessed.
+- **Profiles** add rules for a company or for client work on top of your own, without
+  changing the core.
+- **Overrides** let a project change a labelled default, with its reason written down.
+  Floors cannot be overridden.
+
+## Supported agents
+
+| Agent | Instructions | Skills |
+|---|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` | `~/.claude/skills` |
+| Codex | `~/.codex/AGENTS.md` | `~/.agents/skills` |
+| Gemini / Antigravity | `~/.gemini/GEMINI.md` | `~/.gemini/config/skills` |
+
+## Roadmap
+
+Pakem is moving from "a standard your agents read" to "a standard your agents run". These
+are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-and-no-billed-services.md)):
+
+- `pakem setup device` and `pakem setup host`: install the tools, keys, and runtimes a
+  device or server needs, and tell you the few steps only you can do.
+- `pakem project init` and `pakem project adopt`: start or adopt a project on GitHub or
+  GitLab, with its CI and deploy files.
+- `pakem release publish | promote | rollback previous | history`: build on your server
+  from signed source, deploy with health checks, roll back by one step.
+- `pakem decide`: record decisions that wait on someone else, and get reminded when they
+  are due.
+- `pakem status` and `pakem update`: every session knows when Pakem changed.
+
+## Contributing
+
+Pakem follows its own standard: changes start as a discussion, ship with their specs in
+one pull request, and record their user-visible effect in `changes/`. Run `pakem lint`
+and the tests (`python3 -m unittest discover -s tests`) before proposing a change.
+
+## License
+
+[MIT](LICENSE)

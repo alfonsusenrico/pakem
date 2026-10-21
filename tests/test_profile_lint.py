@@ -1,4 +1,4 @@
-"""af lint --profile and af doctor --profile, each exercised against temporary profile directories."""
+"""pakem lint --profile and pakem doctor --profile, each exercised against temporary profile directories."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ class ProfileLintTestCase(IsolatedTestCase):
         arguments = ["lint"]
         for profile in profiles or (self.profile,):
             arguments += ["--profile", str(profile)]
-        return self.af(*arguments)
+        return self.pakem(*arguments)
 
     def assert_lint_error(self, needle: str) -> None:
         completed = self.lint()
@@ -213,7 +213,7 @@ class ProfileSkillTests(ProfileLintTestCase):
                 self.framework / "skills" / name / "SKILL.md",
                 f"---\nname: {name}\ndescription: {description}\n---\n# Skill\n",
             )
-        framework_only = self.af("lint")
+        framework_only = self.pakem("lint")
         self.assert_ok(framework_only)
         self.assertNotIn("descriptions total", framework_only.stdout)
         for index in range(12):
@@ -278,22 +278,22 @@ class DoctorProfileTests(ProfileLintTestCase):
     INSTALL = ("install", "--allow-dirty")
 
     def test_installed_profile_skills_pass(self) -> None:
-        self.assert_ok(self.af(*self.INSTALL, "--profile", str(self.profile), "--apply"))
-        completed = self.af("doctor", "--profile", str(self.profile))
+        self.assert_ok(self.pakem(*self.INSTALL, "--profile", str(self.profile), "--apply"))
+        completed = self.pakem("doctor", "--profile", str(self.profile))
         self.assert_ok(completed)
         self.assertIn("0 error(s), 0 warning(s)", completed.stdout)
 
     def test_missing_and_outdated_profile_skills(self) -> None:
-        self.assert_ok(self.af(*self.INSTALL, "--apply"))
-        completed = self.af("doctor", "--profile", str(self.profile))
+        self.assert_ok(self.pakem(*self.INSTALL, "--apply"))
+        completed = self.pakem("doctor", "--profile", str(self.profile))
         self.assert_fails(completed)
         self.assertIn(
             "ERROR: not installed: profile:acme/acme-reporting at ~/.claude/skills/acme-reporting", completed.stdout
         )
 
-        self.assert_ok(self.af(*self.INSTALL, "--profile", str(self.profile), "--apply"))
+        self.assert_ok(self.pakem(*self.INSTALL, "--profile", str(self.profile), "--apply"))
         self.skill_file().write_text(PROFILE_SKILL + "\nMore guidance.\n")
-        completed = self.af("doctor", "--profile", str(self.profile))
+        completed = self.pakem("doctor", "--profile", str(self.profile))
         self.assert_ok(completed)
         self.assertIn(
             "WARNING: outdated: ~/.claude/skills/acme-reporting differs from profile:acme/acme-reporting",

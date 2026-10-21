@@ -1,4 +1,4 @@
-# agent-framework CI template: verify a Node or TypeScript project managed by npm.
+# Pakem CI template: verify a Node or TypeScript project managed by npm.
 # Capability: always. Runs: npm ci, format check, lint, type check, tests, build.
 # Expects the npm scripts from the project-bootstrap skill assets/tooling/node (format:check, lint, typecheck, test, build).
 name: verify-node

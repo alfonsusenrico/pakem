@@ -22,11 +22,11 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
   pushes and deletions of protected branches.
 - Protected branches default to `main` and `master`. A repository that integrates
   through another branch (for example `development`) declares the full set with
-  `af hooks install <repo> --protect development --protect main --apply`. The list
+  `pakem hooks install <repo> --protect development --protect main --apply`. The list
   replaces the default, so name `main` too when it stays protected. A project that
   allows direct code pushes records `default:branching` in `## Overrides` and installs
   with `--protect-none`. The values live in the repository's
-  `agentframework.protectedBranch` git config and are read by the pre-push hook and
+  `pakem.protectedBranch` git config and are read by the pre-push hook and
   the Claude Code and Antigravity guard; Codex rules are static and always forbid
   force-pushing or deleting `main`, `master`, and `development`.
 - Never rewrite shared history. Ask the owner before any force push, including on
@@ -37,13 +37,13 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
   code push to a protected branch is `AF_ALLOW_PROTECTED_PUSH=1` (the older
   `AF_ALLOW_MAIN_PUSH=1` still works); commit messages are checked either way.
 - Client repositories must not receive committed hook files: install with
-  `af hooks install <repo> --local-only --apply`, which adds `.githooks/` to
+  `pakem hooks install <repo> --local-only --apply`, which adds `.githooks/` to
   `.git/info/exclude`.
 - `core.hooksPath` is shared by every worktree of the repository and the relative
   `.githooks` resolves against each worktree's own root. A worktree without its own
   `.githooks/` runs no hooks, silently: until the branch that commits `.githooks/`
   is merged into the worktree's branch, or, for a local-only install, until
-  `af hooks install <worktree> --local-only --apply` is run in that worktree. The
+  `pakem hooks install <worktree> --local-only --apply` is run in that worktree. The
   exclude file and protected-branch config are shared by all worktrees.
 - One author identity per context (personal, organization, client) configured per
   repository.

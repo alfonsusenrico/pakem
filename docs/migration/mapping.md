@@ -1,6 +1,7 @@
 # Migration Mapping (audit trail)
 
-Where each legacy source went. Legacy files are preserved verbatim in `archive/`.
+Where each legacy source went. The legacy files themselves were kept in `archive/` until
+2.0.0 and remain in the repository history before that release.
 
 | Legacy source | New home |
 | --- | --- |

@@ -1,4 +1,4 @@
-# agent-framework CI template (GitLab): real-database checks.
+# Pakem CI template (GitLab): real-database checks.
 # Capability: database. Starts a disposable Postgres service, applies migrations, re-applies
 # them (must be a no-op), runs an optional drift check, then runs the database tests with
 # REQUIRE_DB=1 so they fail instead of skipping when the database is absent.

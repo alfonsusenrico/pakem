@@ -71,7 +71,7 @@ templates in `assets/ci/github/workflows/`, so a project either:
 
 1. **Copies** the workflows it needs into its own `.github/workflows/` and calls them with
    `uses: ./.github/workflows/<name>.yml`. Add a first line recording the source, for example
-   `# Copied from agent-framework <VERSION> assets/ci/github/workflows/security.yml`, and
+   `# Copied from Pakem <VERSION> assets/ci/github/workflows/security.yml`, and
    re-copy when the framework releases a change. This is the default for personal repositories.
 2. **References** a shared CI repository that holds the same files in its
    `.github/workflows/`, pinned by full commit SHA:
@@ -84,7 +84,7 @@ templates in `assets/ci/github/workflows/`, so a project either:
 `<group>/agent-profile-ci`) can include these files directly, pinned with `ref:` to a release
 tag or commit SHA. Alternatively copy them into the project and use `include: local`.
 
-`af` does not automate copying yet.
+`pakem` does not automate copying yet.
 
 ## Rules the templates follow
 

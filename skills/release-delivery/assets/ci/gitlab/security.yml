@@ -1,4 +1,4 @@
-# agent-framework CI template (GitLab): static security checks.
+# Pakem CI template (GitLab): static security checks.
 # Capability: always (required by `deployed`). Hidden jobs: .af:secret-scan,
 # .af:python-audit, .af:node-audit, .af:shellcheck, .af:hadolint. Extend the ones that apply.
 # Validate .gitlab-ci.yml itself with the pipeline editor or `glab ci lint` (needs API access).

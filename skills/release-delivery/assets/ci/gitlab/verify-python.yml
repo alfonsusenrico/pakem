@@ -1,4 +1,4 @@
-# agent-framework CI template (GitLab): verify a Python project managed by uv.
+# Pakem CI template (GitLab): verify a Python project managed by uv.
 # Capability: always. Runs: locked install, format check, lint, type check, tests.
 # Use: include this file, then `extends: .af:verify-python` and set the variables below.
 # Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch

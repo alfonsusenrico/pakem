@@ -12,8 +12,8 @@ hand-copied block could drift from the source and could contradict it.
 ## Decision
 
 `kernel/DIGEST.md` contains only lines that appear verbatim in `kernel/KERNEL.md`
-(lint-enforced). `af project sync` renders it into each repository between markers
-carrying the framework version and a sha256 of the body; `af project check` and a
+(lint-enforced). `pakem project sync` renders it into each repository between markers
+carrying the framework version and a sha256 of the body; `pakem project check` and a
 CI script verify integrity.
 
 ## Consequences

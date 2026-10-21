@@ -1,4 +1,4 @@
-"""af lint rules, each exercised against a temporary framework checkout."""
+"""pakem lint rules, each exercised against a temporary framework checkout."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from support import FIXTURE_REFERENCE, FIXTURE_SKILL, IsolatedTestCase, init_rep
 
 class LintTests(IsolatedTestCase):
     def lint(self):
-        return self.af("lint")
+        return self.pakem("lint")
 
     def assert_lint_error(self, needle: str) -> None:
         completed = self.lint()
@@ -244,23 +244,23 @@ class ChangelogLintTests(IsolatedTestCase):
         self.write_changelog("")
         write(self.framework / "changes" / "README.md", "# Fragments\n\nAny text, no bullet rule.\n")
         write(self.framework / "changes" / "added-thing.md", "- Thing\n  continued.\n")
-        completed = self.af("lint")
+        completed = self.pakem("lint")
         self.assert_ok(completed)
         self.assertIn("0 error(s), 0 warning(s)", completed.stdout)
 
     def test_bullet_under_unreleased_is_an_error(self) -> None:
         self.write_changelog("### Added\n\n- Direct entry.\n- Another.\n")
-        completed = self.af("lint")
+        completed = self.pakem("lint")
         self.assert_fails(completed)
         self.assertIn(
             "CHANGELOG.md line 7: bullet entry under ## [Unreleased] (2 in total); record changes as "
-            "fragments in changes/; only `af changelog --release` edits CHANGELOG.md",
+            "fragments in changes/; only `pakem changelog --release` edits CHANGELOG.md",
             completed.stdout,
         )
 
     def test_missing_unreleased_section_is_an_error(self) -> None:
         write(self.framework / "CHANGELOG.md", "# Changelog\n\n" + self.RELEASED)
-        completed = self.af("lint")
+        completed = self.pakem("lint")
         self.assert_fails(completed)
         self.assertIn("CHANGELOG.md has no '## [Unreleased]' section", completed.stdout)
 
@@ -273,7 +273,7 @@ class ChangelogLintTests(IsolatedTestCase):
         for name, text, needle in cases:
             with self.subTest(name=name):
                 path = write(self.framework / "changes" / name, text)
-                completed = self.af("lint")
+                completed = self.pakem("lint")
                 self.assert_fails(completed)
                 self.assertIn(needle, completed.stdout)
                 path.unlink()

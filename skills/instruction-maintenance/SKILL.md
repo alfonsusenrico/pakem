@@ -1,6 +1,6 @@
 ---
 name: instruction-maintenance
-description: Use when editing AGENTS.md, CLAUDE.md, GEMINI.md, rules, skills, or the agent framework itself; when instructions conflict, exceed size budgets, or are ignored; or when a lesson from a project should become a framework rule.
+description: Use when editing AGENTS.md, CLAUDE.md, GEMINI.md, rules, skills, or Pakem itself; when instructions conflict, exceed size budgets, or are ignored; or when a lesson from a project should become a framework rule.
 ---
 
 # Instruction Maintenance
@@ -23,7 +23,7 @@ and backed by mechanical checks where possible.
 | Agent-host memory (for example Claude Code memory) | Never the only home of a rule: it is per device, per agent, and per folder |
 
 **One source of knowledge.** Every agent on every device reads the same framework,
-installed by `af install` and pinned by each project; that is what keeps agents and
+installed by `pakem install` and pinned by each project; that is what keeps agents and
 projects consistent. When the owner decides something that applies beyond one session,
 write it into the framework (kernel, skill, or ADR) in the same piece of work, and into
 the project's `AGENTS.md` when it is project-specific. An agent's own memory may keep a
@@ -50,7 +50,7 @@ for one to remove.
   lines; references one level deep.
 - `PROJECT_STATE.md` under about 8 KB.
 
-Check with `af lint` (framework) and `af project check <repo>` (projects) when the
+Check with `pakem lint` (framework) and `pakem project check <repo>` (projects) when the
 framework tool is available.
 
 ## 4. Conflicts and overrides
@@ -78,9 +78,9 @@ or recommending skills, plugins, or tools.
 The framework is stable: change it only for a problem a real project hit, in
 batches (at most one release a month), with ADRs only for real trade-offs. Each change
 is a fragment in `changes/` (never a direct `CHANGELOG.md` edit); a release runs
-`af changelog --release X.Y.Z --apply` (MAJOR only when a floor changes or an existing
+`pakem changelog --release X.Y.Z --apply` (MAJOR only when a floor changes or an existing
 install or project would break). Run its lint and tests before any commit. Install
 only from merged `main`: fetch, check that the checkout is clean and equal to
-`origin/main`, then run `af install --apply` with owner approval. Repositories need
-`af project sync` only when a profile digest changes. `--allow-unmerged` and
+`origin/main`, then run `pakem install --apply` with owner approval. Repositories need
+`pakem project sync` only when a profile digest changes. `--allow-unmerged` and
 `--allow-dirty` are for deliberately testing a branch, never for a routine install.

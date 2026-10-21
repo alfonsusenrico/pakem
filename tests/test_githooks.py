@@ -1,4 +1,4 @@
-"""commit-msg and pre-push hooks, plus af hooks install, in temporary git repos."""
+"""commit-msg and pre-push hooks, plus pakem hooks install, in temporary git repos."""
 
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ class PrePushTests(IsolatedTestCase):
 
     def protect(self, *branches: str) -> None:
         for branch in branches:
-            git(self.repo, "config", "--add", "agentframework.protectedBranch", branch, home=self.home)
+            git(self.repo, "config", "--add", "pakem.protectedBranch", branch, home=self.home)
 
     def test_no_protected_branch_allows_code_push_to_main(self) -> None:
         self.protect("-")
@@ -149,6 +149,14 @@ class PrePushTests(IsolatedTestCase):
                 completed = self.push(refspec)
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertIn("only *.md and docs/** may be pushed to development", completed.stderr)
+
+    def test_former_key_still_protects_a_repository_configured_before_the_rename(self) -> None:
+        git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)
+        git(self.repo, "checkout", "-q", "-b", "development", home=self.home)
+        self.commit("src/app.py", "print('x')\n", "feat: add app")
+        completed = self.push("development")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("only *.md and docs/** may be pushed to development", completed.stderr)
 
     def test_configured_branch_accepts_docs_only_push(self) -> None:
         self.protect("development")
@@ -218,11 +226,11 @@ class HooksInstallTests(IsolatedTestCase):
         self.repo = init_repo(self.base / "app", self.home)
 
     def test_dry_run_then_apply(self) -> None:
-        dry_run = self.af("hooks", "install", str(self.repo))
+        dry_run = self.pakem("hooks", "install", str(self.repo))
         self.assert_ok(dry_run)
         self.assertFalse((self.repo / ".githooks").exists())
 
-        self.assert_ok(self.af("hooks", "install", str(self.repo), "--apply"))
+        self.assert_ok(self.pakem("hooks", "install", str(self.repo), "--apply"))
         for name in ("commit-msg", "pre-push"):
             installed = self.repo / ".githooks" / name
             self.assertEqual(installed.read_text(), (self.framework / "hooks" / name).read_text())
@@ -230,20 +238,20 @@ class HooksInstallTests(IsolatedTestCase):
         configured = git(self.repo, "config", "--get", "core.hooksPath", home=self.home).stdout.strip()
         self.assertEqual(configured, ".githooks")
 
-        again = self.af("hooks", "install", str(self.repo), "--apply")
+        again = self.pakem("hooks", "install", str(self.repo), "--apply")
         self.assert_ok(again)
         self.assertIn("unchanged", again.stdout)
 
     def test_refuses_existing_hooks_path(self) -> None:
         git(self.repo, "config", "core.hooksPath", "tools/hooks", home=self.home)
-        completed = self.af("hooks", "install", str(self.repo), "--apply")
+        completed = self.pakem("hooks", "install", str(self.repo), "--apply")
         self.assert_fails(completed)
         self.assertIn("core.hooksPath is already set", completed.stdout)
         self.assertFalse((self.repo / ".githooks").exists())
 
     def protected_values(self, repo=None) -> list[str]:
         completed = git(
-            repo or self.repo, "config", "--get-all", "agentframework.protectedBranch", home=self.home, check=False
+            repo or self.repo, "config", "--get-all", "pakem.protectedBranch", home=self.home, check=False
         )
         return completed.stdout.splitlines()
 
@@ -254,57 +262,88 @@ class HooksInstallTests(IsolatedTestCase):
         return exclude.read_text().splitlines()
 
     def test_protect_dry_run_writes_nothing(self) -> None:
-        completed = self.af("hooks", "install", str(self.repo), "--protect", "development")
+        completed = self.pakem("hooks", "install", str(self.repo), "--protect", "development")
         self.assert_ok(completed)
-        self.assertIn("agentframework.protectedBranch: development (currently unset, so main, master)", completed.stdout)
+        self.assertIn("pakem.protectedBranch: development (currently unset, so main, master)", completed.stdout)
         self.assertEqual(self.protected_values(), [])
 
     def test_protect_is_idempotent_and_replaces_values(self) -> None:
         arguments = ("hooks", "install", str(self.repo), "--protect", "development", "--protect", "main")
-        self.assert_ok(self.af(*arguments, "--apply"))
+        self.assert_ok(self.pakem(*arguments, "--apply"))
         self.assertEqual(self.protected_values(), ["development", "main"])
 
-        again = self.af(*arguments, "--protect", "development", "--apply")
+        again = self.pakem(*arguments, "--protect", "development", "--apply")
         self.assert_ok(again)
-        self.assertIn("unchanged               git config agentframework.protectedBranch", again.stdout)
+        self.assertIn("unchanged               git config pakem.protectedBranch", again.stdout)
         self.assertEqual(self.protected_values(), ["development", "main"])
 
-        narrowed = self.af("hooks", "install", str(self.repo), "--protect", "development", "--apply")
+        narrowed = self.pakem("hooks", "install", str(self.repo), "--protect", "development", "--apply")
         self.assert_ok(narrowed)
         self.assertEqual(self.protected_values(), ["development"])
 
     def test_protect_rejects_invalid_names(self) -> None:
         for name in ("bad..name", "refs/heads/development", "-x"):
             with self.subTest(name=name):
-                completed = self.af("hooks", "install", str(self.repo), f"--protect={name}", "--apply")
+                completed = self.pakem("hooks", "install", str(self.repo), f"--protect={name}", "--apply")
                 self.assert_fails(completed, code=2)
                 self.assertFalse((self.repo / ".githooks").exists())
         self.assertEqual(self.protected_values(), [])
 
     def test_protect_none_allows_code_push_to_main(self) -> None:
-        completed = self.af("hooks", "install", str(self.repo), "--protect-none", "--apply")
+        completed = self.pakem("hooks", "install", str(self.repo), "--protect-none", "--apply")
         self.assert_ok(completed)
         self.assertIn("none (direct pushes allowed)", completed.stdout)
         self.assertEqual(self.protected_values(), ["-"])
         self.assert_fails(
-            self.af("hooks", "install", str(self.repo), "--protect-none", "--protect", "main", "--apply"), code=2
+            self.pakem("hooks", "install", str(self.repo), "--protect-none", "--protect", "main", "--apply"), code=2
         )
 
     def test_without_protect_leaves_config_alone(self) -> None:
-        git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)
-        completed = self.af("hooks", "install", str(self.repo), "--apply")
+        git(self.repo, "config", "--add", "pakem.protectedBranch", "development", home=self.home)
+        completed = self.pakem("hooks", "install", str(self.repo), "--apply")
         self.assert_ok(completed)
         self.assertNotIn("protectedBranch", completed.stdout)
         self.assertEqual(self.protected_values(), ["development"])
 
+    def former_values(self) -> list[str]:
+        completed = git(
+            self.repo, "config", "--get-all", "agentframework.protectedBranch", home=self.home, check=False
+        )
+        return completed.stdout.splitlines()
+
+    def test_former_key_is_copied_and_kept(self) -> None:
+        git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)
+        git(self.repo, "config", "--add", "agentframework.protectedBranch", "main", home=self.home)
+        dry_run = self.pakem("hooks", "install", str(self.repo))
+        self.assertIn(
+            "git config agentframework.protectedBranch -> pakem.protectedBranch: development, main", dry_run.stdout
+        )
+        self.assertEqual(self.protected_values(), [])
+
+        self.assert_ok(self.pakem("hooks", "install", str(self.repo), "--apply"))
+        self.assertEqual(self.protected_values(), ["development", "main"])
+        self.assertEqual(self.former_values(), ["development", "main"])
+
+        again = self.pakem("hooks", "install", str(self.repo), "--apply")
+        self.assert_ok(again)
+        self.assertNotIn("protectedBranch", again.stdout)
+
+    def test_protect_keeps_the_former_key_equal(self) -> None:
+        git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)
+        completed = self.pakem("hooks", "install", str(self.repo), "--protect", "main", "--apply")
+        self.assert_ok(completed)
+        self.assertIn("(currently development under agentframework.protectedBranch)", completed.stdout)
+        self.assertEqual(self.protected_values(), ["main"])
+        self.assertEqual(self.former_values(), ["main"])
+
     def test_local_only_excludes_hooks_once(self) -> None:
-        dry_run = self.af("hooks", "install", str(self.repo), "--local-only")
+        dry_run = self.pakem("hooks", "install", str(self.repo), "--local-only")
         self.assert_ok(dry_run)
         self.assertIn(".githooks/ to .git/info/exclude", dry_run.stdout)
         self.assertNotIn(".githooks/", self.exclude_lines())
 
-        self.assert_ok(self.af("hooks", "install", str(self.repo), "--local-only", "--apply"))
-        again = self.af("hooks", "install", str(self.repo), "--local-only", "--apply")
+        self.assert_ok(self.pakem("hooks", "install", str(self.repo), "--local-only", "--apply"))
+        again = self.pakem("hooks", "install", str(self.repo), "--local-only", "--apply")
         self.assert_ok(again)
         self.assertIn(".git/info/exclude excludes .githooks/", again.stdout)
         self.assertEqual(self.exclude_lines().count(".githooks/"), 1)
@@ -314,7 +353,7 @@ class HooksInstallTests(IsolatedTestCase):
     def test_local_only_appends_to_existing_exclude(self) -> None:
         exclude = self.repo / ".git" / "info" / "exclude"
         exclude.write_text("# local\n*.log")
-        self.assert_ok(self.af("hooks", "install", str(self.repo), "--local-only", "--apply"))
+        self.assert_ok(self.pakem("hooks", "install", str(self.repo), "--local-only", "--apply"))
         self.assertEqual(exclude.read_text(), "# local\n*.log\n.githooks/\n")
 
     def test_local_only_shares_exclude_with_linked_worktree(self) -> None:
@@ -324,8 +363,8 @@ class HooksInstallTests(IsolatedTestCase):
         worktree = self.base / "app-feature"
         git(self.repo, "worktree", "add", "-q", "-b", "feat/x", str(worktree), home=self.home)
 
-        self.assert_ok(self.af("hooks", "install", str(self.repo), "--local-only", "--apply"))
-        self.assert_ok(self.af("hooks", "install", str(worktree), "--local-only", "--apply"))
+        self.assert_ok(self.pakem("hooks", "install", str(self.repo), "--local-only", "--apply"))
+        self.assert_ok(self.pakem("hooks", "install", str(worktree), "--local-only", "--apply"))
         self.assertTrue((worktree / ".githooks" / "pre-push").exists())
         self.assertEqual(self.exclude_lines().count(".githooks/"), 1)
         status = git(worktree, "status", "--porcelain", "--untracked-files=all", home=self.home).stdout
@@ -334,7 +373,7 @@ class HooksInstallTests(IsolatedTestCase):
     def test_local_only_refuses_tracked_hooks(self) -> None:
         write(self.repo / ".githooks" / "pre-push", "#!/bin/sh\n", mode=0o755)
         git(self.repo, "add", ".githooks/pre-push", home=self.home)
-        completed = self.af("hooks", "install", str(self.repo), "--local-only", "--force", "--apply")
+        completed = self.pakem("hooks", "install", str(self.repo), "--local-only", "--force", "--apply")
         self.assert_fails(completed)
         self.assertIn(".githooks/ is tracked", completed.stdout)
         self.assertNotIn(".githooks/", self.exclude_lines())
