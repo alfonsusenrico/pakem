@@ -95,7 +95,7 @@ owner actions it may report, and what `af project check` verifies afterwards.
   - **Agent files:** `AGENTS.md` (framework block plus project sections),
     `PROJECT_STATE.md`, OpenSpec, and the formatter, linter and test scaffolding for the
     language.
-  - `--adopt` reads an existing project, keeps what already meets the standard, and
+  - `af project adopt` reads an existing project, keeps what already meets the standard, and
     reports only differences and gaps.
 - **Owner actions:**
   - creating the repository if the CLI login cannot;
