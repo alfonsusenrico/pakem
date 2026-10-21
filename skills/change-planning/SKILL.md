@@ -51,6 +51,28 @@ A brainstorm is done when the owner has confirmed the problem statement and chos
 an option. Record it with the [discussion summary](references/discussion-summary.md)
 format in `research/notes/`.
 
+### Gap interviews
+
+When specific answers are missing (project facts, case decisions, settings a tool cannot
+decide), interview with a firm finish so it never loops:
+
+1. List the gaps first; the list is fixed for this interview. Add a question only for a
+   blocker no gap covers.
+2. Answer what the repository already proves (code, docs, `AGENTS.md`, earlier
+   decisions) without asking, and say so.
+3. Ask the rest in **one message**, grouped, each with a default; "use the defaults" is a
+   complete answer.
+4. Follow up only on answers that fail a check or contradict each other, in one message.
+   Never start a third round.
+5. Finish when every gap is **answered**, **provisional** (a stated, reversible working
+   assumption with a revisit trigger), or **pending** (waiting for outside information:
+   what is missing, from whom, and when to ask again), each recorded with its reason in
+   the change, `AGENTS.md`, or `PROJECT_STATE.md`.
+
+Work continues on everything a pending gap does not block; keep that choice open in the
+design (a setting instead of a constant). Raise a pending gap again only when it is due:
+its date passed, or the work reached what it blocks.
+
 ## 3. The research folder
 
 ```
