@@ -83,6 +83,8 @@ and rules; they never weaken a floor.
   the migration, compatibility window, and rollback.
 - Use the project's lockfile and runtime versions. New Python projects use uv
   with a project-local environment (`default:python-uv`).
+- Use only free services and free tiers; a project approves any billed service and
+  its budget in `## Overrides` (`default:no-billed`).
 - Where taste or convention is uncertain, prefer defaults backed by credible,
   current research and cite the source.
 - Comments explain reasons, invariants, units, or external constraints. No
