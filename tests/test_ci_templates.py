@@ -500,9 +500,19 @@ class HostBootstrapTests(unittest.TestCase):
                 self.assertIn(value, pins)
         self.assertIn("sha256sum --check --strict", self.script)
 
+    def test_runner_pins_match_the_pins_file(self) -> None:
+        runner = (DEPLOY_ROOT / "af_runner.sh").read_text()
+        pins = PINS.read_text()
+        version = re.search(r"^RUNNER_VERSION=(\S+)$", runner, re.MULTILINE).group(1)
+        for name in ("RUNNER_SHA256_X64", "RUNNER_SHA256_ARM64"):
+            value = re.search(rf"^{name}=(\S+)$", runner, re.MULTILINE).group(1)
+            with self.subTest(pin=name):
+                self.assertIn(value, pins)
+        self.assertIn(f"`v{version}`", pins)
+
     def test_installs_every_host_module(self) -> None:
         listed = set(re.search(r'^ENGINE_FILES="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
-        host_side = {path.name for path in DEPLOY_ROOT.glob("af_*.py")} - {"af_publish.py"} | {"contracts.py"}
+        host_side = {path.name for path in DEPLOY_ROOT.glob("af_*.py")} - {"af_publish.py"} | {"contracts.py", "af_runner.sh"}
         self.assertEqual(listed, host_side)
         units = set(re.search(r'^UNITS="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
         self.assertEqual(units, {path.name for path in (DEPLOY_ROOT / "systemd").iterdir()})

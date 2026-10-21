@@ -24,7 +24,7 @@ CADDY_KEY_URL=https://dl.cloudsmith.io/public/caddy/stable/gpg.155B6D79CA56EA34.
 COSIGN_VERSION=v3.1.3
 COSIGN_SHA256_AMD64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
 COSIGN_SHA256_ARM64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
-ENGINE_FILES="af_engine.py af_monitor.py af_notify.py af_oci.py af_release.py af_settings.py af_trigger.py contracts.py"
+ENGINE_FILES="af_engine.py af_monitor.py af_notify.py af_oci.py af_release.py af_settings.py af_trigger.py contracts.py af_runner.sh"
 UNITS="af-agent.service af-agent.timer af-monitor.service af-monitor.timer"
 DOCKER_LOG_CONFIG='{"log-driver": "local", "log-opts": {"max-size": "20m", "max-file": "5"}}'
 
@@ -235,6 +235,7 @@ install_engine() {
   say "installing the engine in /opt/af"
   install -d -m 0755 /opt/af
   for file in $ENGINE_FILES; do install -m 0644 "$HERE/$file" "/opt/af/$file"; done
+  chmod 0755 /opt/af/af_runner.sh
   local version=unknown
   [[ -f "$HERE/../../../../VERSION" ]] && version=$(tr -d '[:space:]' < "$HERE/../../../../VERSION")
   printf '%s\n' "$version" > /opt/af/VERSION

@@ -39,3 +39,10 @@ The CI templates ship in this skill's `assets/ci/` (GitHub Actions reusable work
 GitLab CI hidden jobs, project examples, `README.md` for adoption, and `PINS.md` for
 pinned versions). The deploy jobs drive the scripts in `assets/deploy/` (design and
 deviations: `assets/ci/DEPLOY_DESIGN.md`).
+
+**Where jobs run (free only, `default:no-billed`):** public repositories use GitHub's
+hosted runners (`runs-on: ubuntu-latest`), which are free. Private repositories use a
+self-hosted runner on a host we control (`runs-on: [self-hosted, linux, x64, pakem]`;
+setup in the deployment contracts §11 step 8), never metered hosted minutes unless the
+project approves the cost. Keep jobs cheap either way: one architecture, cancel superseded
+runs, and skip heavy jobs for documentation-only changes.
