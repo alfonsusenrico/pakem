@@ -1,7 +1,7 @@
 Personal and freelance rules (Pakem profile `personal`):
 
-- Commit as Alfonsus Enrico <enrico.soebijanto@gmail.com>; set it repo-locally
-  before the first commit. A client-issued identity needs an `## Overrides` entry.
+- Commit with the owner's own name and email, set repo-locally before the first
+  commit. A client-issued identity needs an `## Overrides` entry.
 - In a client repository, exclude `AGENTS.md`, `PROJECT_STATE.md`, `JOURNAL.md`,
   `openspec/`, `research/`, and `.githooks/` locally (`project-bootstrap`) and
   confirm `git status` shows none of them before every push.

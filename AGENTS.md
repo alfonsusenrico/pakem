@@ -39,7 +39,6 @@ it is installed into each host by `tools/pakem install`, not loaded from here.
   for fixes.
 - Compliance evals are optional: run them by hand after a large host or model
   change, not as a release gate (`evals/README.md`).
-- `archive/` holds legacy sources verbatim; never edit or install from it.
 
 ## Overrides
 
