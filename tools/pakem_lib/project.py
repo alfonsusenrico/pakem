@@ -36,6 +36,9 @@ OVERRIDE_PREFIX_PATTERN = re.compile(r"^`default:([a-z-]+)`")
 HOME_PATH_PATTERN = re.compile(r"/Users/[^/\s]+/|(?<![\w.~])~/")
 INSTRUCTION_DOC_NAMES = ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
 CAPABILITIES_LINE_PATTERN = re.compile(r"^(?:[-*+]\s+)?Capabilities:(.*)$")
+DELIVERY_LINE_PATTERN = re.compile(r"^(?:[-*+]\s+)?Delivery:(.*)$")
+DELIVERY_VALUES = ("us", "others", "nobody")
+NO_BILLED_LABEL = "no-billed"
 NO_CAPABILITIES = "none"
 PROJECT_STATE_FILE = "PROJECT_STATE.md"
 PROJECT_STATE_WARN_CHARS = 8_000
@@ -331,6 +334,48 @@ def _check_capabilities(framework: Framework, document, report: Report) -> None:
                 )
 
 
+def _check_delivery(document, report: Report) -> None:
+    """Who releases the project: `Delivery: us | others (<who>) | nobody`."""
+    declarations = []
+    for index, line in _lines_outside_blocks(document):
+        match = DELIVERY_LINE_PATTERN.match(line.strip())
+        if match is not None:
+            declarations.append((index, match.group(1).strip().strip("`").strip()))
+    if not declarations:
+        report.warn(
+            "AGENTS.md has no 'Delivery:' line; declare who releases the project "
+            "(`Delivery: us`, `Delivery: others (<who>)`, or `Delivery: nobody`)"
+        )
+        return
+    if len(declarations) > 1:
+        lines = ", ".join(str(index + 1) for index, _ in declarations)
+        report.error(f"AGENTS.md declares delivery on more than one line ({lines}); keep one")
+    for index, value in declarations:
+        first = value.split()[0].strip(":,;").lower() if value else ""
+        if first not in DELIVERY_VALUES:
+            report.warn(
+                f"AGENTS.md line {index + 1}: 'Delivery:' should start with us, others, or nobody"
+            )
+
+
+def _check_billing(document, report: Report) -> None:
+    """An `llm` project records which paid services it may use, or that it uses none."""
+    capabilities = {value for _, values in declared_capabilities(document) for value in values}
+    if "llm" not in capabilities:
+        return
+    labels = set()
+    for _, line in _lines_outside_blocks(document):
+        bullet = OVERRIDE_BULLET_PATTERN.match(line)
+        prefix = OVERRIDE_PREFIX_PATTERN.match(bullet.group(1)) if bullet else None
+        if prefix is not None:
+            labels.add(prefix.group(1))
+    if NO_BILLED_LABEL not in labels:
+        report.warn(
+            "capability 'llm' without a `default:no-billed` override; record the paid services "
+            "this project may use and their budget there, or that it uses none (local models only)"
+        )
+
+
 def _check_project_files(repo: Path, report: Report) -> None:
     state_path = repo / PROJECT_STATE_FILE
     if state_path.is_file():
@@ -388,6 +433,8 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     _check_home_paths(repo, report)
     _check_overrides(document, override_labels(framework), report)
     _check_capabilities(framework, document, report)
+    _check_delivery(document, report)
+    _check_billing(document, report)
     _check_project_files(repo, report)
     _check_hooks(repo, report)
     return report

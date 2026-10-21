@@ -51,7 +51,7 @@ class ProjectSyncTests(IsolatedTestCase):
         write(
             self.repo / "AGENTS.md",
             "# Existing\n\n<!-- agent-framework:digest version=1.1.1 sha256=0000 -->\nOld kernel lines.\n"
-            "<!-- /agent-framework:digest -->\n\nCapabilities: database\n",
+            "<!-- /agent-framework:digest -->\n\nCapabilities: database\nDelivery: us\n",
         )
         (self.repo / "research").mkdir()
         check = self.pakem("project", "check", str(self.repo))
@@ -61,7 +61,7 @@ class ProjectSyncTests(IsolatedTestCase):
         synced = self.pakem("project", "sync", str(self.repo), "--apply")
         self.assert_ok(synced)
         self.assertIn("removed the framework digest block", synced.stdout)
-        self.assertEqual(self.agents(), "# Existing\n\nCapabilities: database\n")
+        self.assertEqual(self.agents(), "# Existing\n\nCapabilities: database\nDelivery: us\n")
         clean = self.pakem("project", "check", str(self.repo))
         self.assertIn("0 error(s), 0 warning(s)", clean.stdout)
 
@@ -271,6 +271,32 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
                 completed = self.check_with(line)
                 self.assert_fails(completed)
                 self.assertIn(needle, completed.stdout)
+
+    def test_delivery_line_is_checked(self) -> None:
+        base = self.synced.replace("Delivery: nobody\n", "")
+        cases = [
+            ("Capabilities: database\n", "has no 'Delivery:' line", True),
+            ("Capabilities: database\nDelivery: maybe\n", "should start with us, others, or nobody", True),
+            ("Capabilities: database\nDelivery: us\nDelivery: nobody\n", "more than one line", False),
+            ("Capabilities: database\nDelivery: others (the platform team)\n", "0 error(s), 0 warning(s)", True),
+        ]
+        for lines, needle, passes in cases:
+            with self.subTest(lines=lines):
+                self.agents_path.write_text(base + lines)
+                completed = self.pakem("project", "check", str(self.repo))
+                (self.assert_ok if passes else self.assert_fails)(completed)
+                self.assertIn(needle, completed.stdout)
+
+    def test_llm_projects_record_billing(self) -> None:
+        # The fixture's capability registry lacks `llm`, so only the billing warning is asserted.
+        missing = self.check_with("Capabilities: llm\n")
+        self.assertIn("without a `default:no-billed` override", missing.stdout)
+        recorded = self.check_with(
+            "Capabilities: llm\n\n## Overrides\n\n- `default:no-billed`: paid replies, USD 2 a month.\n"
+        )
+        self.assertNotIn("default:no-billed` override", recorded.stdout)
+        unrelated = self.check_with("Capabilities: database\n")
+        self.assertNotIn("default:no-billed` override", unrelated.stdout)
 
     def test_duplicate_capability_warns(self) -> None:
         completed = self.check_with("Capabilities: database, database\n")

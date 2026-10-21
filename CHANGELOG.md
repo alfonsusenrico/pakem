@@ -5,6 +5,21 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-21
+
+### Added
+
+- `pakem project check` warns when `AGENTS.md` has no `Delivery:` line (or an unknown
+  value), and when an `llm` project has no `default:no-billed` override recording its
+  paid services or that it uses none.
+
+### Fixed
+
+- `pakem hooks install` updates earlier versions of its own hooks without `--force`
+  (recognised by checksum); hooks edited in a repository still need `--force`.
+- The personal profile (0.3.0) declares Pakem 2.x, so `pakem install --profile
+  profiles/personal` works with 2.0 again.
+
 ## [2.0.0] - 2026-10-21
 
 ### Added
