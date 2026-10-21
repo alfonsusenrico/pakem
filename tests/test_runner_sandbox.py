@@ -44,7 +44,6 @@ PREPARE = textwrap.dedent(
     # Docker Desktop's kernel builds ip_tables in, but the container has no module list.
     mkdir -p "/lib/modules/$(uname -r)"
     grep -q ip_tables /proc/modules || echo kernel/net/ipv4/netfilter/ip_tables.ko > "/lib/modules/$(uname -r)/modules.builtin"
-    apt-get update -qq
     """
 )
 AS_RUNNER = (

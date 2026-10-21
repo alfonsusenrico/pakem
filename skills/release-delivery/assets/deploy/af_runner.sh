@@ -103,6 +103,7 @@ install_packages() {
     die "Docker is not installed; run af_bootstrap.sh install first"
   fi
   say "installing ${packages[*]}"
+  apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${packages[@]}" >/dev/null
   rootless_tool >/dev/null || die "the installed Docker has no rootless setup tool"
 }
