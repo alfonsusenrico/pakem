@@ -47,6 +47,13 @@ require_root() { [[ $EUID -eq 0 ]] || die "run as root (sudo)"; }
 
 runner_uid() { id -u "$RUNNER_USER"; }
 
+# Job containers may reach the host's loopback (from inside at 10.0.2.2, slirp4netns): a job's
+# own steps already run as the runner user on the host and reach the same addresses, so this
+# adds no exposure, and it lets a job's container talk to a server the job started. What
+# stays isolated is the production Docker socket, the deploy user, and secret files.
+LOOPBACK_DROPIN="[Service]
+Environment=DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=false"
+
 # Run a command as the runner user inside its systemd user session.
 as_runner() {
   local uid
@@ -173,6 +180,20 @@ install_rootless_docker() {
   as_runner systemctl --user enable --now docker >/dev/null 2>&1
 }
 
+allow_host_loopback() {
+  local directory="$RUNNER_HOME/.config/systemd/user/docker.service.d"
+  local dropin="$directory/host-loopback.conf"
+  if [[ -f "$dropin" ]] && [[ "$(cat "$dropin")" == "$LOOPBACK_DROPIN" ]]; then
+    return
+  fi
+  install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0755 "$directory"
+  printf '%s\n' "$LOOPBACK_DROPIN" > "$dropin"
+  chown "$RUNNER_USER:$RUNNER_USER" "$dropin"
+  as_runner systemctl --user daemon-reload
+  as_runner systemctl --user restart docker
+  say "job containers reach the host's loopback at 10.0.2.2"
+}
+
 limit_resources() {
   local uid slice
   uid=$(runner_uid)
@@ -234,6 +255,7 @@ install_command() {
   ensure_ip_tables
   create_user
   install_rootless_docker
+  allow_host_loopback
   limit_resources
   download_runner
   install_hooks_and_unit

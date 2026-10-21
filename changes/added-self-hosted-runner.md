@@ -6,3 +6,5 @@
 - The GitHub release template takes `multi_architecture` (default true): false skips the
   arm64 emulation and BuildKit container, so host-architecture releases build on a rootless
   self-hosted runner.
+- Job containers on the runner reach the host's loopback at `10.0.2.2`, so a job can test a
+  container against a server it started; nothing beyond what the job's own steps reach.

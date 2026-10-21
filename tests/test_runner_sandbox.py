@@ -92,6 +92,8 @@ class RunnerSandboxTests(unittest.TestCase):
         self.assertIn("creating user ci-runner", self.first_install.stdout)
         self.assertNotIn("creating user", self.second_install.stdout)
         self.assertIn("rootless Docker for ci-runner is already running", self.second_install.stdout)
+        self.assertIn("reach the host's loopback", self.first_install.stdout)
+        self.assertNotIn("reach the host's loopback", self.second_install.stdout)
 
     def test_check_passes(self) -> None:
         completed = host("/root/af_runner.sh check 2>&1", check=False)
@@ -114,6 +116,13 @@ class RunnerSandboxTests(unittest.TestCase):
                 break
         self.assertIn("accepting connections", ready)
         host(AS_RUNNER + "docker rm -f svc-db; docker network rm jobnet", check=False)
+
+    def test_job_containers_reach_a_server_on_the_host_loopback(self) -> None:
+        host(AS_RUNNER + "sh -c 'cd /tmp && echo loopback-ok > index.html && "
+             "(timeout 60 python3 -m http.server 18765 --bind 127.0.0.1 >/dev/null 2>&1 &)'")
+        completed = host(AS_RUNNER + "docker run --rm alpine:3 wget -q -O - http://10.0.2.2:18765/index.html",
+                         check=False)
+        self.assertIn("loopback-ok", completed.stdout, completed.stderr)
 
     def test_production_docker_refuses_the_runner(self) -> None:
         completed = host("runuser -u ci-runner -- docker -H unix:///var/run/docker.sock ps", check=False)

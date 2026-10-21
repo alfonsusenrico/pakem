@@ -287,7 +287,10 @@ authorized keys) stay manual.
    one repository with a token piped from the owner's GitHub login
    (`gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token`);
    `remove-repo` takes a removal token the same way; `check` proves the isolation. Jobs
-   use `runs-on: [self-hosted, linux, x64, pakem]`. Never register a public repository:
+   use `runs-on: [self-hosted, linux, x64, pakem]`. Job containers reach the host's loopback
+   at `10.0.2.2` (a job's own steps already can), and `--network host` means the runner's
+   private network, so a test that starts a container publishes its port to `127.0.0.1`
+   and runs it as the container's root (the runner user on the host). Never register a public repository:
    anyone could run code on the host through a pull request. A host that serves clients
    does not get a runner.
 

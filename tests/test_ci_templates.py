@@ -353,7 +353,8 @@ class DeployTemplateTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertNotIn("accept-new", text.replace("never `accept-new`", ""))
                 self.assertNotIn("StrictHostKeyChecking=no", text)
-                addresses = set(IPV4.findall(text)) - {"127.0.0.1", "0.0.0.0"}
+                # 10.0.2.2 is slirp4netns's fixed alias for the host, not a server.
+                addresses = set(IPV4.findall(text)) - {"127.0.0.1", "0.0.0.0", "10.0.2.2"}
                 self.assertEqual(addresses, set())
 
     def test_deploy_driver_connects_only_with_pinned_keys_and_its_own_identity(self) -> None:
