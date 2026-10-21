@@ -2,9 +2,12 @@
 
 Block format (one line per marker):
 
-    <!-- agent-framework:digest version=0.1.0 sha256=<hex> -->
+    <!-- pakem:profile name=work version=1.0.0 sha256=<hex> -->
     ...body...
-    <!-- /agent-framework:digest -->
+    <!-- /pakem:profile -->
+
+Blocks written before the product was renamed carry the former marker name
+agent-framework; they are still read, and `pakem project sync` rewrites them.
 
 The sha256 covers the body exactly as written: every line between the opening
 and closing marker lines, each terminated by a single LF. The writer always
@@ -21,8 +24,10 @@ from .common import normalize_newlines, sha256_text
 
 DIGEST_KIND = "digest"
 PROFILE_KIND = "profile"
-OPEN_MARKER = re.compile(r"^<!-- agent-framework:(digest|profile)((?: [a-z0-9_]+=\S*)*) -->$")
-CLOSE_MARKER = re.compile(r"^<!-- /agent-framework:(digest|profile) -->$")
+MARKER_NAME = "pakem"
+LEGACY_MARKER_NAME = "agent-framework"
+OPEN_MARKER = re.compile(r"^<!-- (pakem|agent-framework):(digest|profile)((?: [a-z0-9_]+=\S*)*) -->$")
+CLOSE_MARKER = re.compile(r"^<!-- /(?:pakem|agent-framework):(digest|profile) -->$")
 ATTRIBUTE = re.compile(r"([a-z0-9_]+)=(\S*)")
 LEGACY_OPEN = "<!-- owner-baseline:start -->"
 LEGACY_CLOSE = "<!-- owner-baseline:end -->"
@@ -35,10 +40,15 @@ class PinnedBlock:
     start: int
     end: int
     body: str
+    marker_name: str = MARKER_NAME
 
     @property
     def identity(self) -> tuple[str, str]:
         return (self.kind, self.attributes.get("name", ""))
+
+    @property
+    def legacy_marker(self) -> bool:
+        return self.marker_name == LEGACY_MARKER_NAME
 
     def integrity_ok(self) -> bool:
         return self.attributes.get("sha256") == sha256_text(self.body)
@@ -69,7 +79,7 @@ def join_lines(lines: list[str]) -> str:
 
 def parse_document(text: str) -> ParsedDocument:
     document = ParsedDocument(lines=split_lines(text))
-    open_block: tuple[str, dict[str, str], int] | None = None
+    open_block: tuple[str, dict[str, str], int, str] | None = None
     legacy_start: int | None = None
 
     for index, line in enumerate(document.lines):
@@ -89,8 +99,8 @@ def parse_document(text: str) -> ParsedDocument:
                     f"line {index + 1}: block opened before line {open_block[2] + 1} was closed"
                 )
                 continue
-            attributes = dict(ATTRIBUTE.findall(opening.group(2)))
-            open_block = (opening.group(1), attributes, index)
+            attributes = dict(ATTRIBUTE.findall(opening.group(3)))
+            open_block = (opening.group(2), attributes, index, opening.group(1))
             continue
 
         closing = CLOSE_MARKER.match(stripped)
@@ -98,13 +108,13 @@ def parse_document(text: str) -> ParsedDocument:
             if open_block is None:
                 document.problems.append(f"line {index + 1}: closing marker without an opening marker")
                 continue
-            kind, attributes, start = open_block
+            kind, attributes, start, marker_name = open_block
             if closing.group(1) != kind:
                 document.problems.append(
                     f"line {index + 1}: closing {closing.group(1)} marker for an open {kind} block"
                 )
             body = join_lines(document.lines[start + 1 : index])
-            document.blocks.append(PinnedBlock(kind, attributes, start, index, body))
+            document.blocks.append(PinnedBlock(kind, attributes, start, index, body, marker_name))
             open_block = None
 
     if open_block is not None:
@@ -124,5 +134,5 @@ def normalize_body(text: str) -> str:
 def render_block(kind: str, attributes: list[tuple[str, str]], body_text: str) -> list[str]:
     body = normalize_body(body_text)
     rendered_attributes = " ".join(f"{key}={value}" for key, value in attributes)
-    header = f"<!-- agent-framework:{kind} {rendered_attributes} sha256={sha256_text(body)} -->"
-    return [header, *split_lines(body), f"<!-- /agent-framework:{kind} -->"]
+    header = f"<!-- {MARKER_NAME}:{kind} {rendered_attributes} sha256={sha256_text(body)} -->"
+    return [header, *split_lines(body), f"<!-- /{MARKER_NAME}:{kind} -->"]

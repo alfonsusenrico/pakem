@@ -19,7 +19,7 @@ def skill_text(name: str) -> str:
 
 class PruneTests(IsolatedTestCase):
     def manifest(self) -> dict:
-        path = self.home / ".local" / "state" / "agent-framework" / "manifest.json"
+        path = self.home / ".local" / "state" / "pakem" / "manifest.json"
         return json.loads(path.read_text())
 
     def manifest_paths(self) -> set[str]:

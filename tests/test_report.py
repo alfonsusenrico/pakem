@@ -126,17 +126,17 @@ class ReportTests(IsolatedTestCase):
         self.assertIn("2020-01-03-0800.md", self.written_reports())
 
     def test_default_config_and_output_locations(self) -> None:
-        write(self.home / ".config" / "agent-framework" / "report.toml", f'repos_dirs = ["{self.org}"]\n')
+        write(self.home / ".config" / "pakem" / "report.toml", f'repos_dirs = ["{self.org}"]\n')
         completed = self.pakem("report")
         self.assert_ok(completed)
-        reports = self.home / ".local" / "state" / "agent-framework" / "reports"
+        reports = self.home / ".local" / "state" / "pakem" / "reports"
         self.assertTrue((reports / "latest.md").is_file())
         self.assertIn(str(reports), completed.stdout)
 
     def test_missing_config_explains_with_example(self) -> None:
         completed = self.pakem("report")
         self.assert_fails(completed, code=2)
-        self.assertIn("report config not found: ~/.config/agent-framework/report.toml", completed.stderr)
+        self.assertIn("report config not found: ~/.config/pakem/report.toml", completed.stderr)
         self.assertIn("repos_dirs = [", completed.stderr)
         self.assertFalse((self.home / ".local").exists())
 

@@ -1,6 +1,7 @@
 #!/bin/sh
-# Verify agent-framework pinned blocks in a project's AGENTS.md without the
-# framework checkout (for CI in repositories that cannot access it).
+# Verify Pakem pinned blocks in a project's AGENTS.md without the framework
+# checkout (for CI in repositories that cannot access it). Blocks written before
+# the rename carry the former marker name agent-framework and are still accepted.
 #
 # Usage: check_pinned_blocks.sh [REPO_DIR | AGENTS_FILE]
 #
@@ -46,7 +47,7 @@ scan=$(awk -v dir="$work_dir" '
         line = $0
         marker = line
         sub(/[ \t]+$/, "", marker)
-        if (marker ~ /^<!-- agent-framework:(digest|profile)( [a-z0-9_]+=[^ ]*)* -->$/) {
+        if (marker ~ /^<!-- (pakem|agent-framework):(digest|profile)( [a-z0-9_]+=[^ ]*)* -->$/) {
             if (open) {
                 print "ERROR|line " NR ": block opened before the previous block was closed"
                 next
@@ -54,7 +55,7 @@ scan=$(awk -v dir="$work_dir" '
             open = 1
             count++
             kind = marker
-            sub(/^<!-- agent-framework:/, "", kind)
+            sub(/^<!-- [a-z-]+:/, "", kind)
             sub(/ .*/, "", kind)
             sha = ""
             if (match(marker, /sha256=[0-9a-f]*/)) sha = substr(marker, RSTART + 7, RLENGTH - 7)
@@ -65,13 +66,13 @@ scan=$(awk -v dir="$work_dir" '
             print "BLOCK|" count "|" kind "|" name "|" sha "|" NR
             next
         }
-        if (marker ~ /^<!-- \/agent-framework:(digest|profile) -->$/) {
+        if (marker ~ /^<!-- \/(pakem|agent-framework):(digest|profile) -->$/) {
             if (!open) {
                 print "ERROR|line " NR ": closing marker without an opening marker"
                 next
             }
             closing_kind = marker
-            sub(/^<!-- \/agent-framework:/, "", closing_kind)
+            sub(/^<!-- \/[a-z-]+:/, "", closing_kind)
             sub(/ .*/, "", closing_kind)
             if (closing_kind != kind) print "ERROR|line " NR ": closing " closing_kind " marker for an open " kind " block"
             close(body)
@@ -113,7 +114,7 @@ $scan
 EOF
 
 if [ "$blocks" -eq 0 ]; then
-    echo "WARNING: AGENTS.md has no agent-framework blocks"
+    echo "WARNING: AGENTS.md has no Pakem blocks"
     warnings=$((warnings + 1))
 fi
 

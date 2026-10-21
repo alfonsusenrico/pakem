@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from .changelog import run_changelog
-from .common import PakemError, eprint
+from .common import Framework, PakemError, eprint
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
 from .enforce import run_enforce
@@ -14,12 +14,16 @@ from .evals import HOSTS as EVAL_HOSTS
 from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
 from .installer import run_install, run_uninstall
+from .legacy_install import migrate
 from .lint import run_lint
 from .project import run_check, run_sync
-from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, run_schedule
+from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, default_context, run_schedule
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent
 ENFORCE_HOSTS = ("claude", "codex", "antigravity")
+# Commands that write installed state migrate it from the former name first;
+# install does so itself, after its source checks.
+MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
 
 
 def _add_apply(parser: argparse.ArgumentParser, verb: str = "write") -> None:
@@ -122,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument(
         "--output-dir",
         metavar="DIR",
-        help="where reports are written (default: ~/.local/state/agent-framework/reports)",
+        help="where reports are written (default: ~/.local/state/pakem/reports)",
     )
     report.add_argument(
         "--keep",
@@ -222,7 +226,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def migrate_before(args: argparse.Namespace) -> None:
+    if args.command not in MIGRATING_COMMANDS or not hasattr(args, "apply"):
+        return
+    migration = migrate(Framework(Path(args.root)), args.apply, default_context())
+    migration.print()
+    for warning in migration.warnings:
+        print(f"WARNING: {warning}")
+
+
 def dispatch(args: argparse.Namespace) -> int:
+    migrate_before(args)
     if args.command == "install":
         return run_install(args)
     if args.command == "uninstall":

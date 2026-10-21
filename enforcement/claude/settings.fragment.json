@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.local/share/agent-framework/guard.py\" --host claude",
+            "command": "python3 \"$HOME/.local/share/pakem/guard.py\" --host claude",
             "timeout": 10
           }
         ]

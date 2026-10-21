@@ -260,6 +260,11 @@ def _check_blocks(document, report: Report) -> None:
                 "the kernel is installed globally (pakem project sync removes it)"
             )
             continue
+        if block.legacy_marker:
+            report.warn(
+                f"profile {block.attributes.get('name', '?')} block (line {block.start + 1}) uses the former "
+                "marker name agent-framework (pakem project sync --profile <dir> rewrites it)"
+            )
         if not block.integrity_ok():
             report.error(
                 f"profile {block.attributes.get('name', '?')} block (line {block.start + 1}) body does not "

@@ -34,9 +34,9 @@ class EntryPointTests(IsolatedTestCase):
                 self.assert_ok(completed)
                 self.assertIn("pakem lint", completed.stdout)
 
-    def test_no_af_entry_point_remains(self) -> None:
-        self.assertFalse((REPO_ROOT / "tools" / "af").exists())
-        self.assertFalse((REPO_ROOT / "tools" / "af_lib").exists())
+    def test_no_entry_point_under_the_former_command_name_remains(self) -> None:
+        former = [path.name for path in (REPO_ROOT / "tools").iterdir() if path.name.split("_")[0] == "af"]
+        self.assertEqual(former, [])
 
 
 if __name__ == "__main__":

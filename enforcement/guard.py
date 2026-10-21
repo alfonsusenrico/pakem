@@ -30,10 +30,11 @@ This is a guardrail against accidents, not a sandbox: scripts on disk, string
 concatenation, or encoded paths are not detected.
 
 Protected branches: for a push, the guard runs
-`git config --get-all agentframework.protectedBranch` in the directory the push
-runs in (the hook's cwd, adjusted for `cd` and `git -C`). When the key is unset,
-or git cannot answer (not a repository, git missing, timeout), the protected set
-is main and master. Force pushes to a protected branch are denied and force
+`git config --get-all pakem.protectedBranch` in the directory the push runs in
+(the hook's cwd, adjusted for `cd` and `git -C`), falling back to the former key
+agentframework.protectedBranch that repositories configured before the rename
+still carry. When neither key is set, or git cannot answer (git missing,
+timeout), the protected set is main and master. Force pushes to a protected branch are denied and force
 pushes elsewhere ask. Plain pushes to a protected branch are left to the
 repository's pre-push hook, which allows documentation-only ranges and whatever
 the project's protected-branch configuration permits.
@@ -56,7 +57,9 @@ SEVERITY = {None: 0, ASK: 1, DENY: 2}
 MAX_NESTING = 5
 
 DEFAULT_PROTECTED_BRANCHES = frozenset({"main", "master"})
-PROTECTED_BRANCH_CONFIG_KEY = "agentframework.protectedBranch"
+PROTECTED_BRANCH_CONFIG_KEY = "pakem.protectedBranch"
+# Read when a repository has only the former key (configured before the rename).
+LEGACY_PROTECTED_BRANCH_CONFIG_KEY = "agentframework.protectedBranch"
 SEPARATORS = {"&&", "||", ";", "|", "&", "|&", ";;", "(", ")", ";&", ";;&"}
 REDIRECTIONS = {">", ">>", ">&", "&>", "&>>", ">|", "<", "<<", "<<<", "<&", "<>", "<<-"}
 READ_COMMANDS = {
@@ -657,25 +660,27 @@ def current_branch(cwd: str) -> str | None:
 
 def protected_branches(cwd: str) -> frozenset[str]:
     """Branches protected in the repository at cwd; main/master when unset or unreadable."""
-    try:
-        completed = subprocess.run(
-            ["git", "-C", cwd, "config", "--get-all", PROTECTED_BRANCH_CONFIG_KEY],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return DEFAULT_PROTECTED_BRANCHES
-    if completed.returncode != 0:
-        return DEFAULT_PROTECTED_BRANCHES
-    configured = set()
-    for line in completed.stdout.splitlines():
-        branch = line.strip().removeprefix("refs/heads/")
-        if branch:
-            configured.add(branch)
-    if not configured:
-        return DEFAULT_PROTECTED_BRANCHES
-    return frozenset(configured)
+    for key in (PROTECTED_BRANCH_CONFIG_KEY, LEGACY_PROTECTED_BRANCH_CONFIG_KEY):
+        try:
+            completed = subprocess.run(
+                ["git", "-C", cwd, "config", "--get-all", key],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return DEFAULT_PROTECTED_BRANCHES
+        # git config exits 1 when the key is unset; the next key is tried then.
+        if completed.returncode != 0:
+            continue
+        configured = set()
+        for line in completed.stdout.splitlines():
+            branch = line.strip().removeprefix("refs/heads/")
+            if branch:
+                configured.add(branch)
+        if configured:
+            return frozenset(configured)
+    return DEFAULT_PROTECTED_BRANCHES
 
 
 def refspec_destination(refspec: str, cwd: str) -> str | None:

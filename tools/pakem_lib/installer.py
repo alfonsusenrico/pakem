@@ -24,8 +24,10 @@ from .common import (
 )
 from .hosts import HostTarget, load_targets, select_hosts
 from .kernel import render_kernel, size_violations
+from .legacy_install import migrate
 from .manifest import BackupSession, entries_by_path, load_manifest, save_manifest
 from .profiles import Profile, load_profiles
+from .schedule import ScheduleContext, default_context
 from .source import WAIVER_DIRTY, WAIVER_UNMERGED, framework_source_status, profile_source_findings
 from .transaction import WriteJournal
 
@@ -552,7 +554,7 @@ def apply_install_plan(framework: Framework, plan: InstallPlan) -> list[str]:
     return journal.commit()
 
 
-def run_install(args) -> int:
+def run_install(args, schedule_context: ScheduleContext | None = None) -> int:
     framework = Framework(Path(args.root))
     targets = load_targets(framework.targets_path)
     hosts = select_hosts(targets, args.hosts)
@@ -570,6 +572,12 @@ def run_install(args) -> int:
         plan.report.print()
         print("Nothing written.")
         return 1
+
+    # After every refusal above, so a refused install writes nothing at all.
+    migration = migrate(framework, args.apply, schedule_context or default_context())
+    migration.print()
+    for warning in migration.warnings:
+        plan.report.warn(warning)
 
     if not args.apply:
         plan.report.print()

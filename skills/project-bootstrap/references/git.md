@@ -26,7 +26,7 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
   replaces the default, so name `main` too when it stays protected. A project that
   allows direct code pushes records `default:branching` in `## Overrides` and installs
   with `--protect-none`. The values live in the repository's
-  `agentframework.protectedBranch` git config and are read by the pre-push hook and
+  `pakem.protectedBranch` git config and are read by the pre-push hook and
   the Claude Code and Antigravity guard; Codex rules are static and always forbid
   force-pushing or deleting `main`, `master`, and `development`.
 - Never rewrite shared history. Ask the owner before any force push, including on

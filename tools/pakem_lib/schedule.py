@@ -26,10 +26,10 @@ from .common import (
     utc_now_iso,
     write_text_atomically,
 )
-from .manifest import load_manifest, reports_dir, save_manifest
+from .manifest import canonical_reports_dir, load_manifest, save_manifest
 from .source import framework_source_status
 
-LABEL = "com.agentframework.drift-report"
+LABEL = "com.pakem.drift-report"
 SUPPORTED_PLATFORM = "darwin"
 DEFAULT_WEEKDAY = 1  # launchd: 0 and 7 are Sunday, 1 is Monday.
 DEFAULT_HOUR = 8
@@ -66,7 +66,8 @@ def plist_path() -> Path:
 
 
 def log_path() -> Path:
-    return reports_dir() / LOG_NAME
+    # The canonical directory: every --apply migrates the state there before the job is written.
+    return canonical_reports_dir() / LOG_NAME
 
 
 def render_plist(framework: Framework, python: str, weekday: int, hour: int, minute: int) -> str:
@@ -86,15 +87,15 @@ def bootstrap_command(uid: int, path: Path) -> list[str]:
     return ["bootstrap", f"gui/{uid}", str(path)]
 
 
-def bootout_command(uid: int) -> list[str]:
-    return ["bootout", f"gui/{uid}/{LABEL}"]
+def bootout_command(uid: int, label: str = LABEL) -> list[str]:
+    return ["bootout", f"gui/{uid}/{label}"]
 
 
 def print_command(uid: int) -> list[str]:
     return ["print", f"gui/{uid}/{LABEL}"]
 
 
-def _shell_line(arguments: list[str]) -> str:
+def shell_line(arguments: list[str]) -> str:
     return "launchctl " + shlex.join(arguments)
 
 
@@ -106,14 +107,14 @@ def _require_platform(context: ScheduleContext) -> None:
         )
 
 
-def _bootout(context: ScheduleContext) -> None:
+def bootout(context: ScheduleContext, label: str = LABEL) -> None:
     """Unload the job; a job that is not loaded makes bootout fail, which is reported, not fatal."""
-    completed = context.runner(bootout_command(context.uid))
+    completed = context.runner(bootout_command(context.uid, label))
     if completed.returncode != 0:
         print(f"  note: bootout exited {completed.returncode} (job not loaded?): {completed.stderr.strip()}")
 
 
-def _managed(record: dict | None, path: Path) -> bool:
+def managed(record: dict | None, path: Path) -> bool:
     """True when path is the regular file pakem recorded, unchanged since."""
     if record is None or not path.is_file() or path.is_symlink():
         return False
@@ -125,7 +126,7 @@ def install(framework: Framework, args, context: ScheduleContext) -> int:
     record = manifest["schedule"].get(LABEL)
     path = plist_path()
     text = render_plist(framework, context.python, args.weekday, args.hour, args.minute)
-    if (path.exists() or path.is_symlink()) and not _managed(record, path):
+    if (path.exists() or path.is_symlink()) and not managed(record, path):
         raise PakemError(
             f"{display_path(path)} exists and was not installed by pakem, or was edited since; "
             "refusing to overwrite (remove it by hand if intended)"
@@ -144,15 +145,15 @@ def install(framework: Framework, args, context: ScheduleContext) -> int:
     print(f"  plist: {display_path(path)}")
     print(text, end="")
     for command in commands:
-        print(f"  run: {_shell_line(command)}")
+        print(f"  run: {shell_line(command)}")
     if not args.apply:
         print("Dry run: nothing written and launchctl not run. Re-run with --apply to install.")
         return 0
 
     previous_text = path.read_text(encoding="utf-8") if path.exists() else None
     if record is not None:
-        _bootout(context)
-    reports_dir().mkdir(parents=True, exist_ok=True)
+        bootout(context)
+    canonical_reports_dir().mkdir(parents=True, exist_ok=True)
     write_text_atomically(path, text, mode=PLIST_MODE)
     completed = context.runner(bootstrap_command(context.uid, path))
     if completed.returncode != 0:
@@ -191,17 +192,17 @@ def uninstall(args, context: ScheduleContext) -> int:
         return 0
 
     path = expand_user_path(record["plist"])
-    if path.exists() and not _managed(record, path):
+    if path.exists() and not managed(record, path):
         print(f"ERROR: {record['plist']} was edited after install; unload and remove it by hand if intended")
         return 1
     command = bootout_command(context.uid)
-    print(f"  run: {_shell_line(command)}")
+    print(f"  run: {shell_line(command)}")
     print(f"  remove {record['plist']}")
     if not args.apply:
         print("Dry run: nothing removed and launchctl not run. Re-run with --apply to uninstall.")
         return 0
 
-    _bootout(context)
+    bootout(context)
     if path.exists():
         path.unlink()
     del manifest["schedule"][LABEL]
@@ -216,7 +217,7 @@ def status(context: ScheduleContext) -> int:
     print("pakem schedule status")
     print(f"  label: {LABEL}")
     if path.exists():
-        ownership = "installed by pakem" if _managed(record, path) else "not installed by pakem, or edited since"
+        ownership = "installed by pakem" if managed(record, path) else "not installed by pakem, or edited since"
         print(f"  plist: {display_path(path)} ({ownership})")
     else:
         print(f"  plist: {display_path(path)} (absent)")

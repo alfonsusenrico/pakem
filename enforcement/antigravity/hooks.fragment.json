@@ -1,12 +1,12 @@
 {
-  "agent-framework-guard": {
+  "pakem-guard": {
     "PreToolUse": [
       {
         "matcher": "run_command|view_file|.*read.*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$HOME/.local/share/agent-framework/guard.py\" --host antigravity",
+            "command": "python3 \"$HOME/.local/share/pakem/guard.py\" --host antigravity",
             "timeout": 10
           }
         ]

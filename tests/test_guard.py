@@ -269,7 +269,7 @@ class GuardProtectedBranchConfigTests(IsolatedTestCase):
         super().setUp()
         self.repo = init_repo(self.base / "client", self.home, branch="feat/topic")
         for branch in ("development", "main"):
-            git(self.repo, "config", "--add", "agentframework.protectedBranch", branch, home=self.home)
+            git(self.repo, "config", "--add", "pakem.protectedBranch", branch, home=self.home)
 
     def claude_push(self, command: str, cwd: Path) -> str | None:
         payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
@@ -292,6 +292,14 @@ class GuardProtectedBranchConfigTests(IsolatedTestCase):
                 payload = {"toolCall": {"name": "run_command", "args": {"CommandLine": command}}}
                 decision = antigravity_decision(run_guard("antigravity", payload, cwd=self.repo))
                 self.assertEqual(decision, expected)
+
+    def test_former_key_is_read_when_the_current_key_is_unset(self) -> None:
+        git(self.repo, "config", "--unset-all", "pakem.protectedBranch", home=self.home)
+        for branch in ("development", "main"):
+            git(self.repo, "config", "--add", "agentframework.protectedBranch", branch, home=self.home)
+        for command, expected in CONFIGURED_PUSH_CASES:
+            with self.subTest(command=command):
+                self.assertEqual(self.claude_push(command, self.repo), expected)
 
     def test_reason_names_the_branch(self) -> None:
         payload = {"tool_name": "Bash", "tool_input": {"command": "git push -f origin development"}, "cwd": str(self.repo)}

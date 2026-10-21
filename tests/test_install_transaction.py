@@ -28,7 +28,7 @@ def read_only(directory: Path):
 @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignores directory permissions")
 class InstallTransactionTests(IsolatedTestCase):
     def state_dir(self) -> Path:
-        return self.home / ".local" / "state" / "agent-framework"
+        return self.home / ".local" / "state" / "pakem"
 
     def manifest_bytes(self) -> bytes:
         return (self.state_dir() / "manifest.json").read_bytes()
@@ -103,7 +103,7 @@ class InstallTransactionTests(IsolatedTestCase):
             completed = self.pakem(*INSTALL)
         self.assert_fails(completed, code=2)
         self.assertIn("restored ~/.claude/CLAUDE.md", completed.stdout)
-        self.assertIn("Backups taken in this run remain in ~/.local/state/agent-framework/backups/", completed.stdout)
+        self.assertIn("Backups taken in this run remain in ~/.local/state/pakem/backups/", completed.stdout)
         self.assertEqual(own_rules.read_text(), "my own rules\n")
         self.assertFalse((self.home / ".codex").exists())
         self.assertFalse((self.state_dir() / "manifest.json").exists())

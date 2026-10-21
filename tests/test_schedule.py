@@ -27,10 +27,10 @@ from pakem_lib.common import PakemError  # noqa: E402
 
 UID = 501
 PYTHON = "/usr/local/bin/python3-for-tests"
-LABEL = "com.agentframework.drift-report"
-SAMPLE_PRINT = """gui/501/com.agentframework.drift-report = {
+LABEL = "com.pakem.drift-report"
+SAMPLE_PRINT = """gui/501/com.pakem.drift-report = {
 \tactive count = 0
-\tpath = /var/empty/Library/LaunchAgents/com.agentframework.drift-report.plist
+\tpath = /var/empty/Library/LaunchAgents/com.pakem.drift-report.plist
 \tstate = not running
 \tprogram = /usr/bin/python3
 \truns = 2
@@ -69,8 +69,8 @@ class ScheduleTests(IsolatedTestCase):
         self.addCleanup(patcher.stop)
         self.launchctl = FakeLaunchctl()
         self.plist = self.home / "Library" / "LaunchAgents" / f"{LABEL}.plist"
-        self.log = self.home / ".local" / "state" / "agent-framework" / "reports" / "launchd.log"
-        self.manifest_path = self.home / ".local" / "state" / "agent-framework" / "manifest.json"
+        self.log = self.home / ".local" / "state" / "pakem" / "reports" / "launchd.log"
+        self.manifest_path = self.home / ".local" / "state" / "pakem" / "manifest.json"
 
     def context(self, platform: str = "darwin", runner=None) -> schedule.ScheduleContext:
         return schedule.ScheduleContext(
@@ -242,7 +242,7 @@ class ScheduleCommandLineTests(IsolatedTestCase):
     def test_dry_run_through_cli_writes_nothing(self) -> None:
         completed = self.pakem("schedule", "install")
         self.assert_ok(completed)
-        self.assertIn("<string>com.agentframework.drift-report</string>", completed.stdout)
+        self.assertIn("<string>com.pakem.drift-report</string>", completed.stdout)
         self.assertIn("launchctl bootstrap gui/", completed.stdout)
         self.assertEqual(list(self.home.iterdir()), [])
 

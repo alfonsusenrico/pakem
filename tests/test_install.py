@@ -13,7 +13,7 @@ INSTALL = ("install", "--allow-dirty")
 
 class InstallTests(IsolatedTestCase):
     def manifest(self) -> dict:
-        path = self.home / ".local" / "state" / "agent-framework" / "manifest.json"
+        path = self.home / ".local" / "state" / "pakem" / "manifest.json"
         return json.loads(path.read_text())
 
     def test_dry_run_writes_nothing(self) -> None:
@@ -27,7 +27,7 @@ class InstallTests(IsolatedTestCase):
     def test_apply_creates_files_and_manifest(self) -> None:
         self.assert_ok(self.pakem(*INSTALL, "--apply"))
         claude = (self.home / ".claude" / "CLAUDE.md").read_text()
-        self.assertTrue(claude.startswith("<!-- agent-framework kernel v0.2.0 sha256="))
+        self.assertTrue(claude.startswith("<!-- pakem kernel v0.2.0 sha256="))
         self.assertIn("Always verify before claiming success.", claude)
         self.assertFalse((self.home / ".claude" / "CLAUDE.md").is_symlink())
         for skills_dir in (".claude/skills", ".agents/skills", ".gemini/config/skills"):
@@ -70,7 +70,7 @@ class InstallTests(IsolatedTestCase):
         self.assertEqual(backups[0]["link_target"], str(real_target))
         self.assertNotIn("backup_path", backups[0])
         index_files = list(
-            (self.home / ".local" / "state" / "agent-framework" / "backups").rglob("backup-index.json")
+            (self.home / ".local" / "state" / "pakem" / "backups").rglob("backup-index.json")
         )
         self.assertEqual(len(index_files), 1)
         self.assertIn(str(real_target), index_files[0].read_text())

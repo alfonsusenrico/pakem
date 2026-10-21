@@ -34,7 +34,7 @@ class EnforceTests(IsolatedTestCase):
         return self.home / ".claude" / "settings.json"
 
     def manifest(self) -> dict:
-        return json.loads((self.home / ".local" / "state" / "agent-framework" / "manifest.json").read_text())
+        return json.loads((self.home / ".local" / "state" / "pakem" / "manifest.json").read_text())
 
     def test_claude_dry_run_prints_diff_and_writes_nothing(self) -> None:
         write(self.settings_path(), json.dumps(EXISTING_SETTINGS, indent=2) + "\n")
@@ -60,7 +60,7 @@ class EnforceTests(IsolatedTestCase):
         self.assertIn("PostToolUse", merged["hooks"])
         self.assertIn("guard.py", merged["hooks"]["PreToolUse"][0]["hooks"][0]["command"])
         self.assertEqual(merged["attribution"], {"commit": "", "pr": ""})
-        guard = self.home / ".local" / "share" / "agent-framework" / "guard.py"
+        guard = self.home / ".local" / "share" / "pakem" / "guard.py"
         self.assertTrue(guard.is_file())
         self.assertTrue(self.manifest()["backups"])
 
@@ -122,34 +122,34 @@ class EnforceTests(IsolatedTestCase):
         self.assert_ok(self.pakem("enforce", "install", "--host", "antigravity", "--apply"))
         merged = json.loads(hooks_path.read_text())
         self.assertEqual(merged["lint-checker"], other["lint-checker"])
-        guard_hook = merged["agent-framework-guard"]["PreToolUse"][0]
+        guard_hook = merged["pakem-guard"]["PreToolUse"][0]
         self.assertEqual(guard_hook["matcher"], "run_command|view_file|.*read.*")
         self.assertIn("--host antigravity", guard_hook["hooks"][0]["command"])
 
         self.assert_ok(self.pakem("enforce", "install", "--host", "claude", "--apply"))
         self.assert_ok(self.pakem("enforce", "uninstall", "--host", "antigravity", "--apply"))
         self.assertEqual(json.loads(hooks_path.read_text()), other)
-        guard = self.home / ".local" / "share" / "agent-framework" / "guard.py"
+        guard = self.home / ".local" / "share" / "pakem" / "guard.py"
         self.assertTrue(guard.exists(), "guard must stay while claude still uses it")
 
     def test_codex_rules_install_and_uninstall(self) -> None:
-        rules = self.home / ".codex" / "rules" / "agent-framework.rules"
+        rules = self.home / ".codex" / "rules" / "pakem.rules"
         other_rules = write(self.home / ".codex" / "rules" / "default.rules", "# owner rules\n")
         self.assert_ok(self.pakem("enforce", "install", "--host", "codex", "--apply"))
         self.assertEqual(
             rules.read_text(),
-            (self.framework / "enforcement" / "codex" / "agent-framework.rules").read_text(),
+            (self.framework / "enforcement" / "codex" / "pakem.rules").read_text(),
         )
         self.assert_ok(self.pakem("enforce", "uninstall", "--host", "codex", "--apply"))
         self.assertFalse(rules.exists())
         self.assertEqual(other_rules.read_text(), "# owner rules\n")
 
     def test_codex_refuses_unmanaged_rules_file(self) -> None:
-        write(self.home / ".codex" / "rules" / "agent-framework.rules", "# someone else's\n")
+        write(self.home / ".codex" / "rules" / "pakem.rules", "# someone else's\n")
         self.assert_fails(self.pakem("enforce", "install", "--host", "codex", "--apply"))
 
 
-CODEX_RULES = REPO_ROOT / "enforcement" / "codex" / "agent-framework.rules"
+CODEX_RULES = REPO_ROOT / "enforcement" / "codex" / "pakem.rules"
 DESTRUCTIVE_REFSPEC_FORMS = ("+{}", ":{}", "+HEAD:{}", ":refs/heads/{}")
 PLAIN_REFSPEC_FORMS = ("{}", "HEAD:{}", "refs/heads/{}", "HEAD:refs/heads/{}")
 

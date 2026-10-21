@@ -31,7 +31,7 @@ class ProjectSyncTests(IsolatedTestCase):
         completed = self.pakem("project", "sync", str(self.repo))
         self.assert_ok(completed)
         self.assertIn("+# app", completed.stdout)
-        self.assertNotIn("agent-framework:digest", completed.stdout)
+        self.assertNotIn(":digest", completed.stdout)
         self.assertFalse((self.repo / "AGENTS.md").exists())
 
     def test_creates_from_template_without_framework_block_and_is_idempotent(self) -> None:
@@ -39,7 +39,7 @@ class ProjectSyncTests(IsolatedTestCase):
         text = self.agents()
         self.assertEqual(text.splitlines()[0], "# app")
         self.assertIn("Project notes.", text)
-        self.assertNotIn("agent-framework:", text)
+        self.assertNotIn("pakem:", text)
 
         again = self.pakem("project", "sync", str(self.repo), "--apply")
         self.assert_ok(again)
@@ -71,14 +71,14 @@ class ProjectSyncTests(IsolatedTestCase):
         self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
         lines = self.agents().splitlines()
         self.assertEqual(lines[0], "# Existing")
-        self.assertTrue(lines[2].startswith("<!-- agent-framework:profile name=work version=1.0.0 sha256="))
+        self.assertTrue(lines[2].startswith("<!-- pakem:profile name=work version=1.0.0 sha256="))
         self.assertEqual(lines[-1], "Keep this paragraph.")
         self.assertIn("Profile rule one.", self.agents())
 
         self.make_profile(version="1.1.0", digest="Profile rule two.\n")
         self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
         text = self.agents()
-        self.assertEqual(text.count("<!-- agent-framework:profile"), 1)
+        self.assertEqual(text.count("<!-- pakem:profile"), 1)
         self.assertIn("Profile rule two.", text)
         self.assertNotIn("Profile rule one.", text)
         self.assert_ok(self.pakem("project", "check", str(self.repo)))
@@ -106,7 +106,7 @@ class ProjectSyncTests(IsolatedTestCase):
         text = self.agents()
         self.assertNotIn("owner-baseline", text)
         self.assertNotIn("old baseline", text)
-        self.assertNotIn("agent-framework:", text)
+        self.assertNotIn("pakem:", text)
         self.assertTrue(text.endswith("Notes.\n"))
         self.assert_ok(self.pakem("project", "check", str(self.repo)))
 
@@ -150,6 +150,24 @@ class ProjectCheckTests(IsolatedTestCase):
         self.assert_fails(script)
         self.assertIn("does not match its sha256", script.stdout)
         self.assert_fails(self.pakem("project", "check", str(self.repo)))
+
+    def test_former_marker_name_is_read_reported_and_rewritten(self) -> None:
+        current = self.agents_path.read_text()
+        former = current.replace("<!-- pakem:profile", "<!-- agent-framework:profile").replace(
+            "<!-- /pakem:profile", "<!-- /agent-framework:profile"
+        )
+        self.assertNotEqual(current, former)
+        self.agents_path.write_text(former)
+
+        self.assert_ok(self.run_script())
+        checked = self.pakem("project", "check", str(self.repo))
+        self.assert_ok(checked)
+        self.assertIn("uses the former marker name agent-framework", checked.stdout)
+
+        profile = self.base / "base-profile"
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
+        self.assertEqual(self.agents_path.read_text(), current)
+        self.assertNotIn("former marker name", self.pakem("project", "check", str(self.repo)).stdout)
 
     def test_shell_script_agrees_with_profile_and_crlf(self) -> None:
         profile = self.base / "profile"

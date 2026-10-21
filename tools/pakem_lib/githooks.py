@@ -10,7 +10,9 @@ from .common import PakemError, Framework, is_git_work_tree, read_text, run_git,
 HOOK_NAMES = ("commit-msg", "pre-push")
 HOOKS_DIR_NAME = ".githooks"
 HOOK_MODE = 0o755
-PROTECTED_BRANCH_KEY = "agentframework.protectedBranch"
+PROTECTED_BRANCH_KEY = "pakem.protectedBranch"
+# Repositories configured before the product was renamed; install copies it to the key above.
+LEGACY_PROTECTED_BRANCH_KEY = "agentframework.protectedBranch"
 # Git rejects "-" as a branch name, so this value matches no branch: nothing is protected.
 NO_PROTECTED_BRANCH = "-"
 DEFAULT_PROTECTED_BRANCHES = ("main", "master")
@@ -69,7 +71,7 @@ def run_hooks_install(args) -> int:
     else:
         print(f"  {'set':22}  git config core.hooksPath {HOOKS_DIR_NAME}")
 
-    protected_change = plan_protected_branches(top_level, requested_branches)
+    protected_write, legacy_write = plan_protected_branches(top_level, requested_branches)
 
     exclude_file: Path | None = None
     exclude_text = ""
@@ -101,8 +103,10 @@ def run_hooks_install(args) -> int:
             os.chmod(destination, HOOK_MODE)
     if configured != HOOKS_DIR_NAME:
         run_git(top_level, "config", "core.hooksPath", HOOKS_DIR_NAME)
-    if protected_change:
-        write_protected_branches(top_level, requested_branches)
+    if protected_write:
+        write_protected_branches(top_level, protected_write)
+    if legacy_write:
+        write_protected_branches(top_level, legacy_write, LEGACY_PROTECTED_BRANCH_KEY)
     print("Installed.")
     return 0
 
@@ -121,23 +125,44 @@ def validated_branches(top_level: Path, names: list[str]) -> list[str]:
     return unique
 
 
-def plan_protected_branches(top_level: Path, requested: list[str]) -> bool:
-    """Print the protected-branch plan; return True when the git config must change."""
-    if not requested:
-        return False
-    current = run_git(
-        top_level, "config", "--local", "--get-all", PROTECTED_BRANCH_KEY, check=False
-    ).stdout.splitlines()
-    wanted = describe_protected(requested)
-    if current == requested:
-        print(f"  {'unchanged':22}  git config {PROTECTED_BRANCH_KEY}: {wanted}")
-        return False
-    if current:
-        previous = describe_protected(current)
-    else:
-        previous = f"unset, so {', '.join(DEFAULT_PROTECTED_BRANCHES)}"
-    print(f"  {'set':22}  git config {PROTECTED_BRANCH_KEY}: {wanted} (currently {previous})")
-    return True
+def _configured_branches(top_level: Path, key: str) -> list[str]:
+    return run_git(top_level, "config", "--local", "--get-all", key, check=False).stdout.splitlines()
+
+
+def plan_protected_branches(top_level: Path, requested: list[str]) -> tuple[list[str], list[str]]:
+    """Print the protected-branch plan; return the branches to write under (current key, former key).
+
+    A setting under the former key is copied to the current one. The former key is kept,
+    and kept equal, because hooks copied before the rename (other worktrees, older
+    branches) read only that key; an empty list means no change.
+    """
+    current = _configured_branches(top_level, PROTECTED_BRANCH_KEY)
+    legacy = _configured_branches(top_level, LEGACY_PROTECTED_BRANCH_KEY)
+    write: list[str] = []
+    write_legacy: list[str] = []
+    if requested:
+        wanted = describe_protected(requested)
+        if current == requested:
+            print(f"  {'unchanged':22}  git config {PROTECTED_BRANCH_KEY}: {wanted}")
+        else:
+            if current:
+                previous = describe_protected(current)
+            elif legacy:
+                previous = f"{describe_protected(legacy)} under {LEGACY_PROTECTED_BRANCH_KEY}"
+            else:
+                previous = f"unset, so {', '.join(DEFAULT_PROTECTED_BRANCHES)}"
+            print(f"  {'set':22}  git config {PROTECTED_BRANCH_KEY}: {wanted} (currently {previous})")
+            write = requested
+        if legacy and legacy != requested:
+            print(f"  {'set':22}  git config {LEGACY_PROTECTED_BRANCH_KEY}: {wanted} (former name, for older hooks)")
+            write_legacy = requested
+    elif legacy and not current:
+        print(
+            f"  {'copy':22}  git config {LEGACY_PROTECTED_BRANCH_KEY} -> {PROTECTED_BRANCH_KEY}: "
+            f"{describe_protected(legacy)}"
+        )
+        write = legacy
+    return write, write_legacy
 
 
 def describe_protected(branches: list[str]) -> str:
@@ -146,10 +171,10 @@ def describe_protected(branches: list[str]) -> str:
     return ", ".join(branches)
 
 
-def write_protected_branches(top_level: Path, branches: list[str]) -> None:
-    run_git(top_level, "config", "--local", "--replace-all", PROTECTED_BRANCH_KEY, branches[0])
+def write_protected_branches(top_level: Path, branches: list[str], key: str = PROTECTED_BRANCH_KEY) -> None:
+    run_git(top_level, "config", "--local", "--replace-all", key, branches[0])
     for branch in branches[1:]:
-        run_git(top_level, "config", "--local", "--add", PROTECTED_BRANCH_KEY, branch)
+        run_git(top_level, "config", "--local", "--add", key, branch)
 
 
 def plan_exclude(top_level: Path) -> tuple[Path, str]:

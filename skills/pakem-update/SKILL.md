@@ -13,7 +13,7 @@ the owner.
 
 ## 1. Find this host's installed files
 
-Read `~/.local/state/agent-framework/manifest.json`:
+Read `~/.local/state/pakem/manifest.json`:
 
 - `framework_version` and `installed_at`: the installed release and when it was written;
 - `entries`: every installed file, with `host`, `kind` (`instructions` or `skill`),

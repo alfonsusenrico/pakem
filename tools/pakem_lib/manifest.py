@@ -1,4 +1,4 @@
-"""Install manifest and backup storage under ~/.local/state/agent-framework."""
+"""Install manifest and backup storage under ~/.local/state/pakem."""
 
 from __future__ import annotations
 
@@ -11,22 +11,52 @@ from .common import PakemError, display_path, home_dir, utc_now_iso, utc_timesta
 
 MANIFEST_SCHEMA = 1
 BACKUP_INDEX_NAME = "backup-index.json"
+MANIFEST_NAME = "manifest.json"
+STATE_NAME = "pakem"
+# A device installed before the product was renamed keeps its state under this name
+# until legacy_install.migrate moves it (on the first --apply that writes state).
+LEGACY_STATE_NAME = "agent-framework"
+
+
+def canonical_state_dir() -> Path:
+    return home_dir() / ".local" / "state" / STATE_NAME
+
+
+def legacy_state_dir() -> Path:
+    return home_dir() / ".local" / "state" / LEGACY_STATE_NAME
 
 
 def state_dir() -> Path:
-    return home_dir() / ".local" / "state" / "agent-framework"
+    """Where state lives now: the former directory while it is not yet migrated.
+
+    Resolving here keeps a not-yet-migrated device on one directory: nothing creates the
+    canonical one beside the former one, so the migration can always move it whole.
+    """
+    canonical = canonical_state_dir()
+    legacy = legacy_state_dir()
+    if not canonical.exists() and legacy.is_dir():
+        return legacy
+    return canonical
 
 
 def manifest_path() -> Path:
-    return state_dir() / "manifest.json"
+    return state_dir() / MANIFEST_NAME
 
 
 def reports_dir() -> Path:
     return state_dir() / "reports"
 
 
+def canonical_reports_dir() -> Path:
+    return canonical_state_dir() / "reports"
+
+
 def shared_data_dir() -> Path:
-    return home_dir() / ".local" / "share" / "agent-framework"
+    return home_dir() / ".local" / "share" / STATE_NAME
+
+
+def legacy_shared_data_dir() -> Path:
+    return home_dir() / ".local" / "share" / LEGACY_STATE_NAME
 
 
 def empty_manifest() -> dict:

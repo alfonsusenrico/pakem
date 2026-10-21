@@ -32,8 +32,8 @@ JSON_HOSTS = {
     "claude": ("claude/settings.fragment.json", ".claude/settings.json"),
     "antigravity": ("antigravity/hooks.fragment.json", ".gemini/config/hooks.json"),
 }
-CODEX_RULES_SOURCE = "codex/agent-framework.rules"
-CODEX_RULES_DESTINATION = ".codex/rules/agent-framework.rules"
+CODEX_RULES_SOURCE = "codex/pakem.rules"
+CODEX_RULES_DESTINATION = ".codex/rules/pakem.rules"
 CODEX_PROBE_COMMAND = ["git", "push", "--force", "origin", "main"]
 
 
@@ -64,7 +64,7 @@ def merge_fragment(target: dict, fragment: dict, path: tuple = ()) -> list[dict]
     return changes
 
 
-def _container_at(data: dict, path: list) -> object:
+def container_at(data: dict, path: list) -> object:
     current: object = data
     for key in path:
         if not isinstance(current, dict) or key not in current:
@@ -78,10 +78,10 @@ def revert_changes(data: dict, changes: list[dict]) -> list[str]:
     warnings: list[str] = []
     for change in reversed(changes):
         dotted = ".".join(change["path"])
-        parent = _container_at(data, change["path"][:-1])
+        parent = container_at(data, change["path"][:-1])
         key = change["path"][-1]
         if change["op"] == "append":
-            values = _container_at(data, change["path"])
+            values = container_at(data, change["path"])
             if isinstance(values, list) and change["item"] in values:
                 values.remove(change["item"])
             continue
@@ -102,7 +102,7 @@ def revert_changes(data: dict, changes: list[dict]) -> list[str]:
 
 def _fragment_contains(fragment: dict, change: dict) -> bool:
     """Whether the current fragment still asks for a change recorded by an earlier install."""
-    value = _container_at(fragment, change["path"])
+    value = container_at(fragment, change["path"])
     if change["op"] == "append":
         return isinstance(value, list) and change["item"] in value
     return value is not None and value == change["value"]
@@ -115,7 +115,7 @@ def split_stale_changes(changes: list[dict], fragment: dict) -> tuple[list[dict]
     return kept, stale
 
 
-def _load_json_object(path: Path) -> dict:
+def load_json_object(path: Path) -> dict:
     if not path.exists():
         return {}
     try:
@@ -129,7 +129,7 @@ def _load_json_object(path: Path) -> dict:
     return data
 
 
-def _render_json(data: dict) -> str:
+def render_json(data: dict) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
 
 
@@ -203,13 +203,13 @@ def install_json_host(framework: Framework, host: str, apply: bool) -> int:
     manifest = load_manifest()
     existed = target_path.exists()
     before_text = target_path.read_text(encoding="utf-8") if existed else ""
-    data = _load_json_object(target_path)
+    data = load_json_object(target_path)
     previous = manifest["enforcement"].get(host)
     kept_changes, stale_changes = split_stale_changes(previous.get("changes", []) if previous else [], fragment)
     # Entries a newer fragment dropped would otherwise stay in the host settings forever.
     warnings = revert_changes(data, stale_changes)
     changes = merge_fragment(data, fragment)
-    after_text = _render_json(data)
+    after_text = render_json(data)
 
     print(f"pakem enforce install --host {host} ({'apply' if apply else 'dry-run'})")
     for change in stale_changes:
@@ -253,13 +253,13 @@ def uninstall_json_host(host: str, apply: bool) -> int:
         return 0
     target_path = expand_user_path(record["target"])
     before_text = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
-    data = _load_json_object(target_path)
+    data = load_json_object(target_path)
     warnings = revert_changes(data, record.get("changes", []))
     remove_file = record.get("created_file") and data == {}
     if remove_file:
         print(f"  remove {display_path(target_path)} (created by pakem and now empty)")
     else:
-        _print_diff(target_path, before_text, _render_json(data))
+        _print_diff(target_path, before_text, render_json(data))
     for warning in warnings:
         print(f"WARNING: {warning}")
     _release_guard(manifest, host, apply)
@@ -272,7 +272,7 @@ def uninstall_json_host(host: str, apply: bool) -> int:
         if remove_file:
             target_path.unlink()
         else:
-            write_text_atomically(target_path, _render_json(data))
+            write_text_atomically(target_path, render_json(data))
     del manifest["enforcement"][host]
     save_manifest(manifest)
     print("Uninstalled.")

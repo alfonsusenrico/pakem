@@ -1,11 +1,11 @@
-# agent-framework execpolicy rules for Codex (Starlark).
-# Installed to ~/.codex/rules/agent-framework.rules by `pakem enforce install --host codex`.
+# Pakem execpolicy rules for Codex (Starlark).
+# Installed to ~/.codex/rules/pakem.rules by `pakem enforce install --host codex`.
 # Prefix rules only see leading argv tokens, so they cover the common spellings;
 # the git pre-push and commit-msg hooks remain the authoritative checks.
 
 # Plain pushes to protected branches are left to the repository's pre-push hook,
 # which allows documentation-only ranges and whatever the project's
-# agentframework.protectedBranch configuration permits. Execpolicy rules are
+# pakem.protectedBranch configuration permits. Execpolicy rules are
 # static and cannot read that configuration, so force-push (+) and delete (:)
 # refspecs are forbidden for the usual protected names everywhere.
 DESTRUCTIVE_PROTECTED_REFSPECS = [

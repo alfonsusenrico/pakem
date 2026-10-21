@@ -25,12 +25,13 @@ from .common import (
     write_text_atomically,
 )
 from .doctor import discover_repos, installed_state_report, repo_status, unusable_repo_message
+from .legacy_install import LEGACY_REPORT_CONFIG, REPORT_CONFIG
 from .lint import Linter
 from .manifest import reports_dir
 from .project import check_repo
 from .source import framework_source_status
 
-DEFAULT_CONFIG = "~/.config/agent-framework/report.toml"
+DEFAULT_CONFIG = REPORT_CONFIG
 DEFAULT_KEEP = 12
 CONFIG_KEYS = ("repos_dirs", "repos", "profiles", "keep")
 REPORT_NAME_FORMAT = "%Y-%m-%d-%H%M"
@@ -257,6 +258,10 @@ def run_report(args) -> int:
         config_path = Path(args.config).expanduser().resolve()
     else:
         config_path = expand_user_path(DEFAULT_CONFIG)
+        legacy_config = expand_user_path(LEGACY_REPORT_CONFIG)
+        # Never moved for the owner; the installed-state section says to move it.
+        if not config_path.exists() and legacy_config.is_file():
+            config_path = legacy_config
     config = load_config(config_path)
     keep = args.keep if args.keep is not None else config.keep
     output_dir = Path(args.output_dir).expanduser() if args.output_dir else reports_dir()

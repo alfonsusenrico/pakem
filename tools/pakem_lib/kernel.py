@@ -13,7 +13,7 @@ def kernel_body(framework: Framework) -> str:
 def render_kernel(framework: Framework) -> str:
     body = kernel_body(framework)
     header = (
-        f"<!-- agent-framework kernel v{framework.version()} sha256={sha256_text(body)}"
+        f"<!-- pakem kernel v{framework.version()} sha256={sha256_text(body)}"
         " | managed by pakem; edit the framework repo, not this file -->"
     )
     if not body.endswith("\n"):

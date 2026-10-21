@@ -22,6 +22,7 @@ from .installer import (
     profile_skill_sources,
     split_orphaned_skill_entries,
 )
+from .legacy_install import LEGACY_STATE_NAME, legacy_report_config_notice, legacy_state_present
 from .manifest import entries_by_path, load_manifest
 from .profiles import Profile, load_profiles
 from .project import check_repo
@@ -159,6 +160,14 @@ def check_repos(framework: Framework, directories: list[str], report: Report) ->
 def installed_state_report(framework: Framework, profile_dirs: list[str] | None) -> Report:
     """Everything `pakem doctor` checks except project repositories."""
     report = Report()
+    if legacy_state_present():
+        report.warn(
+            f"installed state is still under the former name {LEGACY_STATE_NAME}; "
+            "pakem install --apply migrates it"
+        )
+    notice = legacy_report_config_notice()
+    if notice:
+        report.warn(notice)
     check_manifest(framework, report)
     hosts = list(load_targets(framework.targets_path).values())
     for host in hosts:

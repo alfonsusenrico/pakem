@@ -1,4 +1,4 @@
-# Template for `pakem report` (copy to ~/.config/agent-framework/report.toml and edit).
+# Template for `pakem report` (copy to ~/.config/pakem/report.toml and edit).
 # Paths must be absolute or start with ~/. The report is read-only: no fetch, no changes.
 
 # Directories whose direct child git repositories are checked; a directory that is
