@@ -106,13 +106,6 @@ Compose mounts file secrets with the host file's owner and mode, so every servic
 reads secrets declares `group_add: ["${AF_SECRETS_GID}"]` (the engine sets it to the deploy
 user's group) and then reads them as any container user, without root.
 
-A service that joins another project's network (an external network named by a placement
-setting) also sees that project's service names, and Docker may answer a name both
-networks carry with the other project's container. Reach your own services there through
-project-unique network aliases (for example `<project>-db` as the database host) and keep
-bare names such as `db`, `api`, or `worker` for nothing on a shared network. Rehearse
-with a stand-in network that carries the other project's real service names.
-
 ## 5. Engine interface
 
 The engine is the only program that changes a running environment. Sequence:
@@ -286,3 +279,21 @@ authorized keys) stay manual.
    check. With a tunnel in front that terminates TLS, set `tls = false`.
 7. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
    `af_engine.py status --config ...`.
+
+## 12. Reaching other projects
+
+How a project reaches another project is a project decision, recorded in its `AGENTS.md`;
+the address is always a setting (placement or default), never a constant in code.
+
+| Where the other project runs | How | Notes |
+|---|---|---|
+| Same host | Join its internal Docker network as an external network named by a placement setting | Use the other project's service name (for example `api`). Your own services on that network need project-unique aliases (below) |
+| Another host, private | A private network or VPN address | Keep the address in placement; never publish the service to reach it |
+| Another deployment, public | Its public URL over TLS, with the other project's authentication | The normal case for projects on different hosts or owners |
+
+On a shared network the other project's service names are visible too, and Docker may
+answer a name both networks carry with the other project's container. Reach your own
+services there through project-unique aliases (for example `<project>-db` as the database
+host) and keep bare names such as `db`, `api`, or `worker` for nothing on a shared
+network. Rehearse with a stand-in network that carries the other project's real service
+names.

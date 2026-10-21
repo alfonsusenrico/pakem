@@ -29,7 +29,10 @@ capabilities, and stack. Record the decision in `research/notes/`.
    design surface, overrides, references. Keep project content under 8,000
    characters. The kernel is installed globally, so `AGENTS.md` carries no copy of
    it; when a profile applies (organization or freelance), add its pinned block
-   with `af project sync <repo> --profile <dir> --apply`.
+   with `af project sync <repo> --profile <dir> --apply`. Write it when onboarding is
+   settled, and keep it current: a change that alters a command, capability, the
+   architecture map, a project rule, an override, or a runtime setting updates
+   `AGENTS.md` in the same change.
 4. **State**: `PROJECT_STATE.md` from the `state-and-handoff` skill templates.
 5. **Research**: create `research/notes/`, `research/prototypes/`,
    `research/evidence/`.
