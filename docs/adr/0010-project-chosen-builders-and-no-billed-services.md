@@ -1,6 +1,6 @@
 # 0010. Project-chosen builders and triggers; no billed services
 
-- Status: Proposed
+- Status: Accepted (owner, 2026-10-21)
 - Date: 2026-10-21
 
 ## Context
@@ -52,22 +52,42 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
    - **registry** (ADR 0009): the builder publishes images and the signed record to a
      registry; the host's pull agent or a push trigger deploys them. Only with a free
      registry (public packages, or a registry on a host we run).
-   - **direct:** the builder sends the signed record, the deploy bundle, and the image
-     archive over SSH to the host, through a per-project key restricted by a forced
-     command to a receiver. The receiver verifies the signature against the project's
-     public key, loads the images, stores the release under `releases/<commit>/`, and
-     runs the engine. No registry is involved; rollback uses releases the host kept
-     (`keep`).
+   - **direct:** the release command sends the signed source archive of the exact commit
+     (`git archive`) and its signed record over SSH to the host, through a per-project
+     key restricted by a forced command to a receiver. The receiver verifies the
+     signature against the device keys the project trusts, builds the images natively
+     once per commit, stores the release under `releases/<commit>/`, and runs the engine.
+     No registry and no image transfer are involved; promotion reuses the built images,
+     and rollback uses releases the host kept (`keep`). A project whose host cannot build
+     may instead send images built elsewhere.
 5. **Images default to the host's architecture** (`linux/amd64` today). A project lists
    more platforms only when a host needs them.
-6. **Profiles:**
+6. **Release commands**, the same on every device and builder:
+   - `release publish`: the current `main` commit to staging, refused unless its required
+     checks passed;
+   - `release promote vX.Y.Z`: tags that commit and deploys the same release to
+     production;
+   - `release rollback previous`: the release that was live before the current one in
+     that environment's deployment history (the previous tag in production, the previous
+     commit in staging), skipping releases that failed and were restored; each run steps
+     one further back. `release rollback <tag or commit>` targets one release. Crossing a
+     schema change still needs explicit confirmation.
+   - `release history`: each environment's releases with version, commit, time, and
+     result.
+7. **Environments are declared in `deploy/release.toml`.** An environment without an
+   `[environments.<name>]` table does not exist: with no staging table, `release publish`
+   reports that and `release promote` checks, builds once, and deploys to production.
+8. **Device keys.** `release setup` gives each device its own signing key and SSH deploy
+   key and registers their public halves with the host; private keys never move between
+   devices, and a lost device is revoked by removing its keys. A device needs only git,
+   the framework, and its keys.
+9. **Profiles:**
    - **Personal (GitHub):** checks run on a self-hosted GitHub Actions runner on the
      owner's server (one registration per repository, as personal accounts require),
      under a dedicated user with rootless Docker, so jobs cannot reach the system Docker
-     socket, the deploy user, or release secrets. Releases are one local command on the
-     owner's device: `release publish` (staging), `release promote vX.Y.Z` (tags and
-     promotes), `release rollback <commit>`. Delivery is direct. The signing key stays on
-     that device, encrypted, with its password in the system keychain.
+     socket, the deploy user, or release secrets. Releases use the commands above from
+     any of the owner's devices; delivery is direct and the server builds. Personal
+     projects declare production only for now.
    - **Work (GitLab):** the self-hosted GitLab runner runs checks and the same release
      commands; delivery is direct when the registry is disabled.
    - **Freelance:** the client's platform, with the same commands and contracts.
@@ -93,6 +113,7 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
 - ADR 0009's research note that self-hosted runners are the weakest *deploy transport*
   still holds: here the runner only runs checks, and deployment goes through the
   restricted receiver.
-- Open questions for the implementation plan: image archive size and transfer time
-  for the larger images, retention of image archives on the host, and whether staging
-  shares the production host.
+- Building on the host uses its CPU for a few minutes per release beside production;
+  builds run with CPU and memory limits, one at a time per host.
+- Open questions for the implementation plan: build cache retention on the host, and
+  whether a future staging environment shares the production host.
