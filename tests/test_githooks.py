@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import unittest
 
-from support import HOOKS_DIR, IsolatedTestCase, git, init_repo, isolated_env, write
+from support import HOOKS_DIR, REPO_ROOT, IsolatedTestCase, git, init_repo, isolated_env, write
 
 PATTERN_LINE = re.compile(r"^SUBJECT_PATTERN=(.*)$", re.MULTILINE)
 
@@ -241,6 +242,57 @@ class HooksInstallTests(IsolatedTestCase):
         again = self.pakem("hooks", "install", str(self.repo), "--apply")
         self.assert_ok(again)
         self.assertIn("unchanged", again.stdout)
+
+    def previous_versions(self, name: str) -> list[bytes]:
+        """Every earlier version of a hook from this repository's history (empty outside git)."""
+        log = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "log", "--format=%H", "--", f"hooks/{name}"],
+            capture_output=True, text=True, check=False,
+        )
+        current = (HOOKS_DIR / name).read_bytes()
+        versions = []
+        for commit in log.stdout.split():
+            shown = subprocess.run(
+                ["git", "-C", str(REPO_ROOT), "show", f"{commit}:hooks/{name}"],
+                capture_output=True, check=False,
+            )
+            if shown.returncode == 0 and shown.stdout != current and shown.stdout not in versions:
+                versions.append(shown.stdout)
+        return versions
+
+    def test_every_earlier_hook_version_is_known(self) -> None:
+        import sys
+
+        sys.path.insert(0, str(REPO_ROOT / "tools"))
+        from pakem_lib.githooks import PREVIOUS_HOOK_SHA256
+
+        for name in ("commit-msg", "pre-push"):
+            versions = self.previous_versions(name)
+            if not versions:
+                self.skipTest("no git history for the hooks")
+            known = PREVIOUS_HOOK_SHA256[name]
+            for version in versions:
+                self.assertIn(hashlib.sha256(version).hexdigest(), known, name)
+            self.assertNotIn(hashlib.sha256((HOOKS_DIR / name).read_bytes()).hexdigest(), known, name)
+
+    def test_earlier_framework_hooks_update_without_force(self) -> None:
+        versions = self.previous_versions("pre-push")
+        if not versions:
+            self.skipTest("no git history for the hooks")
+        hooks = self.repo / ".githooks"
+        hooks.mkdir()
+        (hooks / "pre-push").write_bytes(versions[-1])
+        (hooks / "pre-push").chmod(0o755)
+        completed = self.pakem("hooks", "install", str(self.repo), "--apply")
+        self.assert_ok(completed)
+        self.assertIn("update", completed.stdout)
+        self.assertEqual((hooks / "pre-push").read_text(), (self.framework / "hooks" / "pre-push").read_text())
+
+    def test_edited_hooks_still_need_force(self) -> None:
+        write(self.repo / ".githooks" / "pre-push", "#!/bin/sh\n# our own hook\n", mode=0o755)
+        completed = self.pakem("hooks", "install", str(self.repo), "--apply")
+        self.assert_fails(completed)
+        self.assertIn("BLOCKED-different-hook", completed.stdout)
 
     def test_refuses_existing_hooks_path(self) -> None:
         git(self.repo, "config", "core.hooksPath", "tools/hooks", home=self.home)

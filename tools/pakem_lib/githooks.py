@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -10,6 +11,19 @@ from .common import PakemError, Framework, is_git_work_tree, read_text, run_git,
 HOOK_NAMES = ("commit-msg", "pre-push")
 HOOKS_DIR_NAME = ".githooks"
 HOOK_MODE = 0o755
+# SHA-256 of every earlier released version of each hook. `hooks install` replaces these
+# without --force, because they are Pakem's own and were never edited in the repository.
+# Add the outgoing version here whenever a hook changes (tests/test_githooks.py checks it).
+PREVIOUS_HOOK_SHA256 = {
+    "commit-msg": frozenset({
+        "7f6c0591b4a05cfd1d6cbbdb0c3a9fd2fd8b29ae488c586fa3c6888e7dd918c8",
+    }),
+    "pre-push": frozenset({
+        "85dc3f0b251ca35538d99c0c558c245b8c6f8fe5cab19efeb7e660c9f1fe9ee8",
+        "cb4e5be45985114e36528fcecf6a9c6516a080986205c732fc7207581b333dc3",
+        "fe19b8b42273b109961f256870a9188ccdad85768ead47173be3713a3132c97e",
+    }),
+}
 PROTECTED_BRANCH_KEY = "pakem.protectedBranch"
 # Repositories configured before the product was renamed; install copies it to the key above.
 LEGACY_PROTECTED_BRANCH_KEY = "agentframework.protectedBranch"
@@ -57,6 +71,8 @@ def run_hooks_install(args) -> int:
             action = "create"
         elif read_text(destination) == source_text:
             action = "unchanged"
+        elif _sha256(destination) in PREVIOUS_HOOK_SHA256.get(name, frozenset()):
+            action = "update"
         elif args.force:
             action = "replace"
         else:
@@ -65,7 +81,7 @@ def run_hooks_install(args) -> int:
                 f"an existing hook in {HOOKS_DIR_NAME}/ differs from the framework hook; use --force to replace it"
             )
         print(f"  {action:22}  {HOOKS_DIR_NAME}/{name}")
-        planned.append((destination, source_text if action in ("create", "replace") else ""))
+        planned.append((destination, source_text if action in ("create", "update", "replace") else ""))
     if configured == HOOKS_DIR_NAME:
         print(f"  {'unchanged':22}  git config core.hooksPath {HOOKS_DIR_NAME}")
     else:
@@ -195,3 +211,7 @@ def plan_exclude(top_level: Path) -> tuple[Path, str]:
     if existing and not existing.endswith("\n"):
         existing += "\n"
     return exclude_file, existing + EXCLUDE_ENTRY + "\n"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()

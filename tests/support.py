@@ -211,7 +211,7 @@ class IsolatedTestCase(unittest.TestCase):
         )
         write(
             root / "skills" / "project-bootstrap" / "assets" / "project" / "AGENTS.md.tmpl",
-            "# {{project_name}}\n\nProject notes.\n\nCapabilities: none\n",
+            "# {{project_name}}\n\nProject notes.\n\nCapabilities: none\nDelivery: nobody\n",
         )
         return root
 
