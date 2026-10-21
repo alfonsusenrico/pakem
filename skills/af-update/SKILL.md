@@ -51,24 +51,53 @@ Then follow the re-read rules from the next action. Where an earlier instruction
 the owner in this session conflicts with a new rule, the owner's instruction still wins
 (kernel section 1); name the conflict instead of choosing silently.
 
-## 4. Align the current project (one pass)
+## 4. Align the current project (one pass, with judgment)
 
-Only the project of this session; another session aligns its own.
+Only the project of this session; another session aligns its own. Use what this session
+already knows about the project: the update neither erases that knowledge nor overrides
+it silently.
+
+### Know whose project it is
+
+Decide from the project's `AGENTS.md` (a work or organization profile block, the personal
+profile's client rules, or neither), its `## Overrides`, its git remote, and this
+session's context:
+
+- **own**: the owner's personal project;
+- **work**: an organization project shared with colleagues under its profile;
+- **client**: a client's repository, where the client's conventions win.
+
+### Weigh each difference
+
+| The update changes | own | work | client |
+| --- | --- | --- | --- |
+| How the agent works (when to push, how to interview) | Adopt now | Adopt unless a project override says otherwise | Adopt where it does not conflict with the client's conventions |
+| Project text (pinned framework block, wording that contradicts a rule) | Fix and commit locally | Propose the edit; change it after the owner confirms | Do not edit the client's files; propose an `## Overrides` entry or note to the owner |
+| Structure or code (deployment design, dependencies, CI, file layout) | Never during an update: record a proposed follow-up with its impact | Same, naming who else is affected | Same; the client decides |
+
+Rules for every case:
+
+- **Nothing is skipped silently.** Each difference ends as applied, proposed, or kept
+  with its reason ("kept: override `default:mr-policy`").
+- **No refactors.** Alignment edits only text and configuration; anything touching code,
+  CI, deployment, or more than a few files becomes a proposal through `change-planning`.
+- **Overrides hold.** A labelled default the project overrides does not change; say so.
+- **Knowledge counts.** When this session knows a project fact that conflicts with a new
+  rule, name the conflict and ask; never pick a side silently.
+
+### Steps
 
 1. **Timing.** If a task is in progress, finish it first and list the alignment items in
    the report. A new rule that changes the task's next step (for example "do not open the
    merge request yet") applies immediately.
-2. **Find drift.** Run `af project check` for the project, and compare its `AGENTS.md`,
-   `docs/`, and OpenSpec config with the re-read rules.
-3. **Fix the mechanical parts** without asking: the pinned framework block
-   (`af project sync`), and wording that contradicts the new rules. Commit locally on the
-   current work branch, or on a `docs/<topic>` branch when no work is in progress; push
-   and open a merge request only when the owner accepts, as for any work.
-4. **Ask only real gaps.** Where a new rule needs a project-specific answer (for example
-   which billed services the project uses and their budget), use the gap protocol from
-   `change-planning`: one message with every question and its default; follow-ups only
-   for answers that fail or conflict; at most two rounds; anything still open is recorded
-   as pending.
-5. **Finish** when `af project check` passes and every gap is answered, provisional, or
-   pending. Report the changes made, the decisions recorded, and anything left pending,
-   then return to the task. Do not keep improving beyond the update.
+2. **Find differences.** Run `af project check` for the project, and compare its
+   `AGENTS.md`, `docs/`, and OpenSpec config with the re-read rules.
+3. **Act by the table above.** Commit allowed fixes locally on the current work branch,
+   or on a `docs/<topic>` branch when no work is in progress; push and open a merge
+   request only when the owner accepts, as for any work.
+4. **Ask only real gaps,** with a gap interview (`change-planning`): one message with
+   every question and its default, follow-ups only for answers that fail or conflict, at
+   most two rounds; anything still open is recorded as pending.
+5. **Finish** when `af project check` passes and every difference is applied, proposed,
+   or kept with a reason. Report them in three short lists (applied, proposed, kept), then
+   return to the task. Do not keep improving beyond the update.
