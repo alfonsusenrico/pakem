@@ -7,6 +7,12 @@ description: Use when setting up or changing CI pipelines, preparing a release, 
 
 Production actions need the owner's explicit instruction (`sensitive-operations`).
 
+This skill applies in full when the project's `AGENTS.md` says `Delivery: us`. With
+`Delivery: others`, keep CI green and stop at the merge request; follow the team's release
+process and never change their pipelines, deploy files, or environments unless asked.
+With `Delivery: nobody`, only checks and version tags apply. A missing `Delivery:` line
+is a gap to ask, not a default.
+
 ## 1. CI
 
 Every repository has CI from the first commit. Use the CI templates

@@ -66,6 +66,18 @@ capability registry; the relevant skills (`backend-engineering`,
 `sensitive-operations`, `genai-engineering`, `release-delivery`, `ui-ux-quality`)
 name them. Update the line whenever a change adds a capability.
 
+Also declare `Delivery:`, who releases the project. `deployed` keeps meaning "runs as a
+service" and switches on its runtime standards either way.
+
+- `us`: we release it; `release-delivery` applies in full.
+- `others (<who>)`: another person or team releases it. Our work ends at commits,
+  branches, and the merge request: follow the team's branch, review, and release
+  conventions; never change their pipelines, deploy files, or environments unless asked;
+  propose release-related changes to them instead of making them.
+- `nobody`: a library, tool, or experiment with no release beyond version tags.
+
+When the line is missing or unclear, ask it as a gap; never assume `us`.
+
 ## 4. Other templates
 
 - [Architecture decision record](assets/project/adr.md) under `docs/adr/`.
