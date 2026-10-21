@@ -1,10 +1,10 @@
 # `af` command map
 
-Status: proposal (ADR 0011). Every area starts as `draft`; the kernel rule "use `af` for
+Status: accepted design (ADR 0011), not yet built. Every area starts as `draft`; the kernel rule "use `af` for
 covered operations" applies to an area only when it is `stable`.
 
 Each command lists what it does automatically, the gaps it leaves for the project, the
-owner actions it may report, and what `af check` verifies afterwards.
+owner actions it may report, and what `af project check` verifies afterwards.
 
 ## Conventions (all commands)
 
@@ -21,6 +21,23 @@ owner actions it may report, and what `af check` verifies afterwards.
 | Location facts | Host addresses and device paths live in device-local `~/.config/af/`, never in repositories |
 
 ## Areas
+
+### 0. Framework status and updates: `af status`, `af update`
+
+- `af status [--brief] [--json]`:
+  - the installed framework against merged `main` (network at most every few hours,
+    cached);
+  - the project's pinned version against the installed one;
+  - the project's readiness per stage, with open, due, and provisional decisions.
+- `af update`: installs the framework from merged `main` only (`af install`'s provenance
+  checks), then lists the kernel and skill files that changed.
+- `af config set update notify|apply`: `notify` (default) only tells the owner; `apply`
+  is the owner's standing approval for agents to update.
+- Hooks (`af enforce`):
+  - a session-start hook prints `af status --brief` into each session;
+  - a per-message hook compares a local install stamp, without network, and names the
+    files to re-read after a mid-session install.
+- Hosts without hooks: a kernel line asks agents to run `af status` at session start.
 
 ### 1. Device: `af setup device`
 
@@ -61,7 +78,7 @@ owner actions it may report, and what `af check` verifies afterwards.
 - **Check:** `af setup check --host <host>` (the current bootstrap `check`, plus keys,
   runner isolation, and each project's base).
 
-### 3. Project: `af init project` / `af init project --adopt`
+### 3. Project: `af project init` / `af project adopt`
 
 - **Automatic:** asks the project's fixed facts, then writes the standard files:
   - **Forge:** GitHub or GitLab; public or private.
@@ -94,8 +111,13 @@ owner actions it may report, and what `af check` verifies afterwards.
   - data moves;
   - language of user-facing text;
   - gateway profiles and budgets.
-- **Check:** `af check` (contracts, CI file, deploy files, `AGENTS.md` blocks), and
-  `af check --gaps`.
+- **AGENTS.md:** written once the gaps are settled; later changes update it in the same
+  change.
+- **Decisions:** `af decide <gap> <answer>` records an answer; `--provisional
+  <assumption> --revisit <trigger>` or `--pending <what> --from <who> --ask-again <date>`
+  record the other two states, in the committed `.af/decisions.toml`.
+- **Check:** `af project check` (contracts, CI file, deploy files, `AGENTS.md` blocks),
+  and `af project check --gaps`.
 
 ### 4. Secrets: `af secret`
 
@@ -137,8 +159,8 @@ the same skill.
 
 ## Gap protocol (for coding agents)
 
-A gap is a project- or case-specific decision an `af` command leaves open. `af check
---gaps --json` lists them:
+A gap is a project- or case-specific decision an `af` command leaves open. `af project
+check --gaps --json` lists them:
 
 ```json
 {"id": "health.proof", "required": true,
@@ -147,12 +169,13 @@ A gap is a project- or case-specific decision an `af` command leaves open. `af c
  "options": ["process up", "process up and database answers", "custom"],
  "default": "process up and database answers",
  "target": "deploy/release.toml [health] + docs/deployment.md",
- "done_when": "release.toml health block validates and the endpoint exists in code"}
+ "done_when": "release.toml health block validates and the endpoint exists in code",
+ "blocks": ["release"]}
 ```
 
 The agent fills gaps in this order, and stops when the finish condition holds:
 
-1. Run `af check --gaps --json`. The list is fixed for this session. Do not add
+1. Run `af project check --gaps --json`. The list is fixed for this session. Do not add
    questions, except a blocker no gap covers; record that as a new gap.
 2. Answer what the repository already proves (code, docs, earlier decisions in
    `AGENTS.md`) without asking. Say which gaps were answered this way.
@@ -160,11 +183,17 @@ The agent fills gaps in this order, and stops when the finish condition holds:
    defaults" is a complete answer.
 4. Write each answer to its `target`, with a one-line reason where the target is
    `AGENTS.md` or a decision note.
-5. Run `af check --gaps`. Ask a follow-up only for answers that failed validation or
+5. Run `af project check --gaps`. Ask a follow-up only for answers that failed validation or
    contradict each other, in one message.
-6. **Finish:** no open required gaps and every answer recorded. After the second round,
-   record anything still unclear as an open item in `PROJECT_STATE.md` and continue;
-   never start a third round.
+6. **Finish:** every required gap is answered, provisional (with a revisit trigger), or
+   pending (with what is missing, from whom, and a date to ask again), each recorded with
+   its reason. After the second round, record anything still unclear as pending; never
+   start a third round.
+
+Pending gaps are not asked again until they are due: their date passed, or the work
+reached a stage they block; then they come up at session start as one question. Each gap
+declares the stages it blocks, so agents work on everything else meanwhile and keep the
+pending choice open in the design.
 
 Optional gaps take their default unless the developer objects; they are listed once, not
 asked one by one.
@@ -172,8 +201,9 @@ asked one by one.
 ## Build order and proof
 
 1. `af setup device`, then `af setup host` (folding in `af_bootstrap.sh`), then
-   `af release` for services, then `af init project` for GitHub and services.
-2. **Proof 1:** adopt llm-gateway and personal-agent with `af init project --adopt` and
+   `af release` for services, then `af project init` and `af project adopt` for GitHub
+   and services, with decisions. `af status` and `af update` come first.
+2. **Proof 1:** adopt llm-gateway and personal-agent with `af project adopt` and
    release them with `af release`, using only `af` and the gap protocol.
 3. GitLab and the `artifact` kind.
 4. **Proof 2:** portfolio and cash-flow-tracker.
