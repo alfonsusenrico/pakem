@@ -48,6 +48,10 @@ jobs:
     with:
       mode: publish
       commit: ${{ github.sha }}
+      # Private repositories: build on the free self-hosted runner, host architecture only
+      # (deployment contracts §11 step 8; release.toml `platforms = ["linux/amd64"]`).
+      # runner: pakem
+      # multi_architecture: false
     secrets: inherit
 
   promote:
