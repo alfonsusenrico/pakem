@@ -1,4 +1,4 @@
-"""Fake agent host CLI for the af eval tests; never calls a model.
+"""Fake agent host CLI for the pakem eval tests; never calls a model.
 
 Run through wrapper scripts named claude, codex, and agy; the wrapper's name selects
 the argument layout. FAKE_AGENT_MODE selects the behaviour: good (follows the

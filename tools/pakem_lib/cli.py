@@ -1,4 +1,4 @@
-"""Command-line interface for `af`."""
+"""Command-line interface for `pakem`."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from .changelog import run_changelog
-from .common import AfError, eprint
+from .common import PakemError, eprint
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
 from .enforce import run_enforce
@@ -40,7 +40,7 @@ def _bounded_int(low: int, high: int):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="af", description="Agent engineering framework tooling.")
+    parser = argparse.ArgumentParser(prog="pakem", description="Pakem: kernel, skills, and project checks for coding agents.")
     parser.add_argument(
         "--root",
         default=str(DEFAULT_ROOT),
@@ -74,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_apply(install)
 
-    uninstall = commands.add_parser("uninstall", help="remove af-managed files and restore backups")
+    uninstall = commands.add_parser("uninstall", help="remove pakem-managed files and restore backups")
     uninstall.add_argument(
         "--force", action="store_true", help="back up and remove locally edited managed files"
     )
@@ -131,7 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"dated reports to keep (default: the config's keep, else {DEFAULT_KEEP})",
     )
 
-    schedule = commands.add_parser("schedule", help="run af report weekly through launchd (macOS)")
+    schedule = commands.add_parser("schedule", help="run pakem report weekly through launchd (macOS)")
     schedule_commands = schedule.add_subparsers(dest="schedule_command", required=True)
     schedule_install = schedule_commands.add_parser("install", help="install the weekly launchd agent")
     schedule_install.add_argument(
@@ -247,13 +247,13 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_enforce(args)
     if args.command == "eval" and args.eval_command == "run":
         return run_eval(args)
-    raise AfError(f"unknown command: {args.command}")
+    raise PakemError(f"unknown command: {args.command}")
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return dispatch(args)
-    except AfError as exc:
-        eprint(f"af: error: {exc}")
+    except PakemError as exc:
+        eprint(f"pakem: error: {exc}")
         return 2

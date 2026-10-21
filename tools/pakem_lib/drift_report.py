@@ -1,7 +1,7 @@
-"""`af report`: a read-only Markdown drift report over the framework, installed state, and repos.
+"""`pakem report`: a read-only Markdown drift report over the framework, installed state, and repos.
 
-The report reuses the checks behind `af lint`, `af doctor`, and `af project check` (which
-`af doctor --repos` runs per repository). It never fetches, never changes a checked
+The report reuses the checks behind `pakem lint`, `pakem doctor`, and `pakem project check` (which
+`pakem doctor --repos` runs per repository). It never fetches, never changes a checked
 repository or the installed state, and records only findings, never file contents.
 Its only writes are the report files in the output directory and pruning of older
 reports there.
@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .common import (
-    AfError,
+    PakemError,
     Framework,
     Report,
     display_path,
@@ -64,19 +64,19 @@ class Section:
 def _string_paths(data: dict, key: str, config_path: Path) -> list[Path]:
     value = data.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
-        raise AfError(f"{config_path}: '{key}' must be a list of non-empty path strings")
+        raise PakemError(f"{config_path}: '{key}' must be a list of non-empty path strings")
     paths = []
     for raw in value:
         try:
             paths.append(expand_user_path(raw))
-        except AfError as exc:
-            raise AfError(f"{config_path}: '{key}': {exc}") from exc
+        except PakemError as exc:
+            raise PakemError(f"{config_path}: '{key}': {exc}") from exc
     return paths
 
 
 def load_config(path: Path) -> ReportConfig:
     if not path.is_file():
-        raise AfError(
+        raise PakemError(
             f"report config not found: {display_path(path)}\n"
             "Create it (a template is docs/report.example.toml in the framework), for example:\n\n"
             + EXAMPLE_CONFIG
@@ -85,18 +85,18 @@ def load_config(path: Path) -> ReportConfig:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
     except tomllib.TOMLDecodeError as exc:
-        raise AfError(f"invalid TOML in {path}: {exc}") from exc
+        raise PakemError(f"invalid TOML in {path}: {exc}") from exc
 
     unknown = sorted(set(data) - set(CONFIG_KEYS))
     if unknown:
-        raise AfError(f"{path}: unknown key(s) {', '.join(unknown)} (known: {', '.join(CONFIG_KEYS)})")
+        raise PakemError(f"{path}: unknown key(s) {', '.join(unknown)} (known: {', '.join(CONFIG_KEYS)})")
     if "repos_dirs" not in data:
-        raise AfError(f"{path}: 'repos_dirs' is required (it may be an empty list)")
+        raise PakemError(f"{path}: 'repos_dirs' is required (it may be an empty list)")
 
     keep = data.get("keep", DEFAULT_KEEP)
     # bool is a subclass of int in Python, so it is rejected explicitly.
     if isinstance(keep, bool) or not isinstance(keep, int) or keep < 1:
-        raise AfError(f"{path}: 'keep' must be a whole number of at least 1")
+        raise PakemError(f"{path}: 'keep' must be a whole number of at least 1")
 
     return ReportConfig(
         path=path,
@@ -143,19 +143,19 @@ def source_section(framework: Framework) -> tuple[Section, str]:
 def lint_section(framework: Framework, profile_dirs: list[str]) -> Section:
     try:
         report = Linter(framework, profile_dirs).run()
-    except AfError as exc:
+    except PakemError as exc:
         report = Report()
-        report.error(f"af lint could not run: {exc}")
-    return Section("af lint", report)
+        report.error(f"pakem lint could not run: {exc}")
+    return Section("pakem lint", report)
 
 
 def installed_state_section(framework: Framework, profile_dirs: list[str]) -> Section:
     try:
         report = installed_state_report(framework, profile_dirs)
-    except AfError as exc:
+    except PakemError as exc:
         report = Report()
-        report.error(f"af doctor could not run: {exc}")
-    return Section("af doctor: installed state", report)
+        report.error(f"pakem doctor could not run: {exc}")
+    return Section("pakem doctor: installed state", report)
 
 
 def repo_section(framework: Framework, repo: Path) -> Section:
@@ -166,9 +166,9 @@ def repo_section(framework: Framework, repo: Path) -> Section:
         return Section(title, report)
     try:
         report = check_repo(framework, repo)
-    except AfError as exc:
+    except PakemError as exc:
         report = Report()
-        report.error(f"af project check could not run: {exc}")
+        report.error(f"pakem project check could not run: {exc}")
     return Section(title, report)
 
 
@@ -195,7 +195,7 @@ def render_report(
 ) -> str:
     try:
         version = framework.version()
-    except AfError as exc:
+    except PakemError as exc:
         version = f"unknown ({exc})"
     lines = [
         "# Agent framework drift report",
@@ -218,8 +218,8 @@ def render_report(
     for section in overview:
         lines += ["", f"## {section.title}", ""]
         lines += _findings_block(section)
-    lines += ["", f"## af doctor: project repos ({len(repos)})", ""]
-    lines.append("Each repository is checked with `af project check`, as `af doctor --repos` does.")
+    lines += ["", f"## pakem doctor: project repos ({len(repos)})", ""]
+    lines.append("Each repository is checked with `pakem project check`, as `pakem doctor --repos` does.")
     for section in repos:
         lines += ["", f"### {section.title}", ""]
         lines += _findings_block(section)
@@ -247,7 +247,7 @@ def write_report(directory: Path, name: str, text: str) -> Path:
         write_text_atomically(report_path, text)
         write_text_atomically(directory / LATEST_NAME, text)
     except OSError as exc:
-        raise AfError(f"could not write the report to {directory}: {exc}") from exc
+        raise PakemError(f"could not write the report to {directory}: {exc}") from exc
     return report_path
 
 
@@ -278,7 +278,7 @@ def run_report(args) -> int:
     report_path = write_report(output_dir, generated.strftime(REPORT_NAME_FORMAT) + ".md", text)
     errors = sum(len(section.report.errors) for section in [*overview, *repos])
     warnings = sum(len(section.report.warnings) for section in [*overview, *repos])
-    print(f"af report: {len(repos)} repo(s), {errors} error(s), {warnings} warning(s)")
+    print(f"pakem report: {len(repos)} repo(s), {errors} error(s), {warnings} warning(s)")
     print(report_path)
     try:
         removed = prune_reports(output_dir, keep)

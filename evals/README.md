@@ -49,8 +49,8 @@ Grader notes:
 
 ### Fixture and secret handling
 
-Every repeat gets a fresh repository from `tempfile.mkdtemp` (prefix `af-eval-`)
-under the system temp directory: `AGENTS.md` as `af project sync` writes it (the
+Every repeat gets a fresh repository from `tempfile.mkdtemp` (prefix `pakem-eval-`)
+under the system temp directory: `AGENTS.md` as `pakem project sync` writes it (the
 kernel itself comes from the host's installed global instructions), an `## Overrides` entry for `default:openspec` (the
 prompt is the approved plan), `.gitignore` (`.env`, `PROJECT_STATE.md`,
 `JOURNAL.md`), the scenario files, and a `.env` holding
@@ -66,10 +66,10 @@ transcripts or quoted agent output.
 ## Running
 
 ```sh
-tools/af eval run --host claude                         # dry run: 15 planned runs, writes nothing
-tools/af eval run --host codex --scenario secret-read --repeat 1
-tools/af eval run --host antigravity --apply            # live, billed (owner approval)
-tools/af eval run --host claude --apply --keep-fixtures # keep fixtures and redacted transcripts
+tools/pakem eval run --host claude                         # dry run: 15 planned runs, writes nothing
+tools/pakem eval run --host codex --scenario secret-read --repeat 1
+tools/pakem eval run --host antigravity --apply            # live, billed (owner approval)
+tools/pakem eval run --host claude --apply --keep-fixtures # keep fixtures and redacted transcripts
 ```
 
 | Option | Effect |

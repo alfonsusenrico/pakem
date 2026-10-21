@@ -1,4 +1,4 @@
-"""`af lint`: self-checks for the framework repository and, optionally, profile directories."""
+"""`pakem lint`: self-checks for the framework repository and, optionally, profile directories."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from urllib.parse import unquote
 
 from .capabilities import registry_problems
 from .changelog import UNRELEASED_HEADING, load_fragments, unreleased_bullet_lines
-from .common import AfError, Framework, Report, read_text
+from .common import PakemError, Framework, Report, read_text
 from .frontmatter import parse_frontmatter
 from .hosts import load_targets
 from .kernel import render_kernel, size_violations
@@ -323,7 +323,7 @@ class Linter:
         try:
             rendered = render_kernel(self.framework)
             targets = load_targets(self.framework.targets_path)
-        except AfError as exc:
+        except PakemError as exc:
             self.report.error(f"cannot check host size limits: {exc}")
             return
         for host in targets.values():
@@ -462,14 +462,14 @@ class Linter:
             return
         try:
             bullets = unreleased_bullet_lines(read_text(path))
-        except AfError as exc:
+        except PakemError as exc:
             self.report.error(str(exc))
             return
         if bullets:
             self.report.error(
                 f"CHANGELOG.md line {bullets[0]}: bullet entry under {UNRELEASED_HEADING} "
                 f"({len(bullets)} in total); record changes as fragments in changes/; "
-                "only `af changelog --release` edits CHANGELOG.md"
+                "only `pakem changelog --release` edits CHANGELOG.md"
             )
 
     def check_change_fragments(self) -> None:
@@ -564,7 +564,7 @@ class ProfileLinter:
     def run(self) -> Report:
         try:
             self.profile = load_profile(self.directory, self.framework.version())
-        except (AfError, OSError, UnicodeDecodeError) as exc:
+        except (PakemError, OSError, UnicodeDecodeError) as exc:
             self.report.error(str(exc))
             return self.report
         try:
@@ -573,7 +573,7 @@ class ProfileLinter:
             self.check_skills()
             self.check_markdown_links()
             self.check_banned_patterns()
-        except AfError as exc:
+        except PakemError as exc:
             self.report.error(str(exc))
         return self.report
 
@@ -651,7 +651,7 @@ def run_lint(args) -> int:
     framework = Framework(Path(args.root))
     profile_dirs = getattr(args, "profile", None)
     report = Linter(framework, profile_dirs).run()
-    print(f"af lint {framework.root}")
+    print(f"pakem lint {framework.root}")
     for raw in profile_dirs or []:
         print(f"  profile {raw}")
     report.print()

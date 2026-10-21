@@ -1,4 +1,4 @@
-"""af changelog: change fragments in changes/ and releases into CHANGELOG.md."""
+"""pakem changelog: change fragments in changes/ and releases into CHANGELOG.md."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from support import REPO_ROOT, IsolatedTestCase, write
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from af_lib.changelog import parse_fragment_text  # noqa: E402
+from pakem_lib.changelog import parse_fragment_text  # noqa: E402
 
 CHANGELOG_HEAD = textwrap.dedent(
     """\
@@ -81,14 +81,14 @@ class ChangelogCommandTests(IsolatedTestCase):
         return (self.framework / "VERSION").read_text()
 
     def release(self, *extra: str):
-        return self.af("changelog", "--release", "0.3.0", "--date", "2026-10-09", *extra)
+        return self.pakem("changelog", "--release", "0.3.0", "--date", "2026-10-09", *extra)
 
     def test_pending_view_groups_by_type_in_order(self) -> None:
         self.fragment("security-token-redaction.md", "- Redact tokens.\n")
         self.fragment("added-zeta.md", "- Zeta feature.\n")
         self.fragment("fixed-crash.md", "- Fix crash.\n")
         self.fragment("added-alpha.md", "- Alpha feature\n  over two lines.\n")
-        completed = self.af("changelog")
+        completed = self.pakem("changelog")
         self.assert_ok(completed)
         out = completed.stdout
         self.assertIn("4 pending entry(ies): 4 fragment file(s), 0 legacy", out)
@@ -98,7 +98,7 @@ class ChangelogCommandTests(IsolatedTestCase):
         self.assertNotIn("### Changed", out)
 
     def test_pending_view_with_nothing_pending(self) -> None:
-        completed = self.af("changelog")
+        completed = self.pakem("changelog")
         self.assert_ok(completed)
         self.assertIn("No pending changes.", completed.stdout)
 
@@ -141,7 +141,7 @@ class ChangelogCommandTests(IsolatedTestCase):
         self.assertEqual(self.changelog.read_text(), expected)
         self.assertEqual(self.version(), "0.3.0\n")
         self.assertEqual(sorted(path.name for path in self.changes.iterdir()), ["README.md"])
-        self.assertIn("No pending changes.", self.af("changelog").stdout)
+        self.assertIn("No pending changes.", self.pakem("changelog").stdout)
 
     def test_legacy_bullets_move_into_release(self) -> None:
         self.write_changelog(
@@ -226,7 +226,7 @@ class ChangelogCommandTests(IsolatedTestCase):
         ]
         for arguments, needle in cases:
             with self.subTest(arguments=arguments):
-                self.assert_refused(self.af("changelog", *arguments, "--apply"), needle)
+                self.assert_refused(self.pakem("changelog", *arguments, "--apply"), needle)
         self.assertEqual(before, self.snapshot(self.framework))
 
     def test_refuses_when_nothing_to_release(self) -> None:
@@ -249,7 +249,7 @@ class ChangelogCommandTests(IsolatedTestCase):
                 before = self.snapshot(self.framework)
                 self.assert_refused(self.release("--apply"), f"changes/{name}: ")
                 self.assert_refused(self.release("--apply"), needle)
-                self.assert_refused(self.af("changelog"), needle)
+                self.assert_refused(self.pakem("changelog"), needle)
                 self.assertEqual(before, self.snapshot(self.framework))
                 (self.changes / name).unlink()
 
@@ -263,7 +263,7 @@ class ChangelogCommandTests(IsolatedTestCase):
     def test_refuses_existing_release_section(self) -> None:
         write(self.framework / "VERSION", "0.0.9\n")
         self.fragment("added-alpha.md", "- Alpha.\n")
-        completed = self.af("changelog", "--release", "0.1.0", "--date", "2026-10-09", "--apply")
+        completed = self.pakem("changelog", "--release", "0.1.0", "--date", "2026-10-09", "--apply")
         self.assert_refused(completed, "already has a ## [0.1.0] section")
 
     def test_release_of_prerelease_version(self) -> None:

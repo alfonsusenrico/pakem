@@ -1,11 +1,11 @@
-"""`af doctor`: compare what is installed with what the framework expects."""
+"""`pakem doctor`: compare what is installed with what the framework expects."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from .common import (
-    AfError,
+    PakemError,
     Framework,
     Report,
     display_path,
@@ -31,14 +31,14 @@ def check_manifest(framework: Framework, report: Report) -> None:
     manifest = load_manifest()
     entries = manifest.get("entries", [])
     if not entries:
-        report.warn("nothing installed according to the manifest (run af install)")
+        report.warn("nothing installed according to the manifest (run pakem install)")
         return
 
     installed_version = manifest.get("framework_version")
     framework_version = framework.version()
     if installed_version and version_tuple(installed_version) < version_tuple(framework_version):
         report.warn(
-            f"installed framework v{installed_version} is older than repo v{framework_version} (run af install)"
+            f"installed framework v{installed_version} is older than repo v{framework_version} (run pakem install)"
         )
 
     for entry in entries:
@@ -53,7 +53,7 @@ def check_manifest(framework: Framework, report: Report) -> None:
             report.error(f"edited: {entry['path']} is no longer a regular file")
             continue
         if installed_sha(path, entry["kind"]) != entry.get("sha256"):
-            report.error(f"edited: {entry['path']} differs from what af installed")
+            report.error(f"edited: {entry['path']} differs from what pakem installed")
 
 
 def check_global_instruction_files(host: HostTarget, report: Report) -> None:
@@ -94,14 +94,14 @@ def check_profile_skills(profiles: list[Profile], hosts: list[HostTarget], repor
             installed_path = display_path(directory / source.name)
             entry = entries.get(installed_path)
             if entry is None or entry.get("source") != source.label:
-                report.error(f"not installed: {source.label} at {installed_path} (run af install --profile)")
+                report.error(f"not installed: {source.label} at {installed_path} (run pakem install --profile)")
             elif entry.get("sha256") != source_sha:
-                report.warn(f"outdated: {installed_path} differs from {source.label} (run af install --profile)")
+                report.warn(f"outdated: {installed_path} differs from {source.label} (run pakem install --profile)")
 
 
 def check_orphaned_skills(framework: Framework, profiles: list[Profile], report: Report) -> None:
-    """Skills af installed whose source is gone; profile skills only for the given profiles."""
-    # Problems with the sources themselves are af lint's job, so they are not repeated here.
+    """Skills pakem installed whose source is gone; profile skills only for the given profiles."""
+    # Problems with the sources themselves are pakem lint's job, so they are not repeated here.
     source_report = Report()
     sources = framework_skill_sources(framework, source_report)
     sources += profile_skill_sources(profiles, source_report)
@@ -111,7 +111,7 @@ def check_orphaned_skills(framework: Framework, profiles: list[Profile], report:
     for entry in orphaned:
         report.warn(
             f"orphaned: {entry['path']} was installed from {entry.get('source')}, which no longer exists "
-            "(af install removes it)"
+            "(pakem install removes it)"
         )
 
 
@@ -120,7 +120,7 @@ def discover_repos(directories: list[str]) -> list[Path]:
     for raw in directories:
         base = Path(raw).expanduser().resolve()
         if not base.is_dir():
-            raise AfError(f"--repos directory not found: {base}")
+            raise PakemError(f"--repos directory not found: {base}")
         if (base / ".git").exists():
             repos.append(base)
         for child in sorted(base.iterdir()):
@@ -157,7 +157,7 @@ def check_repos(framework: Framework, directories: list[str], report: Report) ->
 
 
 def installed_state_report(framework: Framework, profile_dirs: list[str] | None) -> Report:
-    """Everything `af doctor` checks except project repositories."""
+    """Everything `pakem doctor` checks except project repositories."""
     report = Report()
     check_manifest(framework, report)
     hosts = list(load_targets(framework.targets_path).values())
@@ -176,6 +176,6 @@ def run_doctor(args) -> int:
     report = installed_state_report(framework, args.profile)
     if args.repos:
         check_repos(framework, args.repos, report)
-    print("af doctor")
+    print("pakem doctor")
     report.print()
     return report.exit_code

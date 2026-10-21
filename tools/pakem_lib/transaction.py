@@ -1,7 +1,7 @@
-"""Undo log for one `af install --apply` run.
+"""Undo log for one `pakem install --apply` run.
 
 Before a target is written or removed, its current state is recorded: an existing
-file, directory, or symlink is renamed to a sibling `.<name>.af-rollback-<n>` (an
+file, directory, or symlink is renamed to a sibling `.<name>.pakem-rollback-<n>` (an
 atomic rename that keeps symlinks as links), and a missing target records the
 topmost parent directory the run is about to create. On failure every recorded
 target is put back in reverse order; on success the set-aside copies are deleted.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .common import display_path
 
-ROLLBACK_SUFFIX = ".af-rollback"
+ROLLBACK_SUFFIX = ".pakem-rollback"
 
 
 @dataclass

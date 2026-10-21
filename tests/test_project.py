@@ -1,4 +1,4 @@
-"""af project sync / check and tools/check_pinned_blocks.sh."""
+"""pakem project sync / check and tools/check_pinned_blocks.sh."""
 
 from __future__ import annotations
 
@@ -28,24 +28,24 @@ class ProjectSyncTests(IsolatedTestCase):
         return profile
 
     def test_dry_run_prints_diff_and_writes_nothing(self) -> None:
-        completed = self.af("project", "sync", str(self.repo))
+        completed = self.pakem("project", "sync", str(self.repo))
         self.assert_ok(completed)
         self.assertIn("+# app", completed.stdout)
         self.assertNotIn("agent-framework:digest", completed.stdout)
         self.assertFalse((self.repo / "AGENTS.md").exists())
 
     def test_creates_from_template_without_framework_block_and_is_idempotent(self) -> None:
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--apply"))
         text = self.agents()
         self.assertEqual(text.splitlines()[0], "# app")
         self.assertIn("Project notes.", text)
         self.assertNotIn("agent-framework:", text)
 
-        again = self.af("project", "sync", str(self.repo), "--apply")
+        again = self.pakem("project", "sync", str(self.repo), "--apply")
         self.assert_ok(again)
         self.assertIn("up to date", again.stdout)
         self.assertEqual(text, self.agents())
-        self.assert_ok(self.af("project", "check", str(self.repo)))
+        self.assert_ok(self.pakem("project", "check", str(self.repo)))
 
     def test_obsolete_digest_block_is_reported_and_removed(self) -> None:
         write(
@@ -54,21 +54,21 @@ class ProjectSyncTests(IsolatedTestCase):
             "<!-- /agent-framework:digest -->\n\nCapabilities: database\n",
         )
         (self.repo / "research").mkdir()
-        check = self.af("project", "check", str(self.repo))
+        check = self.pakem("project", "check", str(self.repo))
         self.assert_ok(check)
         self.assertIn("obsolete framework digest block at line 3", check.stdout)
 
-        synced = self.af("project", "sync", str(self.repo), "--apply")
+        synced = self.pakem("project", "sync", str(self.repo), "--apply")
         self.assert_ok(synced)
         self.assertIn("removed the framework digest block", synced.stdout)
         self.assertEqual(self.agents(), "# Existing\n\nCapabilities: database\n")
-        clean = self.af("project", "check", str(self.repo))
+        clean = self.pakem("project", "check", str(self.repo))
         self.assertIn("0 error(s), 0 warning(s)", clean.stdout)
 
     def test_profile_block_inserted_after_h1_and_refreshed(self) -> None:
         write(self.repo / "AGENTS.md", "# Existing\n\nKeep this paragraph.\n")
         profile = self.make_profile()
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
         lines = self.agents().splitlines()
         self.assertEqual(lines[0], "# Existing")
         self.assertTrue(lines[2].startswith("<!-- agent-framework:profile name=work version=1.0.0 sha256="))
@@ -76,12 +76,12 @@ class ProjectSyncTests(IsolatedTestCase):
         self.assertIn("Profile rule one.", self.agents())
 
         self.make_profile(version="1.1.0", digest="Profile rule two.\n")
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
         text = self.agents()
         self.assertEqual(text.count("<!-- agent-framework:profile"), 1)
         self.assertIn("Profile rule two.", text)
         self.assertNotIn("Profile rule one.", text)
-        self.assert_ok(self.af("project", "check", str(self.repo)))
+        self.assert_ok(self.pakem("project", "check", str(self.repo)))
 
     def test_profile_framework_requirement_is_enforced(self) -> None:
         profile = self.make_profile()
@@ -89,26 +89,26 @@ class ProjectSyncTests(IsolatedTestCase):
             profile / "profile.toml",
             'name = "work"\nversion = "1.0.0"\nrequires_framework = ">=1.0"\ndigest = "DIGEST.md"\n',
         )
-        completed = self.af("project", "sync", str(self.repo), "--profile", str(profile))
+        completed = self.pakem("project", "sync", str(self.repo), "--profile", str(profile))
         self.assert_fails(completed, code=2)
         self.assertIn("requires framework >=1.0", completed.stderr)
 
     def test_legacy_block_reported_but_kept(self) -> None:
         write(self.repo / "AGENTS.md", LEGACY_TEXT)
-        completed = self.af("project", "sync", str(self.repo), "--apply")
+        completed = self.pakem("project", "sync", str(self.repo), "--apply")
         self.assert_ok(completed)
         self.assertIn("pass --replace-legacy to remove it", completed.stdout)
         self.assertIn("old baseline", self.agents())
 
     def test_legacy_block_removed_on_request(self) -> None:
         write(self.repo / "AGENTS.md", LEGACY_TEXT)
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--replace-legacy", "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--replace-legacy", "--apply"))
         text = self.agents()
         self.assertNotIn("owner-baseline", text)
         self.assertNotIn("old baseline", text)
         self.assertNotIn("agent-framework:", text)
         self.assertTrue(text.endswith("Notes.\n"))
-        self.assert_ok(self.af("project", "check", str(self.repo)))
+        self.assert_ok(self.pakem("project", "check", str(self.repo)))
 
 
 class ProjectCheckTests(IsolatedTestCase):
@@ -121,7 +121,7 @@ class ProjectCheckTests(IsolatedTestCase):
             'name = "base"\nversion = "1.0.0"\nrequires_framework = ">=0.1"\ndigest = "D.md"\n',
         )
         write(base_profile / "D.md", "Never print secret values.\n")
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(base_profile), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(base_profile), "--apply"))
         self.agents_path = self.repo / "AGENTS.md"
 
     def tamper(self) -> None:
@@ -138,18 +138,18 @@ class ProjectCheckTests(IsolatedTestCase):
 
     def test_detects_tampered_block(self) -> None:
         self.tamper()
-        completed = self.af("project", "check", str(self.repo))
+        completed = self.pakem("project", "check", str(self.repo))
         self.assert_fails(completed)
         self.assertIn("does not match its sha256", completed.stdout)
 
     def test_shell_script_agrees_on_good_and_tampered(self) -> None:
         self.assert_ok(self.run_script())
-        self.assert_ok(self.af("project", "check", str(self.repo)))
+        self.assert_ok(self.pakem("project", "check", str(self.repo)))
         self.tamper()
         script = self.run_script()
         self.assert_fails(script)
         self.assertIn("does not match its sha256", script.stdout)
-        self.assert_fails(self.af("project", "check", str(self.repo)))
+        self.assert_fails(self.pakem("project", "check", str(self.repo)))
 
     def test_shell_script_agrees_with_profile_and_crlf(self) -> None:
         profile = self.base / "profile"
@@ -158,20 +158,20 @@ class ProjectCheckTests(IsolatedTestCase):
             'name = "work"\nversion = "1.0.0"\nrequires_framework = ">=0.1"\ndigest = "D.md"\n',
         )
         write(profile / "D.md", "Rule with  double  spaces.\n\nSecond paragraph.\n")
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
         crlf = self.agents_path.read_text().replace("\n", "\r\n")
         self.agents_path.write_bytes(crlf.encode())
         self.assert_ok(self.run_script())
-        self.assert_ok(self.af("project", "check", str(self.repo)))
+        self.assert_ok(self.pakem("project", "check", str(self.repo)))
 
     def test_size_limits(self) -> None:
         text = self.agents_path.read_text()
         self.agents_path.write_text(text + "x" * 10_500 + "\n")
-        warned = self.af("project", "check", str(self.repo))
+        warned = self.pakem("project", "check", str(self.repo))
         self.assert_ok(warned)
         self.assertIn("warning above 10000", warned.stdout)
         self.agents_path.write_text(text + "x" * 12_500 + "\n")
-        self.assert_fails(self.af("project", "check", str(self.repo)))
+        self.assert_fails(self.pakem("project", "check", str(self.repo)))
         self.assert_fails(self.run_script())
 
     def test_overrides_validation(self) -> None:
@@ -181,11 +181,11 @@ class ProjectCheckTests(IsolatedTestCase):
             + "\n## Overrides\n\n- `default:branching` This repo commits to trunk.\n  continuation line\n"
         )
         self.agents_path.write_text(valid)
-        self.assert_ok(self.af("project", "check", str(self.repo)))
+        self.assert_ok(self.pakem("project", "check", str(self.repo)))
 
         invalid = text + "\n## Overrides\n\n- `default:unknown-label` Something.\n- No label here.\n"
         self.agents_path.write_text(invalid)
-        completed = self.af("project", "check", str(self.repo))
+        completed = self.pakem("project", "check", str(self.repo))
         self.assert_fails(completed)
         self.assertIn("unknown override label 'default:unknown-label'", completed.stdout)
         self.assertIn("must start with `default:<label>`", completed.stdout)
@@ -193,13 +193,13 @@ class ProjectCheckTests(IsolatedTestCase):
     def test_home_paths_in_tracked_docs_warn(self) -> None:
         write(self.repo / "CLAUDE.md", "See ~/notes and /Users/someone/x\n")
         git(self.repo, "add", "CLAUDE.md", "AGENTS.md", home=self.home)
-        completed = self.af("project", "check", str(self.repo))
+        completed = self.pakem("project", "check", str(self.repo))
         self.assert_ok(completed)
         self.assertIn("CLAUDE.md line 1: machine-specific home path", completed.stdout)
 
     def test_missing_agents_file_is_error(self) -> None:
         self.agents_path.unlink()
-        self.assert_fails(self.af("project", "check", str(self.repo)))
+        self.assert_fails(self.pakem("project", "check", str(self.repo)))
 
 
 class ProjectCapabilityAndFileTests(IsolatedTestCase):
@@ -207,13 +207,13 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         super().setUp()
         self.repo = activate_hooks(init_repo(self.base / "app", self.home), self.home)
         (self.repo / "research").mkdir()
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--apply"))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--apply"))
         self.agents_path = self.repo / "AGENTS.md"
         self.synced = self.agents_path.read_text().replace("Capabilities: none\n", "")
 
     def check_with(self, capability_lines: str) -> subprocess.CompletedProcess:
         self.agents_path.write_text(self.synced + capability_lines)
-        return self.af("project", "check", str(self.repo))
+        return self.pakem("project", "check", str(self.repo))
 
     def test_known_capabilities_pass_cleanly(self) -> None:
         for line in ("Capabilities: database, deployed\n", "- Capabilities: `database`, `deployed`\n"):
@@ -267,8 +267,8 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         )
         write(profile / "D.md", "Capabilities: telepathy\n")
         self.agents_path.write_text(self.synced)
-        self.assert_ok(self.af("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
-        completed = self.af("project", "check", str(self.repo))
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
+        completed = self.pakem("project", "check", str(self.repo))
         self.assert_ok(completed)
         self.assertNotIn("telepathy", completed.stdout)
         self.assertIn("declare project capabilities", completed.stdout)
@@ -284,27 +284,27 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         self.agents_path.write_text(self.synced + "Capabilities: none\n")
         state = self.repo / "PROJECT_STATE.md"
         state.write_text("# State\n" + "x" * 7_900 + "\n")
-        self.assertIn("0 error(s), 0 warning(s)", self.af("project", "check", str(self.repo)).stdout)
+        self.assertIn("0 error(s), 0 warning(s)", self.pakem("project", "check", str(self.repo)).stdout)
         state.write_text("# State\n" + "x" * 8_100 + "\n")
-        warned = self.af("project", "check", str(self.repo))
+        warned = self.pakem("project", "check", str(self.repo))
         self.assert_ok(warned)
         self.assertIn("PROJECT_STATE.md is 8109 chars (warning above 8000)", warned.stdout)
         state.write_text("# State\n" + "x" * 16_100 + "\n")
-        failed = self.af("project", "check", str(self.repo))
+        failed = self.pakem("project", "check", str(self.repo))
         self.assert_fails(failed)
         self.assertIn("PROJECT_STATE.md is 16109 chars (limit 16000)", failed.stdout)
 
     def test_missing_research_folder_warns(self) -> None:
         self.agents_path.write_text(self.synced + "Capabilities: none\n")
         (self.repo / "research").rmdir()
-        completed = self.af("project", "check", str(self.repo))
+        completed = self.pakem("project", "check", str(self.repo))
         self.assert_ok(completed)
         self.assertIn("research/ folder is missing", completed.stdout)
 
     def test_inactive_hooks_warn(self) -> None:
         self.agents_path.write_text(self.synced + "Capabilities: none\n")
         git(self.repo, "config", "--unset", "core.hooksPath", home=self.home)
-        completed = self.af("project", "check", str(self.repo))
+        completed = self.pakem("project", "check", str(self.repo))
         self.assert_ok(completed)
         self.assertIn("framework git hooks are not active here (core.hooksPath is unset)", completed.stdout)
 

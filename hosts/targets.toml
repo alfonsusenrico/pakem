@@ -1,4 +1,4 @@
-# Host targets for `af install`. Facts here are version-sensitive: re-verify each
+# Host targets for `pakem install`. Facts here are version-sensitive: re-verify each
 # entry against its source at least quarterly and update `verified`.
 
 [hosts.claude]

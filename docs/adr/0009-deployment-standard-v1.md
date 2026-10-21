@@ -111,7 +111,7 @@ volumes, and database are separate.
 
 ### Distribution and versioning
 
-Projects copy the CI templates and project files with a version stamp; `af project check`
+Projects copy the CI templates and project files with a version stamp; `pakem project check`
 reports drift. Hosts install the engine and agent from a tagged framework release. The
 standard is versioned on its own: v1.0 after the pilots below; additive changes are
 MINOR; changing a contract needs a new ADR and a MAJOR version.

@@ -1,4 +1,4 @@
-"""`af changelog`: release pending `changes/` fragments into CHANGELOG.md.
+"""`pakem changelog`: release pending `changes/` fragments into CHANGELOG.md.
 
 Each change is a fragment file `changes/<type>-<kebab-topic>.md` holding one or more
 Markdown bullet entries, so concurrent branches never edit the same CHANGELOG.md lines.
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .common import (
     IGNORED_FILE_NAMES,
-    AfError,
+    PakemError,
     Framework,
     normalize_newlines,
     read_text,
@@ -100,7 +100,7 @@ def check_fragment(path: Path) -> tuple[Fragment | None, list[str]]:
 
     try:
         text = read_text(path)
-    except AfError as exc:
+    except PakemError as exc:
         return None, problems + [str(exc)]
     entries, content_problems = parse_fragment_text(text)
     problems += content_problems
@@ -137,9 +137,9 @@ def find_unreleased(text: str) -> UnreleasedSection:
     lines = normalize_newlines(text).splitlines()
     headings = [index for index, line in enumerate(lines) if line.rstrip() == UNRELEASED_HEADING]
     if not headings:
-        raise AfError(f"CHANGELOG.md has no '{UNRELEASED_HEADING}' section")
+        raise PakemError(f"CHANGELOG.md has no '{UNRELEASED_HEADING}' section")
     if len(headings) > 1:
-        raise AfError(f"CHANGELOG.md has more than one '{UNRELEASED_HEADING}' section")
+        raise PakemError(f"CHANGELOG.md has more than one '{UNRELEASED_HEADING}' section")
     heading = headings[0]
     end = len(lines)
     for index in range(heading + 1, len(lines)):
@@ -177,7 +177,7 @@ def legacy_entries(section: UnreleasedSection) -> dict[str, list[str]]:
         if line.startswith(SUBSECTION_PREFIX):
             heading = line[len(SUBSECTION_PREFIX) :].strip()
             if heading.lower() not in CHANGE_TYPES:
-                raise AfError(f"{location}: unknown subsection '{heading}' under {UNRELEASED_HEADING}")
+                raise PakemError(f"{location}: unknown subsection '{heading}' under {UNRELEASED_HEADING}")
             group = heading.lower()
             current = None
             continue
@@ -188,7 +188,7 @@ def legacy_entries(section: UnreleasedSection) -> dict[str, list[str]]:
         if current is not None and line.startswith(" "):
             current.append(line)
             continue
-        raise AfError(
+        raise PakemError(
             f"{location}: text under {UNRELEASED_HEADING} that is neither a bullet entry nor a "
             "### subsection; move it before releasing"
         )
@@ -250,22 +250,22 @@ def is_newer_version(candidate: str, current: str) -> bool:
 
 def validate_release(version: str, release_date: str, current_version: str) -> None:
     if not RELEASE_VERSION.match(version):
-        raise AfError(f"--release must be X.Y.Z, got {version!r}")
+        raise PakemError(f"--release must be X.Y.Z, got {version!r}")
     if not is_newer_version(version, current_version):
-        raise AfError(f"release {version} is not greater than VERSION {current_version}")
+        raise PakemError(f"release {version} is not greater than VERSION {current_version}")
     if not RELEASE_DATE.match(release_date):
-        raise AfError(f"--date must be YYYY-MM-DD, got {release_date!r}")
+        raise PakemError(f"--date must be YYYY-MM-DD, got {release_date!r}")
     try:
         date.fromisoformat(release_date)
     except ValueError as exc:
-        raise AfError(f"--date {release_date} is not a valid date") from exc
+        raise PakemError(f"--date {release_date} is not a valid date") from exc
 
 
 def pending_changes(framework: Framework) -> tuple[list[Fragment], UnreleasedSection, dict[str, list[str]]]:
     """Valid fragments, the Unreleased section, and the merged groups; refuses invalid fragments."""
     fragments, problems = load_fragments(framework.changes_dir)
     if problems:
-        raise AfError("invalid change fragments:\n  " + "\n  ".join(problems))
+        raise PakemError("invalid change fragments:\n  " + "\n  ".join(problems))
     section = find_unreleased(read_text(framework.changelog_path))
     groups = merge_groups(fragments, legacy_entries(section))
     return fragments, section, groups
@@ -277,7 +277,7 @@ def relative_label(path: Path, root: Path) -> str:
 
 def show_pending(framework: Framework) -> int:
     fragments, _, groups = pending_changes(framework)
-    print(f"af changelog (pending) {framework.root}")
+    print(f"pakem changelog (pending) {framework.root}")
     count = entry_count(groups)
     if count == 0:
         print("No pending changes.")
@@ -299,14 +299,14 @@ def release(framework: Framework, version: str, release_date: str, apply: bool) 
     validate_release(version, release_date, current_version)
     fragments, section, groups = pending_changes(framework)
     if entry_count(groups) == 0:
-        raise AfError("nothing to release: no fragments in changes/ and no entries under ## [Unreleased]")
+        raise PakemError("nothing to release: no fragments in changes/ and no entries under ## [Unreleased]")
     release_prefix = f"## [{version}]"
     if any(line.startswith(release_prefix) for line in section.lines):
-        raise AfError(f"CHANGELOG.md already has a {release_prefix} section")
+        raise PakemError(f"CHANGELOG.md already has a {release_prefix} section")
 
     release_lines = render_release_section(version, release_date, groups)
     mode = "apply" if apply else "dry-run"
-    print(f"af changelog --release {version} ({mode}) {framework.root}")
+    print(f"pakem changelog --release {version} ({mode}) {framework.root}")
     print(f"Section under {UNRELEASED_HEADING} in CHANGELOG.md:")
     print()
     print("\n".join(release_lines))
@@ -331,7 +331,7 @@ def run_changelog(args) -> int:
     framework = Framework(Path(args.root))
     if args.release is None:
         if args.date is not None or args.apply:
-            raise AfError("--date and --apply require --release")
+            raise PakemError("--date and --apply require --release")
         return show_pending(framework)
     release_date = args.date if args.date is not None else date.today().isoformat()
     return release(framework, args.release, release_date, args.apply)

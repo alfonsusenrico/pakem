@@ -1,6 +1,6 @@
 ---
-name: af-update
-description: Use when the owner says the agent framework was updated or installed, runs /af-update, or asks the agent to reload its framework rules in a running session. Re-reads the installed kernel and skills, reports what changed, and aligns the current project with it.
+name: pakem-update
+description: Use when the owner says the agent framework was updated or installed, runs /pakem-update, or asks the agent to reload its framework rules in a running session. Re-reads the installed kernel and skills, reports what changed, and aligns the current project with it.
 ---
 
 # Reload the framework in a running session
@@ -27,7 +27,7 @@ Use the entries whose `host` is this agent:
 | Codex | `codex` | `~/.codex/AGENTS.md` | `~/.agents/skills` |
 | Gemini / Antigravity | `antigravity` | `~/.gemini/GEMINI.md` | `~/.gemini/config/skills` |
 
-If the manifest is missing, say the framework is not installed with `af install` on this
+If the manifest is missing, say the framework is not installed with `pakem install` on this
 device and stop.
 
 ## 2. Re-read
@@ -90,7 +90,7 @@ Rules for every case:
 1. **Timing.** If a task is in progress, finish it first and list the alignment items in
    the report. A new rule that changes the task's next step (for example "do not open the
    merge request yet") applies immediately.
-2. **Find differences.** Run `af project check` for the project, and compare its
+2. **Find differences.** Run `pakem project check` for the project, and compare its
    `AGENTS.md`, `docs/`, and OpenSpec config with the re-read rules.
 3. **Act by the table above.** Commit allowed fixes locally on the current work branch,
    or on a `docs/<topic>` branch when no work is in progress; push and open a merge
@@ -98,6 +98,6 @@ Rules for every case:
 4. **Ask only real gaps,** with a gap interview (`change-planning`): one message with
    every question and its default, follow-ups only for answers that fail or conflict, at
    most two rounds; anything still open is recorded as pending.
-5. **Finish** when `af project check` passes and every difference is applied, proposed,
+5. **Finish** when `pakem project check` passes and every difference is applied, proposed,
    or kept with a reason. Report them in three short lists (applied, proposed, kept), then
    return to the task. Do not keep improving beyond the update.

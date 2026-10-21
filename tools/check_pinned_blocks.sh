@@ -7,8 +7,8 @@
 # Checks only block integrity (each block's sha256 matches its body, markers
 # balanced) and AGENTS.md size. The sha256 covers every line between the opening
 # and closing marker lines, each terminated by LF; this must stay in agreement
-# with tools/af_lib/pinned.py. Size is measured in bytes here, while
-# `af project check` counts characters; they are equal for ASCII files.
+# with tools/pakem_lib/pinned.py. Size is measured in bytes here, while
+# `pakem project check` counts characters; they are equal for ASCII files.
 
 set -u
 

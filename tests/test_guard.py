@@ -152,7 +152,7 @@ GUARD_HOME: Path | None = None
 
 def setUpModule() -> None:
     global GUARD_HOME
-    GUARD_HOME = Path(tempfile.mkdtemp(prefix="af-guard-home-"))
+    GUARD_HOME = Path(tempfile.mkdtemp(prefix="pakem-guard-home-"))
 
 
 def tearDownModule() -> None:

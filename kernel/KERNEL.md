@@ -139,7 +139,7 @@ and apply the floors and defaults above:
 | LLM features: prompts, RAG, agents, evals | `genai-engineering` |
 | Reviewing a diff or declaring work ready | `change-review` |
 | CI, releases, deployments, rollback, handover | `release-delivery` |
-| Editing instruction files, skills, or this framework; reloading it after an update | `instruction-maintenance`, `af-update` |
+| Editing instruction files, skills, or this framework; reloading it after an update | `instruction-maintenance`, `pakem-update` |
 
 ## 9. Communication
 

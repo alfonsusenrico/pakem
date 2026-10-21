@@ -1,4 +1,4 @@
-"""Provenance checks for what `af install` copies: the framework checkout and git profiles.
+"""Provenance checks for what `pakem install` copies: the framework checkout and git profiles.
 
 The framework is installed from merged `main` only. Two independent waivers exist so
 a branch can still be tested deliberately:

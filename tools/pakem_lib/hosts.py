@@ -6,7 +6,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .common import AfError, expand_user_path
+from .common import PakemError, expand_user_path
 
 
 @dataclass(frozen=True)
@@ -23,14 +23,14 @@ class HostTarget:
 def _require_string(table: dict, key: str, host_id: str) -> str:
     value = table.get(key)
     if not isinstance(value, str) or not value:
-        raise AfError(f"hosts.{host_id}.{key} must be a non-empty string")
+        raise PakemError(f"hosts.{host_id}.{key} must be a non-empty string")
     return value
 
 
 def _optional_string_list(table: dict, key: str, host_id: str) -> list[str]:
     value = table.get(key, [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise AfError(f"hosts.{host_id}.{key} must be a list of strings")
+        raise PakemError(f"hosts.{host_id}.{key} must be a list of strings")
     return value
 
 
@@ -39,7 +39,7 @@ def _optional_positive_int(table: dict, key: str, host_id: str) -> int | None:
     if value is None:
         return None
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-        raise AfError(f"hosts.{host_id}.{key} must be a positive integer")
+        raise PakemError(f"hosts.{host_id}.{key} must be a positive integer")
     return value
 
 
@@ -48,18 +48,18 @@ def load_targets(path: Path) -> dict[str, HostTarget]:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
     except FileNotFoundError as exc:
-        raise AfError(f"missing host targets file: {path}") from exc
+        raise PakemError(f"missing host targets file: {path}") from exc
     except tomllib.TOMLDecodeError as exc:
-        raise AfError(f"invalid TOML in {path}: {exc}") from exc
+        raise PakemError(f"invalid TOML in {path}: {exc}") from exc
 
     hosts_table = data.get("hosts")
     if not isinstance(hosts_table, dict) or not hosts_table:
-        raise AfError(f"{path} must define at least one [hosts.<id>] table")
+        raise PakemError(f"{path} must define at least one [hosts.<id>] table")
 
     targets: dict[str, HostTarget] = {}
     for host_id, table in hosts_table.items():
         if not isinstance(table, dict):
-            raise AfError(f"hosts.{host_id} must be a table")
+            raise PakemError(f"hosts.{host_id} must be a table")
         skills_dirs = _optional_string_list(table, "skills_dirs", host_id)
         targets[host_id] = HostTarget(
             host_id=host_id,
@@ -85,8 +85,8 @@ def select_hosts(targets: dict[str, HostTarget], requested: str | None) -> list[
             continue
         if host_id not in targets:
             known = ", ".join(sorted(targets))
-            raise AfError(f"unknown host {host_id!r}; known hosts: {known}")
+            raise PakemError(f"unknown host {host_id!r}; known hosts: {known}")
         selected.append(targets[host_id])
     if not selected:
-        raise AfError("--hosts selected no hosts")
+        raise PakemError("--hosts selected no hosts")
     return selected

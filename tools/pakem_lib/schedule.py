@@ -1,7 +1,7 @@
-"""`af schedule install|uninstall|status`: run `af report` weekly through a macOS launchd agent.
+"""`pakem schedule install|uninstall|status`: run `pakem report` weekly through a macOS launchd agent.
 
 The plist is generated, never tracked, and recorded in the manifest with its sha256 so
-uninstall removes only a plist that af wrote and nobody edited since. launchctl is
+uninstall removes only a plist that pakem wrote and nobody edited since. launchctl is
 reached through an injectable runner so tests never load a real job.
 """
 
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .common import (
-    AfError,
+    PakemError,
     Framework,
     display_path,
     expand_user_path,
@@ -73,7 +73,7 @@ def render_plist(framework: Framework, python: str, weekday: int, hour: int, min
     # launchd does not expand ~, so every path in the plist is absolute.
     job = {
         "Label": LABEL,
-        "ProgramArguments": [python, str(framework.root / "tools" / "af"), "report"],
+        "ProgramArguments": [python, str(framework.root / "tools" / "pakem"), "report"],
         "StartCalendarInterval": {"Weekday": weekday, "Hour": hour, "Minute": minute},
         "StandardOutPath": str(log_path()),
         "StandardErrorPath": str(log_path()),
@@ -100,9 +100,9 @@ def _shell_line(arguments: list[str]) -> str:
 
 def _require_platform(context: ScheduleContext) -> None:
     if context.platform != SUPPORTED_PLATFORM:
-        raise AfError(
-            f"af schedule supports macOS (launchd) only; this platform is {context.platform}. "
-            "Run `af report` from this system's own scheduler instead."
+        raise PakemError(
+            f"pakem schedule supports macOS (launchd) only; this platform is {context.platform}. "
+            "Run `pakem report` from this system's own scheduler instead."
         )
 
 
@@ -114,7 +114,7 @@ def _bootout(context: ScheduleContext) -> None:
 
 
 def _managed(record: dict | None, path: Path) -> bool:
-    """True when path is the regular file af recorded, unchanged since."""
+    """True when path is the regular file pakem recorded, unchanged since."""
     if record is None or not path.is_file() or path.is_symlink():
         return False
     return sha256_file(path) == record.get("sha256")
@@ -126,8 +126,8 @@ def install(framework: Framework, args, context: ScheduleContext) -> int:
     path = plist_path()
     text = render_plist(framework, context.python, args.weekday, args.hour, args.minute)
     if (path.exists() or path.is_symlink()) and not _managed(record, path):
-        raise AfError(
-            f"{display_path(path)} exists and was not installed by af, or was edited since; "
+        raise PakemError(
+            f"{display_path(path)} exists and was not installed by pakem, or was edited since; "
             "refusing to overwrite (remove it by hand if intended)"
         )
 
@@ -136,11 +136,11 @@ def install(framework: Framework, args, context: ScheduleContext) -> int:
         commands.append(bootout_command(context.uid))
     commands.append(bootstrap_command(context.uid, path))
 
-    print(f"af schedule install ({'apply' if args.apply else 'dry-run'})")
+    print(f"pakem schedule install ({'apply' if args.apply else 'dry-run'})")
     source = framework_source_status(framework.root)
     print(f"  framework source: {source.summary}")
     for finding in source.findings:
-        print(f"WARNING: {finding.message}; the job runs tools/af from this checkout")
+        print(f"WARNING: {finding.message}; the job runs tools/pakem from this checkout")
     print(f"  plist: {display_path(path)}")
     print(text, end="")
     for command in commands:
@@ -181,11 +181,11 @@ def install(framework: Framework, args, context: ScheduleContext) -> int:
 def uninstall(args, context: ScheduleContext) -> int:
     manifest = load_manifest()
     record = manifest["schedule"].get(LABEL)
-    print(f"af schedule uninstall ({'apply' if args.apply else 'dry-run'})")
+    print(f"pakem schedule uninstall ({'apply' if args.apply else 'dry-run'})")
     if record is None:
         path = plist_path()
         if path.exists() or path.is_symlink():
-            print(f"  {display_path(path)} exists but was not installed by af; left in place")
+            print(f"  {display_path(path)} exists but was not installed by pakem; left in place")
         else:
             print("  nothing recorded for the drift report schedule")
         return 0
@@ -213,10 +213,10 @@ def uninstall(args, context: ScheduleContext) -> int:
 def status(context: ScheduleContext) -> int:
     record = load_manifest()["schedule"].get(LABEL)
     path = plist_path()
-    print("af schedule status")
+    print("pakem schedule status")
     print(f"  label: {LABEL}")
     if path.exists():
-        ownership = "installed by af" if _managed(record, path) else "not installed by af, or edited since"
+        ownership = "installed by pakem" if _managed(record, path) else "not installed by pakem, or edited since"
         print(f"  plist: {display_path(path)} ({ownership})")
     else:
         print(f"  plist: {display_path(path)} (absent)")

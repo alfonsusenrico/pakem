@@ -1,4 +1,4 @@
-"""`af project sync` and `af project check` for a repository's AGENTS.md."""
+"""`pakem project sync` and `pakem project check` for a repository's AGENTS.md."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .capabilities import ALWAYS, declarable_names, load_capabilities
 from .common import (
-    AfError,
+    PakemError,
     Framework,
     Report,
     is_git_work_tree,
@@ -72,7 +72,7 @@ def profile_block_lines(profile: Profile) -> list[str]:
 def _require_well_formed(text: str):
     document = parse_document(text)
     if document.problems:
-        raise AfError("AGENTS.md has malformed pinned blocks: " + "; ".join(document.problems))
+        raise PakemError("AGENTS.md has malformed pinned blocks: " + "; ".join(document.problems))
     return document
 
 
@@ -107,7 +107,7 @@ def synchronize_text(
             )
             continue
         if block.identity in placed:
-            raise AfError(f"AGENTS.md contains more than one profile block for {block.identity[1]}")
+            raise PakemError(f"AGENTS.md contains more than one profile block for {block.identity[1]}")
         lines[block.start : block.end + 1] = replacement
         placed.add(block.identity)
 
@@ -146,7 +146,7 @@ def _initial_agents_text(framework: Framework, repo: Path) -> str:
 def _resolve_repo(raw: str | None) -> Path:
     repo = Path(raw or ".").resolve()
     if not repo.is_dir():
-        raise AfError(f"repository directory not found: {repo}")
+        raise PakemError(f"repository directory not found: {repo}")
     return repo
 
 
@@ -169,7 +169,7 @@ def run_sync(args) -> int:
     updated = synchronize_text(starting_text, profile_blocks, args.replace_legacy, report)
 
     mode = "apply" if args.apply else "dry-run"
-    print(f"af project sync ({mode}) {agents_path}")
+    print(f"pakem project sync ({mode}) {agents_path}")
     if updated == original and not creating:
         report.print()
         print("AGENTS.md is up to date.")
@@ -257,7 +257,7 @@ def _check_blocks(document, report: Report) -> None:
         if block.kind == DIGEST_KIND:
             report.warn(
                 f"obsolete framework digest block at line {block.start + 1}; "
-                "the kernel is installed globally (af project sync removes it)"
+                "the kernel is installed globally (pakem project sync removes it)"
             )
             continue
         if not block.integrity_ok():
@@ -297,7 +297,7 @@ def _check_capabilities(framework: Framework, document, report: Report) -> None:
 
     try:
         known = declarable_names(load_capabilities(framework.capabilities_path))
-    except AfError as exc:
+    except PakemError as exc:
         report.error(f"cannot check declared capabilities: {exc}")
         return
 
@@ -352,7 +352,7 @@ def _check_hooks(repo: Path, report: Report) -> None:
         report.warn(
             "framework git hooks are not active here (core.hooksPath is "
             f"{hooks_path or 'unset'}); nothing checks pushes to protected branches "
-            "(af hooks install)"
+            "(pakem hooks install)"
         )
 
 
@@ -369,7 +369,7 @@ def check_repo(framework: Framework, repo: Path) -> Report:
         report.error(f"AGENTS.md {problem}")
     if document.legacy is not None:
         report.warn(
-            "AGENTS.md still contains a legacy owner-baseline block (af project sync --replace-legacy)"
+            "AGENTS.md still contains a legacy owner-baseline block (pakem project sync --replace-legacy)"
         )
 
     _check_blocks(document, report)
@@ -392,6 +392,6 @@ def run_check(args) -> int:
     framework = Framework(Path(args.root))
     repo = _resolve_repo(args.repo)
     report = check_repo(framework, repo)
-    print(f"af project check {repo}")
+    print(f"pakem project check {repo}")
     report.print()
     return report.exit_code

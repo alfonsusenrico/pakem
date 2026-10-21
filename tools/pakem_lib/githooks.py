@@ -1,11 +1,11 @@
-"""`af hooks install`: install the framework git hooks into a repository."""
+"""`pakem hooks install`: install the framework git hooks into a repository."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-from .common import AfError, Framework, is_git_work_tree, read_text, run_git, write_text_atomically
+from .common import PakemError, Framework, is_git_work_tree, read_text, run_git, write_text_atomically
 
 HOOK_NAMES = ("commit-msg", "pre-push")
 HOOKS_DIR_NAME = ".githooks"
@@ -23,10 +23,10 @@ def run_hooks_install(args) -> int:
     framework = Framework(Path(args.root))
     repo = Path(args.repo or ".").resolve()
     if not is_git_work_tree(repo):
-        raise AfError(f"not a git work tree: {repo}")
+        raise PakemError(f"not a git work tree: {repo}")
     top_level = Path(run_git(repo, "rev-parse", "--show-toplevel").stdout.strip())
     if args.protect_none and args.protect:
-        raise AfError("--protect-none and --protect are mutually exclusive")
+        raise PakemError("--protect-none and --protect are mutually exclusive")
     if args.protect_none:
         requested_branches = [NO_PROTECTED_BRANCH]
     else:
@@ -45,7 +45,7 @@ def run_hooks_install(args) -> int:
         return 1
 
     mode = "apply" if args.apply else "dry-run"
-    print(f"af hooks install ({mode}) {top_level}")
+    print(f"pakem hooks install ({mode}) {top_level}")
     errors: list[str] = []
     planned: list[tuple[Path, str]] = []
     for name in HOOK_NAMES:
@@ -112,10 +112,10 @@ def validated_branches(top_level: Path, names: list[str]) -> list[str]:
     unique: list[str] = []
     for name in names:
         if name.startswith("refs/") or name.startswith("-"):
-            raise AfError(f"--protect takes a short branch name such as development, not {name!r}")
+            raise PakemError(f"--protect takes a short branch name such as development, not {name!r}")
         check = run_git(top_level, "check-ref-format", f"refs/heads/{name}", check=False)
         if check.returncode != 0:
-            raise AfError(f"--protect: not a valid branch name: {name!r}")
+            raise PakemError(f"--protect: not a valid branch name: {name!r}")
         if name not in unique:
             unique.append(name)
     return unique

@@ -18,13 +18,13 @@ kernel and skills; it never repeats or weakens them.
   planning (`change-planning`).
 - `digest.md` stays under 1,600 characters and must not repeat kernel lines; it is
   rendered into personal and freelance repositories' `AGENTS.md` by
-  `af project sync <repo> --profile <this directory>`.
+  `pakem project sync <repo> --profile <this directory>`.
 - `workspace/AGENTS.md` stays under 800 characters; it is rendered by hand to the
   personal workspace root, which keeps no other copy of these rules.
 - Skills follow the framework's Agent Skills rules (trigger-first description of at
   most 350 characters, body under 500 lines, references one level deep with status
   headers). Skill names never collide with framework skills.
-- Check with `tools/af lint --profile profiles/personal` from the framework root
+- Check with `tools/pakem lint --profile profiles/personal` from the framework root
   (0 errors) before any commit.
 - Record decisions as ADRs in `docs/adr/`, releases in `CHANGELOG.md`, and bump
   `VERSION` and `profile.toml` together.

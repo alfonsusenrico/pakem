@@ -1,4 +1,4 @@
-"""`af install` and `af uninstall`: place the kernel and skills into host locations."""
+"""`pakem install` and `pakem uninstall`: place the kernel and skills into host locations."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from .common import (
-    AfError,
+    PakemError,
     Framework,
     Report,
     display_path,
@@ -181,7 +181,7 @@ def _decide_instruction_action(item: InstallItem, entry: dict | None, force: boo
         item.action = BACKUP_EDITED
     else:
         item.action = BLOCKED_EDITED
-        item.detail = "content differs from what af installed; use --force to back up and replace"
+        item.detail = "content differs from what pakem installed; use --force to back up and replace"
 
 
 def _decide_skill_action(
@@ -194,7 +194,7 @@ def _decide_skill_action(
         return
     if path.is_symlink():
         item.action = BLOCKED_UNMANAGED
-        item.detail = f"existing symlink to {os.readlink(path)} was not installed by af"
+        item.detail = f"existing symlink to {os.readlink(path)} was not installed by pakem"
         return
     if not path.exists():
         item.action = CREATE
@@ -209,7 +209,7 @@ def _decide_skill_action(
         return
     if entry is None:
         item.action = BLOCKED_UNMANAGED
-        item.detail = "existing skill directory was not installed by af"
+        item.detail = "existing skill directory was not installed by pakem"
         return
     if current == entry.get("sha256"):
         item.action = REPLACE_MANAGED
@@ -218,7 +218,7 @@ def _decide_skill_action(
         item.action = BACKUP_EDITED
     else:
         item.action = BLOCKED_EDITED
-        item.detail = "skill differs from what af installed; use --force to back up and replace"
+        item.detail = "skill differs from what pakem installed; use --force to back up and replace"
 
 
 def profile_of_source(source: str) -> str | None:
@@ -293,7 +293,7 @@ def _plan_orphans(
     skill_sources: list[SkillSource],
     force: bool,
 ) -> None:
-    """Remove skills af installed whose source is gone; only in the selected hosts' skills dirs."""
+    """Remove skills pakem installed whose source is gone; only in the selected hosts' skills dirs."""
     planned = {display_path(item.path) for item in plan.items}
     candidates = [
         entry
@@ -385,7 +385,7 @@ def _reject_duplicate_skill_names(sources: list[SkillSource]) -> None:
     seen: dict[str, str] = {}
     for source in sources:
         if source.name in seen:
-            raise AfError(
+            raise PakemError(
                 f"skill name '{source.name}' is provided by both {seen[source.name]} and {source.label}"
             )
         seen[source.name] = source.label
@@ -418,7 +418,7 @@ def check_install_sources(plan: InstallPlan, framework: Framework, args) -> str:
 
     if refusals:
         listed = "\n  ".join(refusals)
-        raise AfError(f"refusing to install from this source:\n  {listed}")
+        raise PakemError(f"refusing to install from this source:\n  {listed}")
     return f"framework {status.summary}"
 
 
@@ -442,9 +442,9 @@ def _write_instruction(item: InstallItem) -> None:
 
 def _write_skill(item: InstallItem) -> None:
     if item.source_dir is None:
-        raise AfError(f"internal error: skill item without a source directory: {item.path}")
+        raise PakemError(f"internal error: skill item without a source directory: {item.path}")
     item.path.parent.mkdir(parents=True, exist_ok=True)
-    staging = item.path.with_name(f".{item.path.name}.af-staging")
+    staging = item.path.with_name(f".{item.path.name}.pakem-staging")
     if staging.exists():
         shutil.rmtree(staging)
     try:
@@ -513,7 +513,7 @@ def _roll_back_and_raise(
         outcome = f"rollback incomplete ({len(problems)} problem(s) listed above)"
     else:
         outcome = f"rolled back {len(done)} change(s)"
-    raise AfError(
+    raise PakemError(
         f"install failed while writing {where} ({type(exc).__name__}); {outcome}; manifest unchanged"
     ) from exc
 
@@ -547,7 +547,7 @@ def apply_install_plan(framework: Framework, plan: InstallPlan) -> list[str]:
         manifest["framework_version"] = framework.version()
         manifest["installed_at"] = utc_now_iso()
         save_manifest(manifest)
-    except (OSError, AfError) as exc:
+    except (OSError, PakemError) as exc:
         _roll_back_and_raise(journal, backups, current, exc)
     return journal.commit()
 
@@ -560,7 +560,7 @@ def run_install(args) -> int:
     source_summary = check_install_sources(plan, framework, args)
 
     mode = "apply" if args.apply else "dry-run"
-    print_plan(f"af install ({mode}) framework v{framework.version()}", plan.items, source_summary)
+    print_plan(f"pakem install ({mode}) framework v{framework.version()}", plan.items, source_summary)
 
     blocked = [item for item in plan.items if item.blocked]
     for item in blocked:
@@ -601,7 +601,7 @@ class UninstallItem:
 
 
 def _latest_restorable_backup(backups: list[dict], original: str) -> dict | None:
-    """Most recent backup of the pre-af state; backups of locally edited af files are skipped."""
+    """Most recent backup of the pre-pakem state; backups of locally edited pakem files are skipped."""
     candidates = [
         record
         for record in backups
@@ -661,7 +661,7 @@ def _remove_path(path: Path) -> None:
 def _restore(item: UninstallItem) -> None:
     backup = item.backup or {}
     if item.path.exists() or item.path.is_symlink():
-        raise AfError(f"cannot restore {display_path(item.path)}: path is occupied")
+        raise PakemError(f"cannot restore {display_path(item.path)}: path is occupied")
     item.path.parent.mkdir(parents=True, exist_ok=True)
     if "link_target" in backup:
         os.symlink(backup["link_target"], item.path)
@@ -677,7 +677,7 @@ def run_uninstall(args) -> int:
     items, manifest = build_uninstall_plan(args.force)
     report = Report()
     mode = "apply" if args.apply else "dry-run"
-    print(f"af uninstall ({mode})")
+    print(f"pakem uninstall ({mode})")
     if not items:
         print("  (manifest lists nothing installed)")
     width = max((len(item.action) for item in items), default=0)

@@ -7,7 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
-from .common import AfError, display_path, home_dir, utc_now_iso, utc_timestamp, write_text_atomically
+from .common import PakemError, display_path, home_dir, utc_now_iso, utc_timestamp, write_text_atomically
 
 MANIFEST_SCHEMA = 1
 BACKUP_INDEX_NAME = "backup-index.json"
@@ -48,9 +48,9 @@ def load_manifest() -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise AfError(f"manifest is not valid JSON ({path}): {exc}") from exc
+        raise PakemError(f"manifest is not valid JSON ({path}): {exc}") from exc
     if not isinstance(data, dict):
-        raise AfError(f"manifest must be a JSON object: {path}")
+        raise PakemError(f"manifest must be a JSON object: {path}")
     manifest = empty_manifest()
     manifest.update(data)
     return manifest
@@ -119,7 +119,7 @@ class BackupSession:
         elif original.is_file():
             shutil.copy2(original, destination)
         else:
-            raise AfError(f"cannot back up {original}: not a file, directory, or symlink")
+            raise PakemError(f"cannot back up {original}: not a file, directory, or symlink")
         record["backup_path"] = display_path(destination)
         self._index.append(dict(record))
         self._write_index()

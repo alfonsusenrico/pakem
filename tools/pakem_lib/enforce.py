@@ -1,7 +1,7 @@
-"""`af enforce install|uninstall`: host-level guardrails (settings, rules, hooks).
+"""`pakem enforce install|uninstall`: host-level guardrails (settings, rules, hooks).
 
 Every change made to a host's JSON configuration is recorded in the manifest so
-uninstall removes exactly what af added and nothing the owner added later.
+uninstall removes exactly what pakem added and nothing the owner added later.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 from .common import (
-    AfError,
+    PakemError,
     Framework,
     display_path,
     expand_user_path,
@@ -49,11 +49,11 @@ def merge_fragment(target: dict, fragment: dict, path: tuple = ()) -> list[dict]
         existing = target[key]
         if isinstance(value, dict):
             if not isinstance(existing, dict):
-                raise AfError(f"cannot merge: '{'.'.join(key_path)}' is not a JSON object")
+                raise PakemError(f"cannot merge: '{'.'.join(key_path)}' is not a JSON object")
             changes += merge_fragment(existing, value, tuple(key_path))
         elif isinstance(value, list):
             if not isinstance(existing, list):
-                raise AfError(f"cannot merge: '{'.'.join(key_path)}' is not a JSON array")
+                raise PakemError(f"cannot merge: '{'.'.join(key_path)}' is not a JSON array")
             for item in value:
                 if item not in existing:
                     existing.append(copy.deepcopy(item))
@@ -121,11 +121,11 @@ def _load_json_object(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise AfError(
-            f"{display_path(path)} is not valid JSON ({exc}); fix it before running af enforce"
+        raise PakemError(
+            f"{display_path(path)} is not valid JSON ({exc}); fix it before running pakem enforce"
         ) from exc
     if not isinstance(data, dict):
-        raise AfError(f"{display_path(path)} must contain a JSON object")
+        raise PakemError(f"{display_path(path)} must contain a JSON object")
     return data
 
 
@@ -157,8 +157,8 @@ def _install_guard(framework: Framework, manifest: dict, host: str, apply: bool)
         current_sha = sha256_file(destination)
         managed = record is not None and record.get("sha256") == current_sha
         if not managed and read_text(destination) != source_text:
-            raise AfError(
-                f"{display_path(destination)} exists and was not installed by af; refusing to overwrite"
+            raise PakemError(
+                f"{display_path(destination)} exists and was not installed by pakem; refusing to overwrite"
             )
     print(f"  guard: {display_path(destination)}")
     if not apply:
@@ -211,7 +211,7 @@ def install_json_host(framework: Framework, host: str, apply: bool) -> int:
     changes = merge_fragment(data, fragment)
     after_text = _render_json(data)
 
-    print(f"af enforce install --host {host} ({'apply' if apply else 'dry-run'})")
+    print(f"pakem enforce install --host {host} ({'apply' if apply else 'dry-run'})")
     for change in stale_changes:
         detail = change.get("item", change.get("value"))
         print(f"  remove stale: {'.'.join(change['path'])} {json.dumps(detail)}")
@@ -247,7 +247,7 @@ def install_json_host(framework: Framework, host: str, apply: bool) -> int:
 def uninstall_json_host(host: str, apply: bool) -> int:
     manifest = load_manifest()
     record = manifest["enforcement"].get(host)
-    print(f"af enforce uninstall --host {host} ({'apply' if apply else 'dry-run'})")
+    print(f"pakem enforce uninstall --host {host} ({'apply' if apply else 'dry-run'})")
     if record is None:
         print(f"  nothing recorded for {host}")
         return 0
@@ -257,7 +257,7 @@ def uninstall_json_host(host: str, apply: bool) -> int:
     warnings = revert_changes(data, record.get("changes", []))
     remove_file = record.get("created_file") and data == {}
     if remove_file:
-        print(f"  remove {display_path(target_path)} (created by af and now empty)")
+        print(f"  remove {display_path(target_path)} (created by pakem and now empty)")
     else:
         _print_diff(target_path, before_text, _render_json(data))
     for warning in warnings:
@@ -290,13 +290,13 @@ def validate_codex_rules(rules_path: Path) -> None:
         text=True,
     )
     if completed.returncode != 0:
-        raise AfError(f"codex execpolicy rejected {rules_path.name}: {completed.stderr.strip()}")
+        raise PakemError(f"codex execpolicy rejected {rules_path.name}: {completed.stderr.strip()}")
     try:
         decision = json.loads(completed.stdout).get("decision")
     except json.JSONDecodeError as exc:
-        raise AfError(f"unexpected codex execpolicy output: {completed.stdout[:200]!r}") from exc
+        raise PakemError(f"unexpected codex execpolicy output: {completed.stdout[:200]!r}") from exc
     if decision != "forbidden":
-        raise AfError(f"rules did not forbid '{' '.join(CODEX_PROBE_COMMAND)}' (decision: {decision})")
+        raise PakemError(f"rules did not forbid '{' '.join(CODEX_PROBE_COMMAND)}' (decision: {decision})")
     print(f"  verified with codex execpolicy: '{' '.join(CODEX_PROBE_COMMAND)}' -> forbidden")
 
 
@@ -306,7 +306,7 @@ def install_codex(framework: Framework, apply: bool) -> int:
     manifest = load_manifest()
     record = manifest["enforcement"].get("codex")
     source_text = read_text(source)
-    print(f"af enforce install --host codex ({'apply' if apply else 'dry-run'})")
+    print(f"pakem enforce install --host codex ({'apply' if apply else 'dry-run'})")
     validate_codex_rules(source)
 
     before_text = ""
@@ -314,7 +314,7 @@ def install_codex(framework: Framework, apply: bool) -> int:
         before_text = read_text(destination)
         managed = record is not None and record.get("sha256") == sha256_file(destination)
         if not managed and before_text != source_text:
-            print(f"ERROR: {display_path(destination)} exists and was not installed by af")
+            print(f"ERROR: {display_path(destination)} exists and was not installed by pakem")
             return 1
     _print_diff(destination, before_text, source_text)
     if not apply:
@@ -334,7 +334,7 @@ def install_codex(framework: Framework, apply: bool) -> int:
 def uninstall_codex(apply: bool) -> int:
     manifest = load_manifest()
     record = manifest["enforcement"].get("codex")
-    print(f"af enforce uninstall --host codex ({'apply' if apply else 'dry-run'})")
+    print(f"pakem enforce uninstall --host codex ({'apply' if apply else 'dry-run'})")
     if record is None:
         print("  nothing recorded for codex")
         return 0

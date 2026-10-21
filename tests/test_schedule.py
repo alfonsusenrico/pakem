@@ -1,4 +1,4 @@
-"""af schedule: launchd plist generation, install/uninstall bookkeeping, status, platform refusal.
+"""pakem schedule: launchd plist generation, install/uninstall bookkeeping, status, platform refusal.
 
 These tests call the schedule module in-process with HOME pointing at a temporary
 directory and an injected launchctl runner, so no real job is ever loaded.
@@ -21,9 +21,9 @@ from support import REPO_ROOT, IsolatedTestCase, write
 
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from af_lib import schedule  # noqa: E402
-from af_lib.cli import build_parser  # noqa: E402
-from af_lib.common import AfError  # noqa: E402
+from pakem_lib import schedule  # noqa: E402
+from pakem_lib.cli import build_parser  # noqa: E402
+from pakem_lib.common import PakemError  # noqa: E402
 
 UID = 501
 PYTHON = "/usr/local/bin/python3-for-tests"
@@ -92,7 +92,7 @@ class ScheduleTests(IsolatedTestCase):
     def expected_job(self, weekday: int = 1, hour: int = 8, minute: int = 0) -> dict:
         return {
             "Label": LABEL,
-            "ProgramArguments": [PYTHON, str(self.framework / "tools" / "af"), "report"],
+            "ProgramArguments": [PYTHON, str(self.framework / "tools" / "pakem"), "report"],
             "StartCalendarInterval": {"Weekday": weekday, "Hour": hour, "Minute": minute},
             "StandardOutPath": str(self.log),
             "StandardErrorPath": str(self.log),
@@ -136,9 +136,9 @@ class ScheduleTests(IsolatedTestCase):
 
     def test_refuses_to_overwrite_unmanaged_plist(self) -> None:
         write(self.plist, "owner's own job\n")
-        with self.assertRaises(AfError) as raised:
+        with self.assertRaises(PakemError) as raised:
             self.run_schedule("install", "--apply")
-        self.assertIn("was not installed by af", str(raised.exception))
+        self.assertIn("was not installed by pakem", str(raised.exception))
         self.assertEqual(self.plist.read_text(), "owner's own job\n")
         self.assertEqual(self.launchctl.calls, [])
 
@@ -191,7 +191,7 @@ class ScheduleTests(IsolatedTestCase):
         write(self.plist, "owner's own job\n")
         code, output = self.run_schedule("uninstall", "--apply")
         self.assertEqual(code, 0)
-        self.assertIn("was not installed by af; left in place", output)
+        self.assertIn("was not installed by pakem; left in place", output)
         self.assertTrue(self.plist.exists())
         self.assertEqual(self.launchctl.calls, [])
 
@@ -201,7 +201,7 @@ class ScheduleTests(IsolatedTestCase):
         code, output = self.run_schedule("status", context=self.context(runner=launchctl))
         self.assertEqual(code, 0)
         self.assertEqual(launchctl.calls, [["print", f"gui/{UID}/{LABEL}"]])
-        self.assertIn("(installed by af)", output)
+        self.assertIn("(installed by pakem)", output)
         self.assertIn("schedule: weekday 1 at 08:00", output)
         self.assertIn("launchd: loaded", output)
         self.assertIn("state = not running", output)
@@ -222,7 +222,7 @@ class ScheduleTests(IsolatedTestCase):
     def test_refuses_on_other_platforms(self) -> None:
         for arguments in (["install", "--apply"], ["uninstall", "--apply"], ["status"]):
             with self.subTest(arguments=arguments):
-                with self.assertRaises(AfError) as raised:
+                with self.assertRaises(PakemError) as raised:
                     self.run_schedule(*arguments, context=self.context(platform="linux"))
                 self.assertIn("macOS (launchd) only; this platform is linux", str(raised.exception))
         self.assertEqual(self.launchctl.calls, [])
@@ -234,13 +234,13 @@ class ScheduleCommandLineTests(IsolatedTestCase):
     def test_rejects_out_of_range_times(self) -> None:
         for arguments in (["--hour", "24"], ["--minute", "60"], ["--weekday", "8"], ["--hour", "x"]):
             with self.subTest(arguments=arguments):
-                completed = self.af("schedule", "install", *arguments)
+                completed = self.pakem("schedule", "install", *arguments)
                 self.assert_fails(completed, code=2)
                 self.assertIn("argument", completed.stderr)
 
-    @unittest.skipUnless(sys.platform == "darwin", "af schedule runs on macOS only")
+    @unittest.skipUnless(sys.platform == "darwin", "pakem schedule runs on macOS only")
     def test_dry_run_through_cli_writes_nothing(self) -> None:
-        completed = self.af("schedule", "install")
+        completed = self.pakem("schedule", "install")
         self.assert_ok(completed)
         self.assertIn("<string>com.agentframework.drift-report</string>", completed.stdout)
         self.assertIn("launchctl bootstrap gui/", completed.stdout)

@@ -1,4 +1,4 @@
-"""Shared helpers for the af test suite.
+"""Shared helpers for the pakem test suite.
 
 Every command runs in a subprocess with HOME pointing at a temporary directory,
 so tests never touch the real home directory or global git configuration.
@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-AF = REPO_ROOT / "tools" / "af"
+PAKEM = REPO_ROOT / "tools" / "pakem"
 GUARD = REPO_ROOT / "enforcement" / "guard.py"
 HOOKS_DIR = REPO_ROOT / "hooks"
 CHECK_SCRIPT = REPO_ROOT / "tools" / "check_pinned_blocks.sh"
@@ -175,7 +175,7 @@ def init_repo(path: Path, home: Path, branch: str = "main") -> Path:
 
 
 def activate_hooks(repo: Path, home: Path) -> Path:
-    """Mark the framework hooks active, as af hooks install does; af project check warns otherwise."""
+    """Mark the framework hooks active, as pakem hooks install does; pakem project check warns otherwise."""
     write(repo / ".githooks" / "pre-push", "#!/bin/sh\nexit 0\n")
     git(repo, "config", "core.hooksPath", ".githooks", home=home)
     return repo
@@ -185,7 +185,7 @@ class IsolatedTestCase(unittest.TestCase):
     """Provides a temporary HOME and a fixture framework checkout per test."""
 
     def setUp(self) -> None:
-        self._temporary = tempfile.TemporaryDirectory(prefix="af-test-")
+        self._temporary = tempfile.TemporaryDirectory(prefix="pakem-test-")
         self.base = Path(self._temporary.name).resolve()
         self.home = self.base / "home"
         self.home.mkdir()
@@ -215,10 +215,10 @@ class IsolatedTestCase(unittest.TestCase):
         )
         return root
 
-    def af(
+    def pakem(
         self, *args: str, root: Path | None = None, cwd: Path | None = None
     ) -> subprocess.CompletedProcess:
-        command = [sys.executable, str(AF), "--root", str(root or self.framework), *args]
+        command = [sys.executable, str(PAKEM), "--root", str(root or self.framework), *args]
         return subprocess.run(
             command,
             capture_output=True,

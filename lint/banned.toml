@@ -1,4 +1,4 @@
-# Banned patterns checked by `af lint` in *.md, *.toml, *.json, *.py, *.sh,
+# Banned patterns checked by `pakem lint` in *.md, *.toml, *.json, *.py, *.sh,
 # *.tmpl, *.rules, and hooks/* outside archive/ and tests/.
 # Each entry: id, regex (Python syntax), message, allow_paths (globs relative to
 # the repo root; `*` also matches `/`). This file itself is never scanned.

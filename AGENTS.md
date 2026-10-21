@@ -1,7 +1,7 @@
 # agent-framework
 
 Rules for agents editing this repository. The kernel itself is `kernel/KERNEL.md`;
-it is installed into each host by `tools/af install`, not loaded from here.
+it is installed into each host by `tools/pakem install`, not loaded from here.
 
 ## Purpose and boundaries
 
@@ -13,8 +13,8 @@ it is installed into each host by `tools/af install`, not loaded from here.
 ## Commands
 
 - Tests: `python3 -m unittest discover -s tests -v`
-- Lint: `tools/af lint` (must report 0 errors before any commit)
-- Install preview: `tools/af install` (dry run; `--apply` only with owner approval)
+- Lint: `tools/pakem lint` (must report 0 errors before any commit)
+- Install preview: `tools/pakem install` (dry run; `--apply` only with owner approval)
 - Python 3.11+ standard library only for `tools/`, `enforcement/`, skill scripts.
   Hooks are POSIX sh and must work with macOS `/bin/sh`.
 
@@ -29,11 +29,11 @@ it is installed into each host by `tools/af install`, not loaded from here.
 - Instruction text drafted by an agent needs owner review before it is merged.
 - The framework is stable (ADR 0007). Change rules only for a problem a real
   project hit, batch changes (at most one release a month), one PR per batch, and
-  no release for wording alone. Build no new `af` mechanism unless a project needs
+  no release for wording alone. Build no new `pakem` mechanism unless a project needs
   it.
 - ADRs only for decisions with real trade-offs. Record each change as a fragment
   `changes/<type>-<kebab-topic>.md` (`changes/README.md`); never edit `CHANGELOG.md`
-  on a branch. A release runs `tools/af changelog --release X.Y.Z --apply`, which
+  on a branch. A release runs `tools/pakem changelog --release X.Y.Z --apply`, which
   writes `CHANGELOG.md` and `VERSION`. MAJOR only when a floor changes or an
   existing install or project would break; MINOR for new or changed rules; PATCH
   for fixes.

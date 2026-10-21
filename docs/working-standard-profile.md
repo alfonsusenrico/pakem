@@ -241,7 +241,7 @@ First-class: Claude Code, Codex, Antigravity CLI. Others via AGENTS.md and Agent
 Incident or discovery in a project → project rule (`AGENTS.md` or spec) → if general and not
 discoverable from code, a framework candidate noted in the framework's backlog → owner review →
 ADR when it is a decision → released with a CHANGELOG entry and version bump → projects pick it
-up through `af project sync`. Rules are pruned as deliberately as they are added.
+up through `pakem project sync`. Rules are pruned as deliberately as they are added.
 
 ## 15. Notes
 

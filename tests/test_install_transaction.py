@@ -1,4 +1,4 @@
-"""af install --apply rolls back every write of the run when one write fails."""
+"""pakem install --apply rolls back every write of the run when one write fails."""
 
 from __future__ import annotations
 
@@ -40,13 +40,13 @@ class InstallTransactionTests(IsolatedTestCase):
         write(skill, skill.read_text() + "More guidance.\n")
 
     def assert_no_rollback_leftovers(self) -> None:
-        leftovers = [path for path in self.home.rglob("*") if ".af-rollback" in path.name or ".af-" in path.name]
+        leftovers = [path for path in self.home.rglob("*") if ".pakem-rollback" in path.name or ".pakem-" in path.name]
         self.assertEqual(leftovers, [])
 
     def test_failed_fresh_install_leaves_home_as_it_was(self) -> None:
         with read_only(self.home / ".gemini"):
             before = self.snapshot(self.home)
-            completed = self.af(*INSTALL)
+            completed = self.pakem(*INSTALL)
             after = self.snapshot(self.home)
         self.assert_fails(completed, code=2)
         self.assertIn("install failed while writing ~/.gemini/GEMINI.md (PermissionError)", completed.stderr)
@@ -58,7 +58,7 @@ class InstallTransactionTests(IsolatedTestCase):
         self.assertFalse((self.home / ".local").exists())
 
     def test_failed_update_restores_previous_files_and_manifest(self) -> None:
-        self.assert_ok(self.af(*INSTALL))
+        self.assert_ok(self.pakem(*INSTALL))
         claude = self.home / ".claude" / "CLAUDE.md"
         codex = self.home / ".codex" / "AGENTS.md"
         old_claude, old_codex = claude.read_text(), codex.read_text()
@@ -66,7 +66,7 @@ class InstallTransactionTests(IsolatedTestCase):
         self.change_framework_content()
 
         with read_only(self.home / ".gemini"):
-            completed = self.af(*INSTALL)
+            completed = self.pakem(*INSTALL)
         self.assert_fails(completed, code=2)
         self.assertIn("restored ~/.claude/CLAUDE.md", completed.stdout)
         self.assertIn("restored ~/.codex/AGENTS.md", completed.stdout)
@@ -75,11 +75,11 @@ class InstallTransactionTests(IsolatedTestCase):
         self.assertEqual(self.manifest_bytes(), old_manifest)
         self.assert_no_rollback_leftovers()
 
-        self.assert_ok(self.af(*INSTALL))
+        self.assert_ok(self.pakem(*INSTALL))
         self.assertIn("New line.", claude.read_text())
 
     def test_failed_manifest_save_restores_written_and_pruned_targets(self) -> None:
-        self.assert_ok(self.af(*INSTALL))
+        self.assert_ok(self.pakem(*INSTALL))
         old_manifest = self.manifest_bytes()
         old_claude = (self.home / ".claude" / "CLAUDE.md").read_text()
         old_skills = {skills_dir: self.snapshot(self.home / skills_dir) for skills_dir in SKILL_DIRS}
@@ -87,7 +87,7 @@ class InstallTransactionTests(IsolatedTestCase):
         shutil.rmtree(self.framework / "skills" / "project-bootstrap")
 
         with read_only(self.state_dir()):
-            completed = self.af(*INSTALL)
+            completed = self.pakem(*INSTALL)
         self.assert_fails(completed, code=2)
         self.assertIn("install failed while writing the manifest", completed.stderr)
         self.assertIn("restored ~/.claude/skills/project-bootstrap", completed.stdout)
@@ -100,7 +100,7 @@ class InstallTransactionTests(IsolatedTestCase):
     def test_failed_install_restores_backed_up_unmanaged_file(self) -> None:
         own_rules = write(self.home / ".claude" / "CLAUDE.md", "my own rules\n")
         with read_only(self.home / ".gemini"):
-            completed = self.af(*INSTALL)
+            completed = self.pakem(*INSTALL)
         self.assert_fails(completed, code=2)
         self.assertIn("restored ~/.claude/CLAUDE.md", completed.stdout)
         self.assertIn("Backups taken in this run remain in ~/.local/state/agent-framework/backups/", completed.stdout)
@@ -111,7 +111,7 @@ class InstallTransactionTests(IsolatedTestCase):
 
     def test_failed_skill_write_rolls_back_earlier_skills(self) -> None:
         with read_only(self.home / ".gemini" / "config" / "skills"):
-            completed = self.af(*INSTALL)
+            completed = self.pakem(*INSTALL)
         self.assert_fails(completed, code=2)
         self.assertIn("install failed while writing ~/.gemini/config/skills/", completed.stderr)
         self.assertIn("removed ~/.claude/skills/demo-skill (created in this run)", completed.stdout)

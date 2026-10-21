@@ -13,7 +13,7 @@ changed every host.
 
 ## Decision
 
-`af install` writes a rendered copy of the kernel, with a version and hash header,
+`pakem install` writes a rendered copy of the kernel, with a version and hash header,
 to each host's global instruction path, and copies skills into each host's skill
 directory. A manifest records every managed path and hash; unmanaged files are
 backed up before replacement.
@@ -22,4 +22,4 @@ backed up before replacement.
 
 Every host loads the kernel exactly once from its own documented location.
 Local edits to installed copies are detected and block reinstall. Updating
-requires running `af install` after changing the framework.
+requires running `pakem install` after changing the framework.

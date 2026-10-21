@@ -7,7 +7,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from .common import AfError
+from .common import PakemError
 
 ALWAYS = "always"
 CAPABILITY_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
@@ -25,12 +25,12 @@ def _load_table(path: Path) -> dict:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
     except FileNotFoundError as exc:
-        raise AfError(f"capability registry not found: {path}") from exc
+        raise PakemError(f"capability registry not found: {path}") from exc
     except tomllib.TOMLDecodeError as exc:
-        raise AfError(f"capability registry is invalid TOML ({path}): {exc}") from exc
+        raise PakemError(f"capability registry is invalid TOML ({path}): {exc}") from exc
     table = data.get("capabilities")
     if not isinstance(table, dict) or not table:
-        raise AfError(f"capability registry has no [capabilities] tables: {path}")
+        raise PakemError(f"capability registry has no [capabilities] tables: {path}")
     return table
 
 
@@ -38,7 +38,7 @@ def registry_problems(path: Path) -> list[str]:
     """Every structural problem in the registry; an empty list means it is valid."""
     try:
         table = _load_table(path)
-    except AfError as exc:
+    except PakemError as exc:
         return [str(exc)]
 
     problems: list[str] = []
@@ -65,10 +65,10 @@ def registry_problems(path: Path) -> list[str]:
 
 
 def load_capabilities(path: Path) -> dict[str, Capability]:
-    """Load a registry that registry_problems() accepts; raises AfError otherwise."""
+    """Load a registry that registry_problems() accepts; raises PakemError otherwise."""
     problems = registry_problems(path)
     if problems:
-        raise AfError("invalid capability registry: " + "; ".join(problems))
+        raise PakemError("invalid capability registry: " + "; ".join(problems))
     capabilities: dict[str, Capability] = {}
     for name, entry in _load_table(path).items():
         capabilities[name] = Capability(name, entry["summary"], tuple(entry["standards"]))

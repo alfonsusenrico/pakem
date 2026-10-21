@@ -15,7 +15,7 @@ IGNORED_FILE_NAMES = frozenset({".DS_Store"})
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
-class AfError(Exception):
+class PakemError(Exception):
     """A user-facing error that aborts the current command."""
 
 
@@ -71,9 +71,9 @@ def read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
-        raise AfError(f"missing file: {path}") from exc
+        raise PakemError(f"missing file: {path}") from exc
     except UnicodeDecodeError as exc:
-        raise AfError(f"file is not valid UTF-8: {path}") from exc
+        raise PakemError(f"file is not valid UTF-8: {path}") from exc
 
 
 def home_dir() -> Path:
@@ -88,7 +88,7 @@ def expand_user_path(raw: str) -> Path:
         return home_dir() / raw[2:]
     path = Path(raw)
     if not path.is_absolute():
-        raise AfError(f"path must be absolute or start with ~/: {raw}")
+        raise PakemError(f"path must be absolute or start with ~/: {raw}")
     return path
 
 
@@ -141,7 +141,7 @@ def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedP
         text=True,
     )
     if check and completed.returncode != 0:
-        raise AfError(f"git {' '.join(args)} failed in {repo}: {completed.stderr.strip()}")
+        raise PakemError(f"git {' '.join(args)} failed in {repo}: {completed.stderr.strip()}")
     return completed
 
 
@@ -153,7 +153,7 @@ def is_git_work_tree(path: Path) -> bool:
 def write_text_atomically(path: Path, text: str, mode: int | None = None) -> None:
     """Write via a sibling temp file and os.replace so a symlink at path is replaced, not followed."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.af-tmp")
+    temporary = path.with_name(f".{path.name}.pakem-tmp")
     try:
         temporary.write_text(text, encoding="utf-8")
         if mode is not None:
@@ -222,7 +222,7 @@ class Framework:
     def version(self) -> str:
         version = read_text(self.version_path).strip()
         if not SEMVER_PATTERN.match(version):
-            raise AfError(f"VERSION is not semver: {version!r}")
+            raise PakemError(f"VERSION is not semver: {version!r}")
         return version
 
 
@@ -232,7 +232,7 @@ def version_tuple(version: str) -> tuple[int, ...]:
     parts: list[int] = []
     for piece in release.split("."):
         if not piece.isdigit():
-            raise AfError(f"invalid version: {version!r}")
+            raise PakemError(f"invalid version: {version!r}")
         parts.append(int(piece))
     while len(parts) < 3:
         parts.append(0)

@@ -84,7 +84,7 @@ templates in `assets/ci/github/workflows/`, so a project either:
 `<group>/agent-profile-ci`) can include these files directly, pinned with `ref:` to a release
 tag or commit SHA. Alternatively copy them into the project and use `include: local`.
 
-`af` does not automate copying yet.
+`pakem` does not automate copying yet.
 
 ## Rules the templates follow
 

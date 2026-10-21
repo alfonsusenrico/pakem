@@ -1,5 +1,5 @@
 # agent-framework execpolicy rules for Codex (Starlark).
-# Installed to ~/.codex/rules/agent-framework.rules by `af enforce install --host codex`.
+# Installed to ~/.codex/rules/agent-framework.rules by `pakem enforce install --host codex`.
 # Prefix rules only see leading argv tokens, so they cover the common spellings;
 # the git pre-push and commit-msg hooks remain the authoritative checks.
 

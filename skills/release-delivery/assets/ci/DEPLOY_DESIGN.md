@@ -103,7 +103,7 @@ deploy keys shared between projects; SHA images never pruned.
 3. SBOM tool (Syft or BuildKit attestations) and where SBOMs are kept.
 4. Backup location, encryption, and retention for pre-migration dumps.
 5. Notification channel.
-6. Whether `af` copies or references deploy templates into projects.
+6. Whether `pakem` copies or references deploy templates into projects.
 
 ## 8. Verification gates for Phase 2b
 

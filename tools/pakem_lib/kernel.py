@@ -14,7 +14,7 @@ def render_kernel(framework: Framework) -> str:
     body = kernel_body(framework)
     header = (
         f"<!-- agent-framework kernel v{framework.version()} sha256={sha256_text(body)}"
-        " | managed by af; edit the framework repo, not this file -->"
+        " | managed by pakem; edit the framework repo, not this file -->"
     )
     if not body.endswith("\n"):
         body += "\n"
