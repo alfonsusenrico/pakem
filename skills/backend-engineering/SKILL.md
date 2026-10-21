@@ -30,6 +30,11 @@ capabilities, and any `## Overrides` first.
 - **Configuration**: one typed settings object, validated at startup; missing
   required values stop the app. Follow [configuration and environment
   variables](references/config-and-env.md).
+- **Between projects**: a project uses another project or service only through its
+  published API contract (OpenAPI and its documented rules) with its own thin client;
+  never its code, packages, or repository. Test against recorded responses or the
+  published artifact (for example a pinned image), so one project's releases or
+  visibility never break another's build.
 - **API shape**: follow [API conventions](references/api-conventions.md): plain
   resources, RFC 9457 problem+json errors with a stable `code` and `request_id`.
 - **Errors**: domain code raises domain errors; one boundary layer maps them to HTTP.

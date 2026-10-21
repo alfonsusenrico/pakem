@@ -6,6 +6,12 @@ Last reviewed: 2026-10-20
 Review by: 2027-04-19
 Sources: ADR 0009; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
+ADR 0010 (accepted 2026-10-21) revises the builder side: the builder and trigger are each
+project's choice, nothing billed is used without the project's approval, images default
+to the host's architecture, and a direct delivery mode (signed source sent over a
+restricted SSH command, built on the host) is being added. Sections 4 and 10 still
+describe the registry builder; they change with that implementation.
+
 Projects depend only on these contracts. CI templates, the release engine, and the
 triggers may change behind them. Changing a contract is a MAJOR version of the standard
 and needs an ADR. Machine checks: `assets/deploy/contracts.py`; examples in

@@ -20,6 +20,15 @@ and backed by mechanical checks where possible.
 | Decisions with trade-offs | ADRs |
 | Current status | `PROJECT_STATE.md` |
 | History and evidence | git, OpenSpec archive, `JOURNAL.md`, `research/evidence/` |
+| Agent-host memory (for example Claude Code memory) | Never the only home of a rule: it is per device, per agent, and per folder |
+
+**One source of knowledge.** Every agent on every device reads the same framework,
+installed by `af install` and pinned by each project; that is what keeps agents and
+projects consistent. When the owner decides something that applies beyond one session,
+write it into the framework (kernel, skill, or ADR) in the same piece of work, and into
+the project's `AGENTS.md` when it is project-specific. An agent's own memory may keep a
+reminder, never the rule itself. Small drift between agents is acceptable; a
+contradiction is a defect to fix in the framework.
 
 Never put repository overviews or directory dumps in instruction files; agents can
 read the tree. Never restate the kernel or a skill in a project file.

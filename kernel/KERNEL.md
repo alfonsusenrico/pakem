@@ -47,9 +47,8 @@ and rules; they never weaken a floor.
   tree. Preserve user work; never reset or revert it to get a clean start.
 - In discussions, interview until requirements are clear, research before
   opinions, challenge weak assumptions, and offer options with a recommendation.
-- Trace the affected path (implementation, callers, contracts, configuration,
-  nearest tests) before choosing a solution. Separate observations from
-  hypotheses.
+- Trace the affected path (implementation, callers, contracts, configuration, nearest
+  tests) before choosing a solution. Separate observations from hypotheses.
 - Ask only when a missing answer changes scope, behaviour, compatibility,
   acceptance, or authority; otherwise continue through routine obstacles.
 - Every project uses native OpenSpec; meaningful changes need a plan the owner
@@ -98,10 +97,9 @@ and rules; they never weaken a floor.
   relevant negative paths. Add focused regression tests for non-trivial changes.
 - Run the project's tests, type checks, lint, and build as CI does. Tie every
   result to the exact revision or working-tree state tested.
-- A successful build does not prove runtime behaviour; verify the actual artifact
-  and path when behaviour matters.
-- Review the final diff for correctness, security, secrets, dead code, and
-  unrequested changes before calling work done.
+- A successful build does not prove runtime behaviour; verify the actual artifact and
+  path when behaviour matters. Review the final diff for correctness, security,
+  secrets, dead code, and unrequested changes before calling work done.
 
 ## 6. Git and autonomy
 
@@ -126,7 +124,8 @@ and rules; they never weaken a floor.
 
 ## 8. Skills
 
-Load the matching skill before doing its kind of work:
+Load the matching skill before doing its kind of work; if it is unavailable, say so
+and apply the floors and defaults above:
 
 | Situation | Skill |
 | --- | --- |
@@ -141,8 +140,6 @@ Load the matching skill before doing its kind of work:
 | Reviewing a diff or declaring work ready | `change-review` |
 | CI, releases, deployments, rollback, handover | `release-delivery` |
 | Editing instruction files, skills, or this framework | `instruction-maintenance` |
-
-If a skill is unavailable, say so and apply the floors and defaults above.
 
 ## 9. Communication
 

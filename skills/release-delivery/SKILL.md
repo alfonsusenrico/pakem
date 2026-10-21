@@ -22,10 +22,21 @@ with automatic restore, revision-matching health check, rollback for every
 environment, one deploy per environment at a time. Use the
 [deploy templates](assets/deploy/README.md).
 
-The standard is moving to [deployment contracts v1](references/deployment-contracts.md)
-(ADR 0009, draft until standard v1.0): CI builds once and signs, one release engine per
-host, pull or push trigger. Design new pipelines against the contracts; the current
-templates still implement the earlier host-build design.
+The standard is [deployment contracts v1](references/deployment-contracts.md) (ADR 0009)
+as revised by ADR 0010 (accepted 2026-10-21):
+
+- Each project chooses its builder and trigger: the work GitLab runner, the owner's
+  device with the host building from signed source, or free GitHub runners. Never assume
+  a hosted CI.
+- Checks run on every push, merge request, and tag on a free runner, separately from
+  releases; a release refuses a commit whose checks did not pass.
+- Nothing billed unless the project approves it (`default:no-billed`).
+- The direct delivery mode and the `af release` commands are being built
+  (`docs/af-command-map.md`); until they ship, the registry mode in the contracts is valid
+  only where its CI minutes and registry are free.
+
+One release engine per host, signed releases, build once, health checks that prove the
+revision, and automatic restore apply to every builder.
 
 For client-operated hosting, build a versioned handoff package from a tagged commit
 ([handover](references/handover.md)). Never deploy loose files or zips of
