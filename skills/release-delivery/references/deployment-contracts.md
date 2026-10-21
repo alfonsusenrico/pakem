@@ -6,6 +6,12 @@ Last reviewed: 2026-10-20
 Review by: 2027-04-19
 Sources: ADR 0009; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
+ADR 0010 (accepted 2026-10-21) revises the builder side: the builder and trigger are each
+project's choice, nothing billed is used without the project's approval, images default
+to the host's architecture, and a direct delivery mode (signed source sent over a
+restricted SSH command, built on the host) is being added. Sections 4 and 10 still
+describe the registry builder; they change with that implementation.
+
 Projects depend only on these contracts. CI templates, the release engine, and the
 triggers may change behind them. Changing a contract is a MAJOR version of the standard
 and needs an ADR. Machine checks: `assets/deploy/contracts.py`; examples in
@@ -99,13 +105,6 @@ secret values never enter the runtime env file, images, logs, or (in pull mode) 
 Compose mounts file secrets with the host file's owner and mode, so every service that
 reads secrets declares `group_add: ["${AF_SECRETS_GID}"]` (the engine sets it to the deploy
 user's group) and then reads them as any container user, without root.
-
-A service that joins another project's network (an external network named by a placement
-setting) also sees that project's service names, and Docker may answer a name both
-networks carry with the other project's container. Reach your own services there through
-project-unique network aliases (for example `<project>-db` as the database host) and keep
-bare names such as `db`, `api`, or `worker` for nothing on a shared network. Rehearse
-with a stand-in network that carries the other project's real service names.
 
 ## 5. Engine interface
 
@@ -280,3 +279,21 @@ authorized keys) stay manual.
    check. With a tunnel in front that terminates TLS, set `tls = false`.
 7. Deploy once with `af_engine.py deploy --config ...` (or wait for the agent), then check
    `af_engine.py status --config ...`.
+
+## 12. Reaching other projects
+
+How a project reaches another project is a project decision, recorded in its `AGENTS.md`;
+the address is always a setting (placement or default), never a constant in code.
+
+| Where the other project runs | How | Notes |
+|---|---|---|
+| Same host | Join its internal Docker network as an external network named by a placement setting | Use the other project's service name (for example `api`). Your own services on that network need project-unique aliases (below) |
+| Another host, private | A private network or VPN address | Keep the address in placement; never publish the service to reach it |
+| Another deployment, public | Its public URL over TLS, with the other project's authentication | The normal case for projects on different hosts or owners |
+
+On a shared network the other project's service names are visible too, and Docker may
+answer a name both networks carry with the other project's container. Reach your own
+services there through project-unique aliases (for example `<project>-db` as the database
+host) and keep bare names such as `db`, `api`, or `worker` for nothing on a shared
+network. Rehearse with a stand-in network that carries the other project's real service
+names.

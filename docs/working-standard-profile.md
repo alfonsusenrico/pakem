@@ -91,7 +91,7 @@ tracker, office projects) and the owner's answers.
 6. **Implementation** — topic branch; autonomy per section 4.
 7. **Verification** — evidence per task; `verification.md` per change (commands, counts,
    environments, what was not verified); no overclaiming.
-8. **Delivery** — push the branch, open the merge request, and report its URL; the owner
+8. **Delivery** — once the owner accepts the result, push the branch, open one merge request with specs and code, and report its URL; the owner
    reviews and merges; pipeline
    deploys; owner acceptance.
 9. **Archive** — sync specs and archive once evidence is verified; owner-side production
@@ -108,8 +108,8 @@ UI direction decisions use side-by-side working alternatives (section 8).
 - Branches `<type>/<kebab-topic>`; `main` stays deployable (pipelines deploy staging from
   it by default); agents never merge or approve; documentation-only ranges may go directly
   to `main`, and a project may allow more (hook-enforced).
-- Within approved work an agent may, without asking: create the branch and commit; push the
-  branch when checks pass, open the merge request, and report its URL; run local infrastructure on loopback
+- Within approved work an agent may, without asking: create the branch and commit locally; once the
+  owner accepts the result, push the branch, open one merge request, and report its URL; run local infrastructure on loopback
   and stop it afterwards; add project-local dependencies with lockfile updates.
 - Always ask: production, secrets, deleting data, force pushes, global installs, scope
   changes. Never: merging or approving a merge request.

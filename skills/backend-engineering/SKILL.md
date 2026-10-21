@@ -30,6 +30,13 @@ capabilities, and any `## Overrides` first.
 - **Configuration**: one typed settings object, validated at startup; missing
   required values stop the app. Follow [configuration and environment
   variables](references/config-and-env.md).
+- **Between release units**: code inside one release unit (a monolith, or modules
+  released together) shares freely. A unit released on its own (separate repository,
+  deployment, or version) depends on another only through its published, versioned
+  contract: its API, or a published package version. Never through its source tree or
+  repository, so one unit's releases or visibility never break another's build. Whether a
+  consumer uses a published SDK or its own thin client is the project's choice, recorded
+  in its `AGENTS.md`.
 - **API shape**: follow [API conventions](references/api-conventions.md): plain
   resources, RFC 9457 problem+json errors with a stable `code` and `request_id`.
 - **Errors**: domain code raises domain errors; one boundary layer maps them to HTTP.

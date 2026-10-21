@@ -1,6 +1,6 @@
 # 0010. Project-chosen builders and triggers; no billed services
 
-- Status: Accepted (owner, 2026-10-21)
+- Status: Accepted (owner, 2026-10-21); amended 2026-10-21 (decision 8: one key per device)
 - Date: 2026-10-21
 
 ## Context
@@ -77,10 +77,13 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
 7. **Environments are declared in `deploy/release.toml`.** An environment without an
    `[environments.<name>]` table does not exist: with no staging table, `release publish`
    reports that and `release promote` checks, builds once, and deploys to production.
-8. **Device keys.** `release setup` gives each device its own signing key and SSH deploy
-   key and registers their public halves with the host; private keys never move between
-   devices, and a lost device is revoked by removing its keys. A device needs only git,
-   the framework, and its keys.
+8. **Device keys.** Each of the owner's devices gets one dedicated key (never the login
+   key) that both connects and signs releases with `ssh-keygen -Y` under its own
+   namespace; the host's line for that key lists the projects it may deploy, and its
+   `allowed_signers` entry lists the projects it may sign for. Private keys never move
+   between devices; a lost device is revoked by removing its lines. Shared builders (a
+   CI runner, a client platform) get one key per project instead. Cosign stays for the
+   registry mode. A device needs only git, the framework, and its key.
 9. **Profiles:**
    - **Personal (GitHub):** checks run on a self-hosted GitHub Actions runner on the
      owner's server (one registration per repository, as personal accounts require),
