@@ -15,8 +15,38 @@ IGNORED_FILE_NAMES = frozenset({".DS_Store"})
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
+# Exit codes shared by every workflow command (docs/pakem-command-map.md, Conventions).
+EXIT_DONE = 0
+EXIT_USAGE = 2
+EXIT_OWNER_ACTION = 3
+EXIT_GAPS = 4
+EXIT_CHECK_FAILED = 5
+EXIT_REFUSED = 6
+EXIT_BUSY = 75
+
+
 class PakemError(Exception):
     """A user-facing error that aborts the current command."""
+
+    exit_code = EXIT_USAGE
+
+
+class CommandRefused(PakemError):
+    """A safety rule stopped the command; nothing was changed."""
+
+    exit_code = EXIT_REFUSED
+
+
+class OwnerActionRequired(PakemError):
+    """Only the owner can take the next step; the message says exactly which."""
+
+    exit_code = EXIT_OWNER_ACTION
+
+
+class CommandBusy(PakemError):
+    """Another run holds the lock this command needs."""
+
+    exit_code = EXIT_BUSY
 
 
 @dataclass

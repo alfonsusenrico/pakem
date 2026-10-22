@@ -24,6 +24,28 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{pakem}} status --hook session-start --host claude",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{pakem}} status --hook prompt --host claude",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "attribution": {

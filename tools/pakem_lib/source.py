@@ -50,14 +50,14 @@ def _short(sha: str) -> str:
     return sha[:12]
 
 
-def _current_branch(root: Path) -> str | None:
+def current_branch(root: Path) -> str | None:
     completed = run_git(root, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
     if completed.returncode != 0:
         return None
     return completed.stdout.strip() or None
 
 
-def _has_uncommitted_changes(root: Path) -> bool:
+def has_uncommitted_changes(root: Path) -> bool:
     return bool(run_git(root, "status", "--porcelain").stdout.strip())
 
 
@@ -65,7 +65,7 @@ def _remote_names(root: Path) -> set[str]:
     return set(run_git(root, "remote").stdout.split())
 
 
-def _resolve(root: Path, ref: str) -> str | None:
+def resolve_commit(root: Path, ref: str) -> str | None:
     completed = run_git(root, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", check=False)
     if completed.returncode != 0:
         return None
@@ -73,7 +73,7 @@ def _resolve(root: Path, ref: str) -> str | None:
 
 
 def _branch_findings(root: Path, label: str, waiver: str | None) -> tuple[list[SourceFinding], str | None]:
-    branch = _current_branch(root)
+    branch = current_branch(root)
     if branch is None:
         return [SourceFinding(f"{label} is on a detached HEAD, not {INSTALL_BRANCH}", waiver)], None
     if branch != INSTALL_BRANCH:
@@ -86,7 +86,7 @@ def _remote_findings(root: Path, head: str) -> tuple[list[SourceFinding], str]:
     """Compare HEAD with the local origin/main ref; returns findings and a summary fragment."""
     if REMOTE not in _remote_names(root):
         return [], f"no {REMOTE} remote; merge state not checked"
-    remote_head = _resolve(root, REMOTE_BRANCH_REF)
+    remote_head = resolve_commit(root, REMOTE_BRANCH_REF)
     if remote_head is None:
         message = f"{REMOTE}/{INSTALL_BRANCH} is not known locally, so merge state is unknown; fetch to refresh"
         return [SourceFinding(message, WAIVER_UNMERGED)], f"{REMOTE}/{INSTALL_BRANCH} unknown"
@@ -101,7 +101,7 @@ def _remote_findings(root: Path, head: str) -> tuple[list[SourceFinding], str]:
     return [SourceFinding(message, WAIVER_UNMERGED)], f"differs from {REMOTE}/{INSTALL_BRANCH}"
 
 
-def _release_tag(root: Path) -> str | None:
+def head_release_tag(root: Path) -> str | None:
     """The newest release tag pointing at HEAD, if any."""
     tags = run_git(root, "tag", "--points-at", "HEAD").stdout.split()
     releases = [tag for tag in tags if RELEASE_TAG.fullmatch(tag)]
@@ -112,7 +112,7 @@ def _release_tag(root: Path) -> str | None:
 
 def _release_findings(root: Path, tag: str, head: str) -> tuple[list[SourceFinding], str]:
     """A detached release tag installs when its commit is part of origin/main."""
-    remote_head = _resolve(root, REMOTE_BRANCH_REF)
+    remote_head = resolve_commit(root, REMOTE_BRANCH_REF)
     if remote_head is None:
         message = f"release {tag} cannot be checked against {REMOTE}/{INSTALL_BRANCH}; fetch to refresh"
         return [SourceFinding(message, WAIVER_UNMERGED)], f"{REMOTE}/{INSTALL_BRANCH} unknown"
@@ -129,16 +129,16 @@ def framework_source_status(root: Path) -> SourceStatus:
         return SourceStatus([SourceFinding(message, WAIVER_DIRTY)], "not a git work tree")
 
     findings: list[SourceFinding] = []
-    tag = _release_tag(root) if _current_branch(root) is None else None
+    tag = head_release_tag(root) if current_branch(root) is None else None
     branch = None
     if tag is None:
         branch_findings, branch = _branch_findings(root, "framework checkout", WAIVER_UNMERGED)
         findings += branch_findings
-    if _has_uncommitted_changes(root):
+    if has_uncommitted_changes(root):
         message = "framework git tree has uncommitted changes; installed content would not match a commit"
         findings.append(SourceFinding(message, WAIVER_DIRTY))
 
-    head = _resolve(root, "HEAD")
+    head = resolve_commit(root, "HEAD")
     if head is None:
         findings.append(SourceFinding("framework checkout has no commits", WAIVER_DIRTY))
         return SourceStatus(findings, "no commits")
@@ -158,6 +158,6 @@ def profile_source_findings(name: str, root: Path) -> list[SourceFinding]:
         return []
     label = f"profile {name} checkout"
     findings, _ = _branch_findings(root, label, None)
-    if _has_uncommitted_changes(root):
+    if has_uncommitted_changes(root):
         findings.append(SourceFinding(f"{label} has uncommitted changes", None))
     return findings

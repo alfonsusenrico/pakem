@@ -16,6 +16,7 @@ from .common import (
     display_path,
     expand_user_path,
     home_dir,
+    is_git_work_tree,
     sha256_bytes,
     sha256_file,
     tree_sha,
@@ -28,7 +29,14 @@ from .legacy_install import migrate
 from .manifest import BackupSession, entries_by_path, load_manifest, save_manifest
 from .profiles import Profile, load_profiles
 from .schedule import ScheduleContext, default_context
-from .source import WAIVER_DIRTY, WAIVER_UNMERGED, framework_source_status, profile_source_findings
+from .source import (
+    WAIVER_DIRTY,
+    WAIVER_UNMERGED,
+    framework_source_status,
+    has_uncommitted_changes,
+    profile_source_findings,
+    resolve_commit,
+)
 from .transaction import WriteJournal
 
 KIND_INSTRUCTIONS = "instructions"
@@ -520,7 +528,22 @@ def _roll_back_and_raise(
     ) from exc
 
 
-def apply_install_plan(framework: Framework, plan: InstallPlan) -> list[str]:
+def install_provenance(framework: Framework, plan: InstallPlan, hosts_option: str | None) -> dict:
+    """What `pakem status` compares and `pakem update` repeats: the commit and the options."""
+    in_git = is_git_work_tree(framework.root)
+    return {
+        "framework_commit": resolve_commit(framework.root, "HEAD") if in_git else None,
+        "framework_clean": in_git and not has_uncommitted_changes(framework.root),
+        "framework_root": str(framework.root.resolve()),
+        "install_options": {
+            "hosts": hosts_option,
+            "profiles": [str(profile.root) for profile in plan.profiles],
+        },
+        "profiles": [{"name": profile.name, "version": profile.version} for profile in plan.profiles],
+    }
+
+
+def apply_install_plan(framework: Framework, plan: InstallPlan, provenance: dict) -> list[str]:
     """Apply the plan as one transaction; returns set-aside originals that could not be deleted.
 
     If any write fails, every target written in this run is restored and the manifest
@@ -548,6 +571,7 @@ def apply_install_plan(framework: Framework, plan: InstallPlan) -> list[str]:
         manifest["backups"].extend(new_backups)
         manifest["framework_version"] = framework.version()
         manifest["installed_at"] = utc_now_iso()
+        manifest.update(provenance)
         save_manifest(manifest)
     except (OSError, PakemError) as exc:
         _roll_back_and_raise(journal, backups, current, exc)
@@ -584,7 +608,7 @@ def run_install(args, schedule_context: ScheduleContext | None = None) -> int:
         print("Dry run: nothing written. Re-run with --apply to write.")
         return 0
 
-    leftovers = apply_install_plan(framework, plan)
+    leftovers = apply_install_plan(framework, plan, install_provenance(framework, plan, args.hosts))
     for leftover in leftovers:
         plan.report.warn(f"could not delete the set-aside original {leftover}; remove it by hand")
     plan.report.print()
