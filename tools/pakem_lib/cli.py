@@ -18,7 +18,9 @@ from .host import run_host_check, run_host_runner, run_setup_host
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
+from .gaps import STAGES, gaps_report, run_decide
 from .project import run_check, run_sync
+from .project_init import run_project_adopt, run_project_init
 from .release import (
     run_host_allow_device,
     run_host_revoke_device,
@@ -41,7 +43,7 @@ AREAS = (
     ("status and updates", "experimental", "status, update, config"),
     ("device", "experimental", "setup device, setup key, setup check"),
     ("host", "experimental", "setup host, setup check --host, host runner add|remove"),
-    ("project", "draft", "project init, project adopt, decide"),
+    ("project", "experimental", "project init, project adopt, project check --gaps, decide"),
     ("secrets", "draft", "secret"),
     ("release", "experimental", "release publish|promote|rollback|history|status, host allow-device|revoke-device"),
     (
@@ -270,7 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_apply(changelog)
 
-    project = commands.add_parser("project", help="manage a project's AGENTS.md")
+    project = commands.add_parser("project", help="start, adopt, and check projects")
     project_commands = project.add_subparsers(dest="project_command", required=True)
     sync = project_commands.add_parser("sync", help="insert or refresh pinned framework blocks")
     sync.add_argument("repo", nargs="?", help="repository directory (default: current directory)")
@@ -281,6 +283,42 @@ def build_parser() -> argparse.ArgumentParser:
         "check", help="verify pinned blocks, size, overrides, capabilities, and project files"
     )
     check.add_argument("repo", nargs="?", help="repository directory (default: current directory)")
+    check.add_argument("--gaps", action="store_true", help="list the project's gaps and their decisions instead")
+    check.add_argument("--json", action="store_true", help="machine-readable result (with --gaps)")
+    init = project_commands.add_parser("init", help="start a new project: files, CI, hooks, GitHub repository")
+    init.add_argument("directory", help="where the new repository goes (its name is the project name)")
+    init.add_argument("--name", help="project name (default: the directory name)")
+    init.add_argument("--repository", help="GitHub owner/name (default: your gh login / the name)")
+    adopt = project_commands.add_parser("adopt", help="bring an existing repository to the standard")
+    adopt.add_argument("directory", nargs="?", default=".", help="the repository (default: here)")
+    adopt.add_argument("--repository", help="GitHub owner/name (default: from origin)")
+    for starting in (init, adopt):
+        starting.add_argument("--forge", choices=("github", "gitlab"), default="github")
+        starting.add_argument("--description", help="one line: what the project does, and for whom")
+        starting.add_argument("--visibility", choices=("private", "public"))
+        starting.add_argument("--public", action="store_true", help="same as --visibility public")
+        starting.add_argument("--kind", choices=("service", "artifact", "none"), help="release kind")
+        starting.add_argument("--delivery", choices=("us", "others", "nobody"), help="who releases it")
+        starting.add_argument("--delivery-note", help="with --delivery others: who, and where our work ends")
+        starting.add_argument("--environments", choices=("production", "staging,production"))
+        starting.add_argument("--stack", choices=("python", "node"))
+        starting.add_argument("--capabilities", help="comma-separated capability names, or none")
+        starting.add_argument("--plan", action="store_true", help="print the steps without doing them")
+        starting.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+        starting.add_argument("--json", action="store_true", help="machine-readable result")
+
+    decide = commands.add_parser("decide", help="record a decision on one of the project's gaps")
+    decide.add_argument("gap", help="gap id, such as health.proof (see `pakem project check --gaps`)")
+    decide.add_argument("answer", nargs="?", help="the answer")
+    decide.add_argument("--reason", help="why, in one line")
+    decide.add_argument("--provisional", metavar="ASSUMPTION", help="a reversible working assumption")
+    decide.add_argument("--revisit", metavar="TRIGGER", help="with --provisional: when to revisit it")
+    decide.add_argument("--pending", metavar="WHAT", help="waiting for outside information")
+    decide.add_argument("--from", dest="provider", metavar="WHO", help="with --pending: who provides it")
+    decide.add_argument("--ask-again", metavar="YYYY-MM-DD", help="with --pending: when to ask again")
+    decide.add_argument("--question", help="record a new blocker no listed gap covers")
+    decide.add_argument("--blocks", help=f"with --question: stages it blocks ({','.join(STAGES)})")
+    decide.add_argument("--repo", default=".", help="repository directory (default: here)")
 
     report = commands.add_parser("report", help="write a read-only Markdown drift report")
     report.add_argument("--config", metavar="FILE", help=f"report config (default: {DEFAULT_CONFIG})")
@@ -444,8 +482,16 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_changelog(args)
     if args.command == "project" and args.project_command == "sync":
         return run_sync(args)
+    if args.command == "project" and args.project_command == "check" and args.gaps:
+        return gaps_report(Path(args.repo or ".").resolve(), args.json)
     if args.command == "project" and args.project_command == "check":
         return run_check(args)
+    if args.command == "project" and args.project_command == "init":
+        return run_project_init(args)
+    if args.command == "project" and args.project_command == "adopt":
+        return run_project_adopt(args)
+    if args.command == "decide":
+        return run_decide(args)
     if args.command == "report":
         return run_report(args)
     if args.command == "schedule":

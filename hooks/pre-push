@@ -8,6 +8,8 @@
 # and master.
 # Set AF_ALLOW_PROTECTED_PUSH=1 (or the older AF_ALLOW_MAIN_PUSH=1) to bypass only
 # the protected-branch documentation rule; commit messages are still checked.
+# A new repository's first push may create a protected branch with its single root
+# commit `chore: bootstrap project` (what `pakem project init` makes and pushes).
 
 # Keep SUBJECT_PATTERN identical to the copy in hooks/commit-msg; tests assert it.
 SUBJECT_PATTERN='^(feat|fix|docs|refactor|test|chore|ci|perf|build|revert)(\([a-z0-9-]+\))?!?: [^ ].{0,71}$'
@@ -57,6 +59,18 @@ is_all_zeros() {
         *[!0]*) return 1 ;;
         *) return 0 ;;
     esac
+}
+
+BOOTSTRAP_SUBJECT='chore: bootstrap project'
+
+is_bootstrap_push() {
+    # The remote has no such branch yet, and the push is one root commit with the bootstrap subject.
+    remote_sha=$1
+    pushed=$2
+    is_all_zeros "$remote_sha" || return 1
+    [ "$(printf '%s\n' "$pushed" | grep -c .)" -eq 1 ] || return 1
+    [ "$(git rev-list --parents -n 1 "$pushed" | awk '{ print NF - 1 }')" -eq 0 ] || return 1
+    [ "$(git log -1 --format=%s "$pushed")" = "$BOOTSTRAP_SUBJECT" ]
 }
 
 check_message() {
@@ -140,9 +154,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             ;;
     esac
 
+    bootstrap=0
+    if [ -n "$protected_target" ] && is_bootstrap_push "$remote_sha" "$commits"; then
+        bootstrap=1
+    fi
     for commit in $commits; do
         check_message "$commit"
-        if [ -n "$protected_target" ] && ! protected_push_allowed; then
+        if [ -n "$protected_target" ] && [ "$bootstrap" -eq 0 ] && ! protected_push_allowed; then
             check_docs_only "$commit" "$protected_target"
         fi
     done

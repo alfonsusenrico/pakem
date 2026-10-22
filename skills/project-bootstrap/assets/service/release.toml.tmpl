@@ -1,0 +1,26 @@
+# deploy/release.toml: how the release engine runs {{name}} (deployment contracts v1, section 4).
+af_standard = 1
+project = "{{name}}"
+compose_files = ["compose.yaml"]
+# In-image configuration check that prints names, never values; [] disables it.
+preflight = []
+# One-off migration command and service; [] while the project has no database.
+migrate = []
+switch = "stop-start"
+drain_seconds = 30
+
+# The host builds from the device's signed source (ADR 0010, direct delivery).
+[build]
+runner = "local"
+
+# Gap health.proof decides what this endpoint proves; it must report the full commit.
+[health]
+service = "web"
+path = "/health/release"
+revision_key = "revision"
+port = 8000
+
+[[images]]
+name = "web"
+dockerfile = "Dockerfile"
+context = "."

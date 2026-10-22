@@ -34,6 +34,7 @@ from .common import (
     CommandBusy,
     CommandRefused,
     Framework,
+    GapsOpen,
     OwnerActionRequired,
     PakemError,
     confirm_steps,
@@ -41,6 +42,7 @@ from .common import (
     run_git,
     version_tuple,
 )
+from .gaps import blocking, evaluate, load_facts
 from .host import CONTROL_PARENT, HostRecord, Remote, hosts_path, load_hosts, require_terminal, resolve_host, save_host
 from .host import setup_host_command
 from .requirements import device_label, ensure
@@ -101,6 +103,17 @@ def read_project(directory: Path) -> Project:
     if not isinstance(name, str) or not environments:
         raise PakemError("deploy/release.toml needs project and at least one [environments.<name>]")
     return Project(root, name, environments, list(settings.get("placement", [])), list(settings.get("secrets", [])))
+
+
+def check_gaps(project: Project) -> None:
+    """A release waits for every required decision that blocks it (ADR 0011, decision 6)."""
+    facts = load_facts(project.root)
+    if facts is None:
+        return
+    waiting = blocking(evaluate(project.root, facts), "release")
+    if waiting:
+        names = ", ".join(f"{status.gap.id} ({status.problem or status.state})" for status in waiting)
+        raise GapsOpen(f"decisions that block a release are open: {names}; see `pakem project check --gaps`")
 
 
 def check_delivery(project: Project) -> None:
@@ -356,6 +369,8 @@ def _prepare(args, needs: tuple[str, ...]) -> tuple[Project, HostRecord]:
     framework = Framework(Path(args.root))
     project = read_project(Path(args.project_dir))
     check_delivery(project)
+    if args.release_command in ("publish", "promote", "rollback"):
+        check_gaps(project)
     ensure(framework, needs, args, f"pakem release {args.release_command}")
     return project, host_for(project)
 

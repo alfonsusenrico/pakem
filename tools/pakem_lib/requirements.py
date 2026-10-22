@@ -86,6 +86,7 @@ TOOLS = {
     "glab": Tool("glab", ("glab", "--version"), "glab", "glab", "https://gitlab.com/gitlab-org/cli#installation"),
     "uv": Tool("uv", ("uv", "--version"), "uv", None, "https://docs.astral.sh/uv/getting-started/installation/"),
     "docker": Tool("docker", ("docker", "--version"), "docker", "docker.io", "https://docs.docker.com/engine/install/"),
+    "npm": Tool("npm", ("npm", "--version"), "node", "npm", "https://nodejs.org/en/download"),
 }
 COLIMA = Tool("colima", ("colima", "version"), "colima", None, "https://github.com/abiosoft/colima")
 LOGINS = {"github-login": ("gh", "GitHub"), "gitlab-login": ("glab", "GitLab")}
@@ -98,7 +99,8 @@ NEED_ORDER = (
     "framework",
     "device-settings",
 )
-DEVICE_NEEDS = NEED_ORDER
+# A fresh device gets everything but Node, which only Node projects need (and prepare).
+DEVICE_NEEDS = tuple(need for need in NEED_ORDER if need != "npm")
 
 
 @dataclass

@@ -1,0 +1,11 @@
+# pakem:stub - replace the command with the service's own entry point, then remove this line.
+FROM node:24-slim
+ARG AF_REVISION
+ENV AF_REVISION=${AF_REVISION}
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+USER node
+CMD ["sh", "-c", "echo 'replace the CMD in Dockerfile with the service entry point' >&2; exit 1"]

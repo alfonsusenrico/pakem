@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .common import Framework, PakemError, display_path, normalize_newlines, read_text, run_git, write_text_atomically
 from .device_config import UPDATE_APPLY, setting
+from .gaps import project_decisions
 from .manifest import load_manifest, state_dir
 from .pinned import PROFILE_KIND, parse_document
 from .project import AGENTS_FILE, check_repo
@@ -137,6 +138,16 @@ def project_status(framework: Framework, manifest: dict, cwd: Path) -> dict | No
     result["check"] = {"errors": len(report.errors), "warnings": len(report.warnings)}
     if report.errors:
         result["problems"].append(f"project check: {len(report.errors)} error(s); run `pakem project check`")
+    try:
+        result["decisions"] = project_decisions(repo)
+    except PakemError as exc:
+        result["problems"].append(f"decisions unreadable: {exc}")
+        return result
+    decisions = result["decisions"]
+    if decisions and decisions["due"]:
+        result["problems"].append(
+            f"decisions due: {', '.join(decisions['due'])}; ask the owner once, then record each with `pakem decide`"
+        )
     return result
 
 
@@ -170,6 +181,12 @@ def render_lines(status: FrameworkStatus, project: dict | None, brief: bool, for
         if project["check"] is not None:
             check = project["check"]
             lines.append(f"Project check: {check['errors']} error(s), {check['warnings']} warning(s)")
+        decisions = project.get("decisions")
+        if decisions:
+            lines.append(
+                f"Project decisions: {len(decisions['open'])} open, {len(decisions['pending'])} pending, "
+                f"{len(decisions['provisional'])} provisional (`pakem project check --gaps`)"
+            )
     lines += [f"Project {name}: {problem}" for problem in project["problems"]]
     return lines
 
