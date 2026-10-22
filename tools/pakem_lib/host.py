@@ -483,6 +483,13 @@ class DeviceLink:
                 "something on that port skips authorized_keys forced commands (Tailscale SSH does). Set up a "
                 f"release port: `{setup_host_command(self.record)} --release-port 2222`"
             )
+        if code == SSH_FAILED and self.record.release_port is not None:
+            return PakemError(
+                f"could not reach {DEPLOY_USER}@{self.record.address} on release port {self.record.release_port} "
+                f"with the device key ({last}); check that only sshd listens there "
+                f"(`sudo ss -ltnp 'sport = :{self.record.release_port}'` on the host), or choose a free port with "
+                f"`{setup_host_command(self.record)}` and another --release-port"
+            )
         if code == SSH_FAILED:
             return PakemError(
                 f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}); if this device "
