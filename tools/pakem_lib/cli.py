@@ -19,6 +19,7 @@ from .legacy_install import migrate
 from .lint import run_lint
 from .project import run_check, run_sync
 from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, default_context, run_schedule
+from .setup_device import run_setup_check, run_setup_device
 from .status import HOOK_PROMPT, HOOK_SESSION_START, run_status
 from .update import run_update
 
@@ -30,7 +31,7 @@ MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
 # Maturity per area (ADR 0011, decision 10); the kernel rule "use pakem" applies to stable ones.
 AREAS = (
     ("status and updates", "experimental", "status, update, config"),
-    ("device", "draft", "setup device"),
+    ("device", "experimental", "setup device, setup check"),
     ("host", "draft", "setup host, host"),
     ("project", "draft", "project init, project adopt, decide"),
     ("secrets", "draft", "secret"),
@@ -102,6 +103,17 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--plan", action="store_true", help="print the steps without doing them")
     update.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     update.add_argument("--json", action="store_true", help="machine-readable result")
+
+    setup = commands.add_parser("setup", help="set up this device (installs only after one confirmation)")
+    setup_commands = setup.add_subparsers(dest="setup_command", required=True)
+    setup_device = setup_commands.add_parser(
+        "device", help="install git, forge CLIs, uv, a container runtime, the device key, and the framework"
+    )
+    setup_device.add_argument("--plan", action="store_true", help="print the steps without doing them")
+    setup_device.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    setup_device.add_argument("--json", action="store_true", help="machine-readable result")
+    setup_check = setup_commands.add_parser("check", help="list tools, versions, the key, and forge logins")
+    setup_check.add_argument("--json", action="store_true", help="machine-readable result")
 
     config = commands.add_parser("config", help="device settings in ~/.config/pakem/config.toml")
     config_commands = config.add_subparsers(dest="config_command", required=True)
@@ -306,6 +318,10 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_update(args)
     if args.command == "config":
         return run_config(args)
+    if args.command == "setup" and args.setup_command == "device":
+        return run_setup_device(args)
+    if args.command == "setup" and args.setup_command == "check":
+        return run_setup_check(args)
     if args.command == "install":
         return run_install(args)
     if args.command == "uninstall":

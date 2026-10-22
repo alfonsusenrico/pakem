@@ -58,18 +58,32 @@ Stage: `experimental` (built 2026-10-22).
 
 ### 1. Device: `pakem setup device`
 
-- **Automatic:**
+Stage: `experimental` (built 2026-10-22).
+
+- **Automatic** (`pakem setup device [--plan] [--yes] [--json]`):
   - detects the OS and CPU;
-  - installs what is missing after one confirmation: git, the forge CLIs (`gh`, `glab`),
-    uv, and a free container runtime (Colima on macOS, Docker Engine on Linux);
-  - creates the machine's deploy key, a dedicated SSH key that also signs releases (never
-    the login key);
-  - writes `~/.config/pakem/`;
-  - installs the framework for agent hosts (`pakem install`).
-- **Owner actions:** forge logins (`gh auth login`, `glab auth login`), VPN sign-in if a
-  host needs it.
+  - installs what is missing after one confirmation, with Homebrew on macOS or apt
+    (through sudo) on Debian and Ubuntu: git, the forge CLIs (`gh`, `glab`), uv, and the
+    docker CLI;
+  - keeps any container runtime that already answers `docker info`; otherwise starts
+    Colima on macOS (installed if missing);
+  - creates the device key `~/.ssh/pakem_device_ed25519`, a dedicated ed25519 key without
+    a passphrase that connects to hosts and signs releases (never the login key; hosts
+    restrict it with a forced command). The private key is never read or printed;
+  - writes `~/.config/pakem/device.toml` (name, OS, CPU, key path and fingerprint);
+  - installs the framework for agent hosts (`pakem install --apply`) when it is not
+    installed yet; later versions come through `pakem update`.
+- **Owner actions:**
+  - forge logins (`gh auth login`, `glab auth login`), VPN sign-in if a host needs it;
+  - Homebrew itself on macOS, and tools apt cannot provide (uv on most Linux
+    releases), each with the official instruction;
+  - on Linux, starting Docker Engine and joining the `docker` group.
 - **Gaps:** none.
-- **Check:** `pakem setup check` lists tools, versions, the key, and forge logins.
+- **Check:** `pakem setup check [--json]` lists tools, versions, the runtime, the key, the
+  framework, the settings file, and forge logins; exit `0` all present, `3` only owner
+  actions remain, `5` something `pakem setup device` would install is missing.
+- Only the owner runs an installing `pakem setup device` (ADR 0011, decision 8); the
+  floor text that says so ships with the release that contains this command.
 
 ### 2. Host: `pakem setup host <ssh-target>`
 
