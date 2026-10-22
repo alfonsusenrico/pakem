@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -155,6 +156,14 @@ def device_file() -> Path:
 
 def device_name() -> str:
     return socket.gethostname().split(".")[0]
+
+
+def device_label() -> str:
+    """The device name as hosts record it: lower case letters, digits, and hyphens."""
+    label = re.sub(r"[^a-z0-9-]+", "-", device_name().lower()).strip("-")[:63].rstrip("-")
+    if not label:
+        raise PakemError("this device's host name gives no usable device name")
+    return label
 
 
 def _probe(command: tuple[str, ...]) -> subprocess.CompletedProcess | None:
@@ -426,11 +435,14 @@ def _missing_manager(device: Device) -> str:
     return "OWNER ACTION REQUIRED: this Linux has no apt; install the listed tools with its package manager"
 
 
-def prepare(framework: Framework, needs: tuple[str, ...], args, command: str) -> tuple[Assessment, list[str]]:
-    """Check, show the plan, confirm once, provide what is missing, and check again."""
+def prepare(
+    framework: Framework, needs: tuple[str, ...], args, command: str, announce: bool = True
+) -> tuple[Assessment, list[str]]:
+    """Check, show the plan, confirm once, provide what is missing, and check again.
+    Without `announce`, the device line is printed only when there is something to do."""
     interactive = sys.stdin.isatty()
     assessment = assess(framework, needs, interactive)
-    if not args.json:
+    if not args.json and (announce or assessment.steps):
         print(f"{command} ({assessment.device.label})")
         for step in assessment.steps:
             print(f"  {step.description}")
@@ -446,7 +458,7 @@ def prepare(framework: Framework, needs: tuple[str, ...], args, command: str) ->
 
 def ensure(framework: Framework, needs: tuple[str, ...], args, command: str) -> None:
     """Prepare a command's needs, then stop with whatever only the owner can still do."""
-    assessment, _ = prepare(framework, needs, args, command)
+    assessment, _ = prepare(framework, needs, args, command, announce=False)
     if args.plan:
         for action in assessment.owner_actions:
             print(action)

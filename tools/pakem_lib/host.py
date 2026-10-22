@@ -23,7 +23,7 @@ import sys
 import tarfile
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .common import (
@@ -68,6 +68,12 @@ class HostRecord:
     trigger: str = "pull"
     proxy: bool = True
     runner: bool = False
+    # Projects this device may release there (`pakem host allow-device`).
+    projects: list[str] = field(default_factory=list)
+
+    @property
+    def address(self) -> str:
+        return self.target.rsplit("@", 1)[-1]
 
     def bootstrap_flags(self) -> list[str]:
         flags = ["--trigger", self.trigger, "--deploy-root", self.deploy_root]
@@ -91,7 +97,8 @@ def load_hosts() -> dict[str, HostRecord]:
         raise PakemError(f"invalid TOML in {display_path(path)}: {exc}") from exc
     hosts = {}
     for name, table in data.get("hosts", {}).items():
-        fields = {key: table[key] for key in ("target", "port", "deploy_root", "trigger", "proxy", "runner") if key in table}
+        keys = ("target", "port", "deploy_root", "trigger", "proxy", "runner", "projects")
+        fields = {key: table[key] for key in keys if key in table}
         hosts[name] = HostRecord(name, **fields)
     return hosts
 
@@ -99,7 +106,7 @@ def load_hosts() -> dict[str, HostRecord]:
 def save_host(record: HostRecord) -> None:
     hosts = load_hosts()
     hosts[record.name] = record
-    lines = ["# Written by `pakem setup host`; device-local, never committed."]
+    lines = ["# Written by `pakem setup host` and `pakem host allow-device`; device-local, never committed."]
     for name in sorted(hosts):
         host = hosts[name]
         lines += ["", f"[hosts.{json.dumps(name)}]", f"target = {json.dumps(host.target)}"]
@@ -111,6 +118,8 @@ def save_host(record: HostRecord) -> None:
             f"proxy = {json.dumps(host.proxy)}",
             f"runner = {json.dumps(host.runner)}",
         ]
+        if host.projects:
+            lines.append(f"projects = {json.dumps(sorted(host.projects))}")
         if name == record.name:
             lines.append(f"set_up_at = {json.dumps(utc_now_iso())}")
     write_text_atomically(hosts_path(), "\n".join(lines) + "\n")
@@ -200,7 +209,7 @@ def run_sudo(remote: Remote, directory: str, script: Path, arguments: list[str])
     return remote.run(command, tty=True).returncode
 
 
-def _require_terminal(command_line: str) -> None:
+def require_terminal(command_line: str) -> None:
     if not sys.stdin.isatty():
         raise OwnerActionRequired(
             f"OWNER ACTION REQUIRED: run `{command_line}` in your terminal; it signs in with your own admin "
@@ -217,7 +226,7 @@ def _record_from_args(args) -> HostRecord:
     return HostRecord(name, args.target, args.port, args.deploy_root, args.trigger, not args.no_proxy, args.runner)
 
 
-def _setup_host_command(record: HostRecord) -> str:
+def setup_host_command(record: HostRecord) -> str:
     """The command line that repeats this setup, for the owner to run on a terminal."""
     words = ["pakem", "setup", "host", record.target, "--name", record.name]
     if record.port is not None:
@@ -247,6 +256,9 @@ def _check_source(framework: Framework, args) -> str:
 def run_setup_host(args) -> int:
     framework = Framework(Path(args.root))
     record = _record_from_args(args)
+    known = load_hosts().get(record.name)
+    if known is not None:
+        record.projects = known.projects
     source = _check_source(framework, args)
     install = shlex.join(["sudo", "bash", str(BOOTSTRAP), "install", *record.bootstrap_flags()])
     steps = [
@@ -263,7 +275,7 @@ def run_setup_host(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
-    _require_terminal(_setup_host_command(record))
+    require_terminal(setup_host_command(record))
     confirm_steps(args.yes, "pakem setup host")
     with tempfile.TemporaryDirectory(prefix="pk-", dir=CONTROL_PARENT) as control_dir:
         remote = Remote(record, Path(control_dir))
@@ -290,7 +302,7 @@ def run_setup_host(args) -> int:
 def run_host_check(args, name_or_target: str) -> int:
     framework = Framework(Path(args.root))
     record = resolve_host(name_or_target)
-    _require_terminal(f"pakem setup check --host {name_or_target}")
+    require_terminal(f"pakem setup check --host {name_or_target}")
     with tempfile.TemporaryDirectory(prefix="pk-", dir=CONTROL_PARENT) as control_dir:
         remote = Remote(record, Path(control_dir))
         try:
@@ -342,7 +354,7 @@ def run_host_runner(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
-    _require_terminal(f"pakem host runner {args.runner_command} {args.host} {args.repository}")
+    require_terminal(f"pakem host runner {args.runner_command} {args.host} {args.repository}")
     confirm_steps(args.yes, f"pakem host runner {args.runner_command}")
     token = _runner_token(args.repository, args.runner_command)
     with tempfile.TemporaryDirectory(prefix="pk-", dir=CONTROL_PARENT) as control_dir:

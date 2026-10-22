@@ -8,6 +8,8 @@ name fields, never values, so they are safe to print.
     python3 contracts.py release-record FILE
     python3 contracts.py promotion STAGING_FILE PRODUCTION_FILE
     python3 contracts.py deployment-record FILE
+    python3 contracts.py release-request FILE
+    python3 contracts.py direct-record FILE
     python3 contracts.py project-config deploy/release.toml
     python3 contracts.py settings deploy/settings.toml
 """
@@ -22,6 +24,10 @@ from pathlib import Path
 
 RELEASE_SCHEMA = "af.release/v1"
 DEPLOYMENT_SCHEMA = "af.deployment/v1"
+# Direct delivery (ADR 0010): a device signs a request; the host builds and records the release.
+REQUEST_SCHEMA = "pakem.release-request/v1"
+DIRECT_SCHEMA = "af.direct-release/v1"
+REQUEST_ACTIONS = {"publish", "promote", "rollback"}
 STANDARD = 1
 
 PROJECT = re.compile(r"[a-z][a-z0-9-]{0,62}")
@@ -31,6 +37,8 @@ TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 HTTPS_URL = re.compile(r"https://[^\s\"'<>]+")
 DIGEST_REF = re.compile(r"[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+@sha256:[0-9a-f]{64}")
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+# A device name as the host records it (the device's host name, lower case).
+DEVICE = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
 SERVICE = re.compile(r"[a-z][a-z0-9_-]{0,62}")
 SETTING = re.compile(r"[A-Z][A-Z0-9_]{0,127}")
 # A Dockerfile build stage (`FROM ... AS <stage>`).
@@ -51,6 +59,33 @@ RELEASE_FIELDS = {
     "bundle",
     "schema_version",
     "rollback",
+}
+REQUEST_FIELDS = {
+    "schema",
+    "action",
+    "project",
+    "environment",
+    "commit",
+    "version",
+    "archive",
+    "created",
+    "device",
+    "source",
+    "allow_schema",
+}
+DIRECT_FIELDS = {
+    "schema",
+    "project",
+    "commit",
+    "version",
+    "created",
+    "source",
+    "device",
+    "archive",
+    "images",
+    "schema_version",
+    "rollback",
+    "request",
 }
 DEPLOYMENT_FIELDS = {
     "schema",
@@ -102,15 +137,19 @@ def _exact_fields(document: object, expected: set[str], label: str) -> list[str]
     return problems
 
 
-def _images(images: object, label: str) -> list[str]:
+def _images(images: object, label: str, *, registry: bool = True, local: bool = False) -> list[str]:
+    """Registry references pinned by digest, and/or (direct delivery) local image IDs."""
     if not isinstance(images, dict) or not images:
         return [f"{label}: images must map at least one service to an image digest"]
     problems = []
     for service, reference in images.items():
         if not _match(SERVICE, service):
             problems.append(f"{label}: invalid service name in images")
-        if not _match(DIGEST_REF, reference):
-            problems.append(f"{label}: images.{service} must be a registry reference pinned by digest")
+        if not ((registry and _match(DIGEST_REF, reference)) or (local and _match(DIGEST, reference))):
+            expected = "a registry reference pinned by digest" if registry else "a local image ID sha256:<64 hex>"
+            if registry and local:
+                expected += " or a local image ID"
+            problems.append(f"{label}: images.{service} must be {expected}")
     return problems
 
 
@@ -137,6 +176,60 @@ def validate_release_record(record: object) -> list[str]:
     problems += [f"{label}: {message}" for ok, message in checks if not ok]
     problems += _images(record["images"], label)
     return problems
+
+
+def validate_release_request(request: object) -> list[str]:
+    """What a device signs to publish, promote, or roll back a direct release."""
+    label = "release request"
+    problems = _exact_fields(request, REQUEST_FIELDS, label)
+    if problems or not isinstance(request, dict):
+        return problems
+    action = request["action"]
+    checks = [
+        (request["schema"] == REQUEST_SCHEMA, f"schema must be {REQUEST_SCHEMA}"),
+        (action in REQUEST_ACTIONS, "action must be publish, promote, or rollback"),
+        (_match(PROJECT, request["project"]), "project is invalid"),
+        (_match(ENVIRONMENT, request["environment"]), "environment is invalid"),
+        (_match(COMMIT, request["commit"]), "commit must be a full 40-character lowercase SHA"),
+        (request["archive"] is None or _match(DIGEST, request["archive"]), "archive must be null or sha256:<64 hex>"),
+        (_match(TIME, request["created"]), "created must be UTC YYYY-MM-DDTHH:MM:SSZ"),
+        (_match(DEVICE, request["device"]), "device is invalid"),
+        (request["source"] is None or _match(HTTPS_URL, request["source"]), "source must be null or an https URL"),
+        (isinstance(request["allow_schema"], bool), "allow_schema must be true or false"),
+    ]
+    if action == "promote":
+        checks.append((_match(VERSION, request["version"]), "a promotion needs version vMAJOR.MINOR.PATCH"))
+    else:
+        checks.append((request["version"] is None, "only a promotion names a version"))
+    if action == "publish":
+        checks.append((request["archive"] is not None, "a publish sends its source archive"))
+    return problems + [f"{label}: {message}" for ok, message in checks if not ok]
+
+
+def validate_direct_record(record: object) -> list[str]:
+    """The record a host keeps for a release it built from a device's signed request."""
+    label = "direct release record"
+    problems = _exact_fields(record, DIRECT_FIELDS, label)
+    if problems or not isinstance(record, dict):
+        return problems
+    checks = [
+        (record["schema"] == DIRECT_SCHEMA, f"schema must be {DIRECT_SCHEMA}"),
+        (_match(PROJECT, record["project"]), "project is invalid"),
+        (_match(COMMIT, record["commit"]), "commit must be a full SHA"),
+        (record["version"] is None or _match(VERSION, record["version"]), "version is invalid"),
+        (_match(TIME, record["created"]), "created must be UTC"),
+        (record["source"] is None or _match(HTTPS_URL, record["source"]), "source must be null or an https URL"),
+        (_match(DEVICE, record["device"]), "device is invalid"),
+        (_match(DIGEST, record["archive"]), "archive must be sha256:<64 hex>"),
+        (
+            record["schema_version"] is None or _match(SCHEMA_VERSION, record["schema_version"]),
+            "schema_version must be null or a plain identifier",
+        ),
+        (isinstance(record["rollback"], bool), "rollback must be true or false"),
+        (_match(DIGEST, record["request"]), "request must be the signed request's sha256:<64 hex>"),
+    ]
+    problems += [f"{label}: {message}" for ok, message in checks if not ok]
+    return problems + _images(record["images"], label, registry=False, local=True)
 
 
 def validate_promotion(staging: dict, production: dict) -> list[str]:
@@ -177,7 +270,7 @@ def validate_deployment_record(record: object) -> list[str]:
         (optional_commit, "previous_commit must be null or a full SHA"),
         (optional_schema, "previous_schema_version is invalid"),
         (record["backup"] is None or isinstance(record["backup"], str), "backup must be null or a path"),
-        (record["trigger"] in {"pull", "push"}, "trigger must be pull or push"),
+        (record["trigger"] in {"pull", "push", "direct"}, "trigger must be pull, push, or direct"),
         (isinstance(record["actor"], str) and bool(record["actor"]), "actor is required"),
         (_match(TIME, record["started"]), "started must be UTC"),
         (_match(TIME, record["finished"]), "finished must be UTC"),
@@ -186,7 +279,7 @@ def validate_deployment_record(record: object) -> list[str]:
     problems += [f"{label}: {message}" for ok, message in checks if not ok]
     if record["result"] in RESULT_EXIT_CODES and record["exit_code"] not in RESULT_EXIT_CODES[record["result"]]:
         problems.append(f"{label}: exit_code does not match result")
-    problems += _images(record["images"], label)
+    problems += _images(record["images"], label, local=True)
     return problems
 
 
@@ -328,6 +421,8 @@ def main(argv: list[str]) -> int:
     validators = {
         "release-record": validate_release_record,
         "deployment-record": validate_deployment_record,
+        "release-request": validate_release_request,
+        "direct-record": validate_direct_record,
         "project-config": validate_project_config,
         "settings": validate_settings_manifest,
     }

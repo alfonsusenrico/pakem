@@ -80,6 +80,8 @@ class Agent:
                 log(f"{path.name}: unusable host config: {error}")
                 status = af_engine.EXIT_FAILED
                 continue
+            if host.delivery == af_engine.DELIVERY_DIRECT:
+                continue  # devices deliver these releases themselves (af_receive.py)
             try:
                 result = self.check(host)
             except (OSError, ValueError) as error:
@@ -154,6 +156,8 @@ def receive(
         host = af_engine.HostConfig.load(path)
         if (host.project, host.environment) != (project, environment):
             raise af_engine.EngineError(f"{path.name} names another project or environment", af_engine.EXIT_REFUSED)
+        if host.delivery == af_engine.DELIVERY_DIRECT and action == "deploy":
+            raise af_engine.EngineError(f"{project} {environment} takes direct releases only", af_engine.EXIT_REFUSED)
         if action == "status":
             print(json.dumps(af_engine.read_json(host.base / "deployment.json"), indent=2, sort_keys=True))
             return af_engine.EXIT_OK

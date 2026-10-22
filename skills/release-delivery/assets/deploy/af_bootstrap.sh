@@ -13,9 +13,10 @@
 #
 # Installs: Docker Engine with the Compose plugin and Caddy from their signed apt
 # repositories (key fingerprints pinned below), cosign as a checksum-pinned binary, the
-# `af` deploy user, the engine in /opt/af, /etc/af, the deploy root, and the af-agent and
-# af-monitor timers. Project files (host configs, keys, placement, secrets) are added per
-# project afterwards (§11 steps 3 to 7).
+# `af` deploy user, the engine and the direct delivery receiver in /opt/af, /etc/af, the
+# deploy root, and the af-agent and af-monitor timers. Project files (host configs, keys,
+# placement, secrets) are added per project afterwards: `pakem host allow-device` for
+# direct delivery, contracts §11 steps 3 to 7 for a registry.
 set -euo pipefail
 
 DOCKER_KEY_FINGERPRINT=9DC858229FC7DD38854AE2D88D81803C0EBFCD88
@@ -24,7 +25,7 @@ CADDY_KEY_URL=https://dl.cloudsmith.io/public/caddy/stable/gpg.155B6D79CA56EA34.
 COSIGN_VERSION=v3.1.3
 COSIGN_SHA256_AMD64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
 COSIGN_SHA256_ARM64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
-ENGINE_FILES="af_engine.py af_monitor.py af_notify.py af_oci.py af_release.py af_settings.py af_trigger.py contracts.py af_runner.sh"
+ENGINE_FILES="af_engine.py af_monitor.py af_notify.py af_oci.py af_publish.py af_receive.py af_release.py af_settings.py af_trigger.py contracts.py af_runner.sh"
 UNITS="af-agent.service af-agent.timer af-monitor.service af-monitor.timer"
 DOCKER_LOG_CONFIG='{"log-driver": "local", "log-opts": {"max-size": "20m", "max-file": "5"}}'
 
@@ -117,7 +118,7 @@ add_apt_key() {
 install_base_packages() {
   say "base packages"
   apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates curl gnupg python3 iproute2 >/dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates curl gnupg python3 iproute2 openssh-client >/dev/null
   python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die "python3 3.11 or newer is required"
 }
 
@@ -244,6 +245,8 @@ install_engine() {
   install -d -m 0750 -o root -g af /etc/af /etc/af/hosts /etc/af/keys
   install -d -m 0700 -o af -g af /etc/af/secrets
   install -d -m 0750 -o af -g af "$DEPLOY_ROOT"
+  # Device keys that may sign direct releases, written by `af_receive.py authorize`.
+  [[ -e /etc/af/allowed_signers ]] || install -m 0640 -o root -g af /dev/null /etc/af/allowed_signers
 }
 
 install_units() {
@@ -284,6 +287,8 @@ passes() {
 
 af_in_group() { id -nG af 2>/dev/null | tr ' ' '\n' | grep -qx "$1"; }
 docker_ready() { docker compose version && systemctl is-active --quiet docker; }
+buildx_ready() { docker buildx version; }
+receiver_ready() { [[ "$(stat -c '%a %U:%G' /etc/af/allowed_signers)" == "640 root:af" ]] && command -v ssh-keygen; }
 python_ready() { python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; }
 cosign_pinned() { echo "$(cosign_checksum)  /usr/local/bin/cosign" | sha256sum --check --status; }
 engine_intact() { (cd /opt/af && sha256sum --check --status SHA256SUMS); }
@@ -297,11 +302,13 @@ check() {
   say "checking this host"
   result "$(passes docker_ready)" docker \
     "$(docker version --format 'engine {{.Server.Version}}' 2>/dev/null) compose $(docker compose version --short 2>/dev/null)"
+  result "$(passes buildx_ready)" "docker buildx" "$(docker buildx version 2>/dev/null | awk '{print $2}')"
   result "$(passes python_ready)" python3 "$(python3 --version 2>&1)"
   result "$(passes cosign_pinned)" cosign "$COSIGN_VERSION, checksum pinned"
   result "$(passes af_in_group docker)" "af user" "$(id af 2>/dev/null || echo missing)"
   result "$(passes engine_intact)" /opt/af "version $(cat /opt/af/VERSION 2>/dev/null || echo none), files match SHA256SUMS"
   result "$(passes directories_ready)" directories "/etc/af/{hosts,keys,secrets}, $DEPLOY_ROOT"
+  result "$(passes receiver_ready)" "direct delivery" "/etc/af/allowed_signers, ssh-keygen"
   result "$(passes systemctl is-enabled af-monitor.timer)" af-monitor.timer "$(systemctl is-active af-monitor.timer 2>/dev/null || true)"
   if [[ "$TRIGGER" == pull ]]; then
     result "$(passes systemctl is-enabled af-agent.timer)" af-agent.timer "$(systemctl is-active af-agent.timer 2>/dev/null || true)"

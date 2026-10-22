@@ -104,3 +104,28 @@ def create(comment: str, passphrase: bool) -> None:
     completed = subprocess.run(command)
     if completed.returncode != 0:
         raise PakemError(f"ssh-keygen failed with exit {completed.returncode}")
+
+
+def sign(data_file: Path, namespace: str) -> bytes:
+    """An `ssh-keygen -Y sign` signature of a file with the device key, as the file's bytes.
+
+    A key with a passphrase signs through ssh-agent (given its public half, ssh-keygen asks
+    the agent), so the passphrase is never needed here.
+    """
+    private = private_path()
+    key = public_path() if has_passphrase(private) else private
+    signature = data_file.with_name(f"{data_file.name}.sig")
+    signature.unlink(missing_ok=True)
+    completed = subprocess.run(
+        ["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", namespace, str(data_file)],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip().splitlines()
+        raise PakemError(f"the device key could not sign: {detail[-1] if detail else completed.returncode}")
+    try:
+        return signature.read_bytes()
+    finally:
+        signature.unlink()

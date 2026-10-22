@@ -2,15 +2,15 @@
 
 Status: Draft (ADR 0009; becomes Active with deployment standard v1.0)
 Applies to: projects with the `deployed` capability on hosts we or our pipeline control
-Last reviewed: 2026-10-20
+Last reviewed: 2026-10-22
 Review by: 2027-04-19
 Sources: ADR 0009; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
 ADR 0010 (accepted 2026-10-21) revises the builder side: the builder and trigger are each
 project's choice, nothing billed is used without the project's approval, images default
-to the host's architecture, and a direct delivery mode (signed source sent over a
-restricted SSH command, built on the host) is being added. Sections 4 and 10 still
-describe the registry builder; they change with that implementation.
+to the host's architecture, and direct delivery (signed source sent over a restricted
+SSH command, built on the host) is section 13. Sections 1 to 3 and 10 describe the
+registry mode; sections 4 to 9 and 11 apply to both.
 
 Projects depend only on these contracts. CI templates, the release engine, and the
 triggers may change behind them. Changing a contract is a MAJOR version of the standard
@@ -165,11 +165,11 @@ deployment.
 | `result` | `deployed`, `unchanged`, `refused`, `failed`, `restored`, `restore_failed`, `stopped`, `busy` |
 | `exit_code` | the engine exit code |
 | `release` | the record digest (`sha256:<64 hex>`) |
-| `commit`, `version`, `images`, `schema_version` | from the record |
+| `commit`, `version`, `images`, `schema_version` | from the record (direct releases: images are local image IDs, `sha256:<64 hex>`) |
 | `previous_commit`, `previous_schema_version` | the release replaced, or null |
 | `backup` | archive path, or null |
-| `trigger` | `pull` or `push` |
-| `actor` | the CI actor or `agent` |
+| `trigger` | `pull`, `push`, or `direct` |
+| `actor` | the CI actor, `agent`, or `device:<name>` |
 | `started`, `finished` | UTC, as in the release record |
 | `engine` | engine version |
 
@@ -179,7 +179,8 @@ Records hold identifiers, results, and times only, never settings values or cont
 
 `<DEPLOY_ROOT>/<project>/<environment>/`: `releases/<commit>/` (`record.json`,
 `bundle/`, `runtime.env`), `current -> releases/<commit>`, `secrets/` (0700),
-`placement.env` (0600), `backups/`, `deployment.json`, `deployments.jsonl`, `lock`.
+`placement.env` (0600), `backups/`, `deployment.json`, `deployments.jsonl`, `lock`, and
+for direct delivery `builds/` (a request's source while it builds, removed afterwards).
 Owner modes `root` and `self` keep the ownership and permission checks of
 `release_host.py`.
 
@@ -234,8 +235,10 @@ or Ubuntu (amd64, arm64): run `sudo ./af_bootstrap.sh install [--trigger push]
 [--deploy-root <path>] [--no-proxy]` from a tagged framework checkout. It keeps an existing
 Docker and its containers untouched, refuses a foreign Caddyfile unless
 `--replace-caddyfile` (which keeps a backup), and ends with `check`, which can be rerun at
-any time. The per-project parts (step 3, keys, host configs, placement, secrets, channels,
-authorized keys) stay manual.
+any time. For direct delivery, `pakem host allow-device` does the per-project parts of
+step 3 and the keys (section 13); placement values, secrets, and channels stay manual.
+For a registry, the per-project parts (step 3, keys, host configs, placement, secrets,
+channels, authorized keys) stay manual.
 
 1. Create the deploy user `af` (`useradd --system --create-home af`) and add it to the
    `docker` group. Docker access is root-equivalent: use the user for deployments only.
@@ -311,3 +314,79 @@ services there through project-unique aliases (for example `<project>-db` as the
 host) and keep bare names such as `db`, `api`, or `worker` for nothing on a shared
 network. Rehearse with a stand-in network that carries the other project's real service
 names.
+
+## 13. Direct delivery
+
+ADR 0010, decision 4: no registry. The owner's device sends a signed request for one
+commit, and the host builds and deploys it. Commands: `pakem release` (device) and
+`assets/deploy/af_receive.py` (host).
+
+**Host configuration.** `/etc/af/hosts/<project>-<environment>.toml` with
+`delivery = "direct"` and no `pointer`, `public_key`, or `registry_credentials`; the pull
+agent skips it, the push trigger refuses it, and `af_engine.py deploy` refuses it (direct
+releases arrive only through the receiver). The monitor checks it like any other.
+
+**Device keys.** One per device (ADR 0010, decision 8), written by
+`af_receive.py authorize` (as root, from `pakem host allow-device`):
+
+- `~af/.ssh/authorized_keys`:
+  `restrict,command="/usr/bin/python3 /opt/af/af_receive.py serve --device <name> --project <p> [--project ...]" ssh-ed25519 <key> pakem-device <name>`;
+- `/etc/af/allowed_signers` (root:af 0640): `<p>[,<p>...] namespaces="pakem-release" ssh-ed25519 <key> pakem-device <name>`.
+
+Other lines in either file are kept as they are. A key belongs to one device name, and a
+device to one key; revoking removes the device's lines or one project from them.
+
+**Request.** One JSON object, signed with `ssh-keygen -Y sign -n pakem-release` by the
+device key:
+
+| Field | Rule |
+| --- | --- |
+| `schema` | `pakem.release-request/v1` |
+| `action` | `publish`, `promote`, or `rollback` |
+| `project`, `environment`, `commit` | as in section 1 |
+| `version` | `vMAJOR.MINOR.PATCH` for `promote`, else null |
+| `archive` | `sha256:<64 hex>` of the commit's `git archive` tar when it is sent; required for `publish` |
+| `created` | UTC time; the host refuses a request more than 10 minutes from its clock |
+| `device` | the device name, `[a-z0-9][a-z0-9-]{0,62}` |
+| `source` | https URL of the repository, or null |
+| `allow_schema` | true only for a rollback the owner confirmed across a schema change |
+
+`SSH_ORIGINAL_COMMAND` is `release` (standard input: the request on one line, its
+signature base64-encoded on the next, then the archive if named), `history <project>`,
+or `status <project>` (JSON per environment: `current` deployment record, `running`
+commit, and for history every deployment and the `kept` commits). Anything else is
+refused. The receiver checks, before reading the archive's content: the schema; the
+device and project against its forced command; freshness; the signature against only
+this device's `allowed_signers` lines with the project as principal; and that the
+environment is direct here. Then the archive's digest against the request.
+
+**Build.** A commit no environment of the project keeps is unpacked (files,
+directories, and symlinks that stay inside; size and entry limits), its deploy files
+validated, and each `[[images]]` entry built with `docker buildx build --load` in the
+`pakem-build` BuildKit container (2 CPUs, 4 GB; one build per host at a time; cache older
+than 7 days pruned), with `AF_REVISION` and the revision label as in CI, tagged
+`pakem/<project>-<image>:<commit>`. The deploy bundle (section 2) is taken from the same
+tree. A kept commit (promotion, rollback, or the same commit again) reuses its images
+and bundle; a resent archive must match the one it was built from.
+
+**Record.** `releases/<commit>/record.json` is a direct release record:
+
+| Field | Rule |
+| --- | --- |
+| `schema` | `af.direct-release/v1` |
+| `project`, `commit`, `created`, `schema_version`, `rollback` | as in section 1 |
+| `version` | the promotion's version; a rollback keeps the version it had in that environment |
+| `source`, `device` | from the request |
+| `archive` | the digest of the archive the images were built from |
+| `images` | image name to local image ID `sha256:<64 hex>` (Compose runs images by ID) |
+| `request` | `sha256:<64 hex>` of the signed request; also the deployment record's `release` |
+
+The engine (section 5) then runs as usual, except that it checks the images exist
+instead of pulling them; a request for the release that already runs is `unchanged`.
+
+**Rules.** `promote` to production is refused unless staging on this host deployed the
+commit (when the project has staging), and when its version already named another commit
+in production. `rollback` is refused for a commit never deployed to that environment,
+for the running commit, and across a schema version change without `allow_schema`.
+Retention untags a release's images unless another environment of the project keeps
+the same commit; Docker keeps images a container still uses.
