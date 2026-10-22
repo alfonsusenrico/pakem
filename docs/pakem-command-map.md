@@ -171,7 +171,7 @@ Stage: `experimental` for GitHub (built 2026-10-22); GitLab and the `artifact` k
   generated Open decisions section of `AGENTS.md`), and lists every difference as a
   finding: CI templates that differ, missing `AGENTS.md` lines, Python tooling defaults
   not merged, `deploy/release.toml` contract problems, starter stubs, and what the
-  registry mode left behind (publishing workflows, `deploy/af/`, the cosign key, no
+  registry mode left behind (publishing workflows, `deploy/af/af_publish.py`, the cosign key, no
   `[build] runner = "local"`). It never adds starter code, keeps the project's own
   `ci.yml` (the reusable templates come only with a Pakem `ci.yml`), installs nothing,
   and only reads the forge.

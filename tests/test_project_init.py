@@ -325,10 +325,14 @@ class AdoptTests(ProjectTestCase):
         write(self.repo / ".github" / "workflows" / "ci.yml", "name: CI\n")
         write(self.repo / ".github" / "workflows" / "release.yml", "run: python3 deploy/af/af_publish.py publish\n")
         write(self.repo / "deploy" / "release-signing.pub", "cosign key\n")
+        write(self.repo / "deploy" / "af" / "af_publish.py", "# registry publisher\n")
+        write(self.repo / "deploy" / "af" / "contracts.py", "# contract checks\n")
         completed = self.adopt("--yes")
         self.assertFalse((self.repo / ".github" / "workflows" / "security.yml").exists())
         self.assertIn("FINDING  .github/workflows/release.yml publishes releases to a registry", completed.stdout)
         self.assertIn("FINDING  deploy/release-signing.pub belongs to the registry mode", completed.stdout)
+        self.assertIn("FINDING  deploy/af/af_publish.py belongs to the registry mode", completed.stdout)
+        self.assertNotIn("contracts.py", completed.stdout, "the contract checks stay")
         self.assertIn('FINDING  deploy/release.toml has no `[build] runner = "local"`', completed.stdout)
 
     def test_owner_actions_skip_what_github_already_shows(self) -> None:
