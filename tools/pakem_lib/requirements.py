@@ -32,8 +32,10 @@ from .common import (
     EXIT_CHECK_FAILED,
     EXIT_DONE,
     EXIT_OWNER_ACTION,
+    CheckFailed,
     CommandRefused,
     Framework,
+    OwnerActionRequired,
     PakemError,
     confirm_steps,
     display_path,
@@ -78,6 +80,7 @@ class Tool:
 
 TOOLS = {
     "git": Tool("git", ("git", "--version"), "git", "git", "https://git-scm.com/downloads"),
+    "ssh": Tool("ssh", ("ssh", "-V"), "openssh", "openssh-client", "https://www.openssh.com/portable.html"),
     "gh": Tool("gh", ("gh", "--version"), "gh", "gh", "https://github.com/cli/cli#installation"),
     "glab": Tool("glab", ("glab", "--version"), "glab", "glab", "https://gitlab.com/gitlab-org/cli#installation"),
     "uv": Tool("uv", ("uv", "--version"), "uv", None, "https://docs.astral.sh/uv/getting-started/installation/"),
@@ -439,6 +442,20 @@ def prepare(framework: Framework, needs: tuple[str, ...], args, command: str) ->
         step.run()
         done.append(step.description)
     return assess(framework, needs, interactive), done
+
+
+def ensure(framework: Framework, needs: tuple[str, ...], args, command: str) -> None:
+    """Prepare a command's needs, then stop with whatever only the owner can still do."""
+    assessment, _ = prepare(framework, needs, args, command)
+    if args.plan:
+        for action in assessment.owner_actions:
+            print(action)
+        return
+    if assessment.owner_actions:
+        raise OwnerActionRequired("\n".join(assessment.owner_actions))
+    failed = [f"{check.name}: {check.detail}" for check in assessment.checks if not check.ok]
+    if failed:
+        raise CheckFailed(f"{command} needs: {'; '.join(failed)}")
 
 
 def result(status: str, done: list[str], assessment: Assessment) -> dict:

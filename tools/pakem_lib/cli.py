@@ -14,6 +14,7 @@ from .enforce import ENFORCE_HOSTS, run_enforce
 from .evals import HOSTS as EVAL_HOSTS
 from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
+from .host import run_host_check, run_host_runner, run_setup_host
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
@@ -31,7 +32,7 @@ MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
 AREAS = (
     ("status and updates", "experimental", "status, update, config"),
     ("device", "experimental", "setup device, setup key, setup check"),
-    ("host", "draft", "setup host, host"),
+    ("host", "experimental", "setup host, setup check --host, host runner add|remove"),
     ("project", "draft", "project init, project adopt, decide"),
     ("secrets", "draft", "secret"),
     ("release", "draft", "release"),
@@ -119,8 +120,39 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="no passphrase, only for a device nobody can unlock (recorded in device.toml)",
     )
+    setup_host = setup_commands.add_parser(
+        "host", help="install the release engine on a server over SSH (your own login, from your terminal)"
+    )
+    setup_host.add_argument("target", help="SSH target, such as admin@203.0.113.7 or an alias in ~/.ssh/config")
+    setup_host.add_argument("--name", help="name for this host in ~/.config/pakem/hosts.toml (default: from target)")
+    setup_host.add_argument("--port", type=_bounded_int(1, 65535), help="SSH port (default: SSH's own)")
+    setup_host.add_argument("--trigger", choices=("pull", "push"), default="pull", help="deploy trigger (default: pull)")
+    setup_host.add_argument("--deploy-root", default="/srv/deploy", help="deploy root on the host (default: /srv/deploy)")
+    setup_host.add_argument("--no-proxy", action="store_true", help="no Caddy reverse proxy (a private host)")
+    setup_host.add_argument("--runner", action="store_true", help="also install the isolated CI runner")
+    setup_host.add_argument(
+        "--allow-unmerged", action="store_true", help="upload from a checkout that is not merged main (testing only)"
+    )
+    setup_host.add_argument(
+        "--allow-dirty", action="store_true", help="upload from a checkout with uncommitted changes (testing only)"
+    )
+    setup_host.add_argument("--plan", action="store_true", help="print the steps without doing them")
+    setup_host.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     setup_check = setup_commands.add_parser("check", help="list tools, versions, the key, and forge logins")
+    setup_check.add_argument("--host", metavar="NAME", help="check a recorded host instead of this device")
     setup_check.add_argument("--json", action="store_true", help="machine-readable result")
+
+    host = commands.add_parser("host", help="manage servers set up with `pakem setup host`")
+    host_commands = host.add_subparsers(dest="host_command", required=True)
+    runner = host_commands.add_parser("runner", help="register a private repository with the host's CI runner")
+    runner_commands = runner.add_subparsers(dest="runner_command", required=True)
+    for verb, text in (("add", "register"), ("remove", "unregister")):
+        runner_parser = runner_commands.add_parser(verb, help=f"{text} a repository (token from your gh login)")
+        runner_parser.add_argument("host", help="host name or target from ~/.config/pakem/hosts.toml")
+        runner_parser.add_argument("repository", help="owner/name on GitHub")
+        runner_parser.add_argument("--plan", action="store_true", help="print the steps without doing them")
+        runner_parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+        runner_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
     config = commands.add_parser("config", help="device settings in ~/.config/pakem/config.toml")
     config_commands = config.add_subparsers(dest="config_command", required=True)
@@ -329,8 +361,14 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_setup_device(args)
     if args.command == "setup" and args.setup_command == "key":
         return run_setup_key(args)
+    if args.command == "setup" and args.setup_command == "host":
+        return run_setup_host(args)
+    if args.command == "setup" and args.setup_command == "check" and args.host:
+        return run_host_check(args, args.host)
     if args.command == "setup" and args.setup_command == "check":
         return run_setup_check(args)
+    if args.command == "host" and args.host_command == "runner":
+        return run_host_runner(args)
     if args.command == "install":
         return run_install(args)
     if args.command == "uninstall":
