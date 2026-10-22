@@ -43,6 +43,12 @@ class OwnerActionRequired(PakemError):
     exit_code = EXIT_OWNER_ACTION
 
 
+class CheckFailed(PakemError):
+    """The command ran, and the check that proves its result did not pass."""
+
+    exit_code = EXIT_CHECK_FAILED
+
+
 class CommandBusy(PakemError):
     """Another run holds the lock this command needs."""
 

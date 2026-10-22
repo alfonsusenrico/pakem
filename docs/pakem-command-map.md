@@ -101,27 +101,41 @@ Stage: `experimental` (built 2026-10-22; on-demand requirements and key passphra
 
 ### 2. Host: `pakem setup host <ssh-target>`
 
-- **Automatic, over SSH from the device:**
-  - installs Docker, the release engine and the deploy user (the current
-    `af_bootstrap.sh`);
-  - installs the notifier and monitor;
-  - optionally installs the reverse proxy and the CI runner (rootless Docker, its own
-    user, resource caps);
-  - registers this device's key.
-- Related commands:
-  - `pakem host allow-device <host> <device-key>` and `revoke-device`;
-  - `pakem host add-project <host> <project> <env>`: base, host config, placement prompts;
-  - `pakem host runner add <host> <repo>`: registers a CI runner for one private repository.
-- **Owner actions:**
-  - the first SSH access to a new server (its password, once);
-  - forge runner registration if a token cannot be fetched with the owner's CLI login.
-- **Gaps (per host):**
-  - notification channels;
-  - whether it has a public route (domain and TLS) or is private;
-  - runner yes or no;
-  - the deploy root.
-- **Check:** `pakem setup check --host <host>` (the current bootstrap `check`, plus keys,
-  runner isolation, and each project's base).
+Stage: `experimental` (built 2026-10-22).
+
+- **Who signs in:** the owner's own admin login with sudo, from the owner's terminal only
+  (owner decision 2026-10-22; floor: no personal identity for automation). Without a
+  terminal the command stops with `OWNER ACTION REQUIRED` and the exact command line; it
+  never connects. `--plan` works anywhere. The device key is never used for
+  administration: it may only deploy, through a forced command (area 5).
+- **`pakem setup host <ssh-target> [--name] [--port] [--trigger pull|push]
+  [--deploy-root] [--no-proxy] [--runner] [--plan] [--yes]`:**
+  - one SSH connection (ControlMaster), so a password is asked at most once;
+  - uploads `VERSION` and the deploy assets, in the checkout's layout, to a temporary
+    directory, runs `af_bootstrap.sh install` with sudo (Docker, cosign, Caddy unless
+    `--no-proxy`, the `af` deploy user, the engine in `/opt/af`, the agent and monitor
+    timers), and `af_runner.sh install` with `--runner` (rootless Docker, its own user,
+    resource caps); removes the directory whatever happens;
+  - uploads only from merged `main` or a release, like `pakem install` (`--allow-unmerged`
+    and `--allow-dirty` exist for deliberate tests);
+  - records the host in the device-local `~/.config/pakem/hosts.toml` (target, port,
+    deploy root, trigger, proxy, runner); exit `5` when the install ran but the host's
+    check failed (the host is still recorded).
+- **`pakem setup check --host <name>`:** the bootstrap's `check`, with the recorded
+  options, plus the runner's isolation check when the host has a runner.
+- **`pakem host runner add|remove <host> <owner/repo>`:** needs `gh` and a GitHub login
+  (prepared on demand); takes a registration or removal token from the owner's `gh`
+  login, keeps it in memory, and hands it to `/opt/af/af_runner.sh` on standard input
+  through a file only the login user can read, removed right after. Refused when the
+  host has no runner.
+- **Owner actions:** running these commands on a terminal; the server's first password
+  if SSH asks for one; a GitHub login for runner tokens.
+- **Gaps (per host), answered by flags:** public route or private (`--no-proxy`), runner
+  (`--runner`), deploy root (`--deploy-root`), trigger (`--trigger`).
+- **Moved (owner decision 2026-10-22):** `pakem host allow-device` and `revoke-device` go
+  to area 5 with the release receiver the device key's forced command calls;
+  `pakem host add-project` and per-project notification channels go to `pakem project
+  init` and the first release (areas 3 and 5), which read the project's own files.
 
 ### 3. Project: `pakem project init` / `pakem project adopt`
 

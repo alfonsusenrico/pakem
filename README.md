@@ -103,6 +103,8 @@ before acting, and take `--plan` to preview and `--yes` to skip the question.
 | `pakem status` | Whether this device runs the latest merged Pakem, and whether this project's pins match |
 | `pakem update` | Install the latest merged Pakem and list the files agents must re-read |
 | `pakem setup device` | Prepare a fresh machine in one go; other commands prepare what they need when they run (`setup key` makes the device key, `setup check` only lists) |
+| `pakem setup host` | Install the release engine (and optionally a CI runner) on a server over SSH, from your terminal |
+| `pakem host runner` | Register a private repository with a server's CI runner |
 | `pakem config` | Device settings, such as whether agents may run `pakem update` themselves |
 | `pakem install` | Install the kernel and skills into every supported agent on this device |
 | `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |
@@ -152,8 +154,6 @@ Pakem is moving from "a standard your agents read" to "a standard your agents ru
 are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-and-no-billed-services.md),
 [ADR 0011](docs/adr/0011-pakem-standard-core-adaptive-edges.md)):
 
-- `pakem setup host`: install the release engine, keys, and optional runner a server
-  needs, and tell you the few steps only you can do.
 - `pakem project init` and `pakem project adopt`: start or adopt a project on GitHub or
   GitLab, with its CI and deploy files.
 - `pakem release publish | promote | rollback previous | history`: build on your server
