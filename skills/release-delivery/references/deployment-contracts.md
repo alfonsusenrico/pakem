@@ -336,6 +336,13 @@ releases arrive only through the receiver). The monitor checks it like any other
 Other lines in either file are kept as they are. A key belongs to one device name, and a
 device to one key; revoking removes the device's lines or one project from them.
 
+The forced command is OpenSSH's; an SSH server that does not read `authorized_keys`
+(Tailscale SSH answers port 22 of a tailnet address and logs in by tailnet identity) gives
+the key a shell instead. Such a host gets a release port: `af_bootstrap.sh
+--release-port PORT` adds `/etc/ssh/sshd_config.d/pakem-release.conf`, where OpenSSH also
+listens on PORT with `AllowUsers af` and public keys only, keeping every port it listened
+on before; devices connect there.
+
 **Request.** One JSON object, signed with `ssh-keygen -Y sign -n pakem-release` by the
 device key:
 

@@ -42,6 +42,7 @@ from .common import (
     version_tuple,
 )
 from .gaps import blocking, evaluate, load_facts
+from .host import DEPLOY_USER, HOST_OK, DeviceLink
 from .host import CONTROL_PARENT, HostRecord, Remote, hosts_path, load_hosts, require_terminal, resolve_host, save_host
 from .host import setup_host_command
 from .requirements import device_label, ensure
@@ -55,7 +56,6 @@ from .service_project import (
     setup_words,
 )
 
-DEPLOY_USER = "af"
 NAMESPACE = "pakem-release"
 REQUEST_SCHEMA = "pakem.release-request/v1"
 MAIN = "origin/main"
@@ -63,15 +63,6 @@ VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 DELIVERY_LINE = re.compile(r"\bDelivery:?\**\s*:?\s*\**\s*(us|others|nobody)\b", re.IGNORECASE)
 PASSED_CONCLUSIONS = {"success", "neutral", "skipped"}
-# The receiver's exit codes (the engine's, contracts §5).
-HOST_OK, HOST_REFUSED, HOST_BUSY = 0, 2, 75
-HOST_RESULTS = {
-    1: "failed; nothing to restore",
-    3: "failed; the previous release was restored and verified",
-    4: "failed, and restoring the previous release failed too",
-    5: "failed after a schema change; services are stopped for you",
-}
-SSH_FAILED = 255
 SERVICE_NEEDS = ("git", "ssh", "device-key", "device-key-unlocked")
 CHECK_NEEDS = ("gh", "github-login")
 
@@ -191,50 +182,6 @@ def host_for(project: Project) -> HostRecord:
         names = ", ".join(record.name for record in hosts)
         raise PakemError(f"{project.name} is recorded for several hosts ({names}) in {display_path(hosts_path())}")
     return hosts[0]
-
-
-class DeviceLink:
-    """SSH as the deploy user with the device key; the host's forced command answers."""
-
-    def __init__(self, record: HostRecord) -> None:
-        self.record = record
-
-    def command(self, remote: str) -> list[str]:
-        command = [
-            "ssh", "-i", str(device_key.private_path()), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
-        ]
-        if self.record.port is not None:
-            command += ["-p", str(self.record.port)]
-        return [*command, f"{DEPLOY_USER}@{self.record.address}", remote]
-
-    def query(self, remote: str) -> dict:
-        completed = subprocess.run(self.command(remote), stdin=subprocess.DEVNULL, capture_output=True, text=True)
-        if completed.returncode != HOST_OK:
-            raise self.failure(completed.returncode, (completed.stdout + completed.stderr).strip())
-        try:
-            return json.loads(completed.stdout)
-        except ValueError as exc:
-            raise PakemError(f"{self.record.name} answered `{remote}` with something other than JSON") from exc
-
-    def send(self, payload: Path, quiet: bool) -> int:
-        """Send a signed request; the host's progress goes to this terminal (stderr with --json)."""
-        with payload.open("rb") as stdin:
-            completed = subprocess.run(self.command("release"), stdin=stdin, stdout=sys.stderr if quiet else None)
-        return completed.returncode
-
-    def failure(self, code: int, detail: str = "") -> PakemError:
-        last = detail.splitlines()[-1] if detail else "see the lines above"
-        if code == SSH_FAILED:
-            return PakemError(
-                f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}); if this device "
-                f"was never allowed there, run `{setup_host_command(self.record)} --project-dir <project>` in your "
-                "terminal"
-            )
-        if code == HOST_REFUSED:
-            return CommandRefused(f"{self.record.name} refused: {last}")
-        if code == HOST_BUSY:
-            return CommandBusy(f"{self.record.name}: another deployment holds the lock; try again shortly")
-        return CheckFailed(f"{self.record.name}: release {HOST_RESULTS.get(code, f'failed with exit {code}')}")
 
 
 # -- history and the meaning of "previous" ----------------------------------------------------
