@@ -103,16 +103,35 @@ port_owner() {
   ss -Hltnp "sport = :$1" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1
 }
 
-port_users() {
-  # Every process listening on a TCP port, IPv4 and IPv6, one name per line.
-  ss -Hltnp "sport = :$1" 2>/dev/null | grep -oE '"[^"]+",pid=' | cut -d'"' -f2 | sort -u
+port_holders() {
+  # Every listener on a TCP port, IPv4 and IPv6: "<process> <pid>" per line. A free port is
+  # no listener, not an error (grep finding nothing must not stop the script under set -e).
+  { ss -Hltnp "sport = :$1" 2>/dev/null | grep -oE '"[^"]+",pid=[0-9]+' || true; } \
+    | sed 's/^"\([^"]*\)",pid=/\1 /' | sort -u
+}
+
+system_sshd_pid() {
+  # Who holds the system ssh service's listeners: systemd (pid 1) under socket activation,
+  # otherwise the service's main process. A second sshd (another instance, a container on
+  # the host network) has its own settings and never the deploy user's forced command.
+  if systemctl is-active --quiet ssh.socket; then echo 1; return; fi
+  local pid
+  for unit in ssh sshd; do
+    pid=$(systemctl show -p MainPID --value "$unit" 2>/dev/null)
+    if [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then echo "$pid"; return; fi
+  done
+}
+
+foreign_holders() {
+  # Listeners on the port that are not the system's own sshd.
+  local main
+  main=$(system_sshd_pid)
+  port_holders "$1" | awk -v main="$main" '$2 != main { print $1 " (pid " $2 ")" }'
 }
 
 sshd_only_on() {
-  # Something listens on the port, and all of it is sshd.
-  local users
-  users=$(port_users "$1")
-  [[ -n "$users" ]] && ! grep -qvxE 'sshd|sshd-session' <<<"$users"
+  # Something listens on the port, and all of it is the system's own sshd.
+  [[ -n "$(port_holders "$1")" && -z "$(foreign_holders "$1")" ]]
 }
 
 # -- apt repositories --------------------------------------------------------------------
@@ -322,8 +341,9 @@ configure_release_port() {
   ((RELEASE_PORT)) || return 0
   command -v sshd >/dev/null || die "--release-port needs the OpenSSH server (sshd)"
   local before wanted saved="" port problem="" previous="" others
-  others=$(port_users "$RELEASE_PORT" | grep -vxE 'sshd|sshd-session' || true)
-  [[ -z "$others" ]] || die "port $RELEASE_PORT is already used by $(echo $others); choose another --release-port (nothing changed)"
+  [[ -n "$(system_sshd_pid)" ]] || die "no running ssh service found (ssh.service or ssh.socket)"
+  others=$(foreign_holders "$RELEASE_PORT")
+  [[ -z "$others" ]] || die "port $RELEASE_PORT is already used by $(echo $others), not this host's ssh service; choose another --release-port (nothing changed)"
   before=$(sshd_ports) || die "sshd -T could not read the current configuration; nothing changed"
   [[ -f "$SSHD_DROPIN" ]] && previous=$(sed -n 's/^Match LocalPort \([0-9]*\)$/\1/p' "$SSHD_DROPIN")
   wanted=$(release_port_text "$before" "$previous")
@@ -359,7 +379,7 @@ configure_release_port() {
   # sshd could not take the port on every address: put the old settings back.
   if [[ -n "$saved" ]]; then mv "$saved" "$SSHD_DROPIN"; else rm -f "$SSHD_DROPIN"; fi
   reload_sshd
-  die "sshd did not take port $RELEASE_PORT on every address ($(echo $(port_users "$RELEASE_PORT"))); the old settings are back"
+  die "the ssh service did not take port $RELEASE_PORT on every address ($(echo $(port_holders "$RELEASE_PORT"))); the old settings are back"
 }
 
 # -- check ------------------------------------------------------------------------------
@@ -419,7 +439,7 @@ check() {
   result "$(passes logs_bounded)" "container logs" "size limit in /etc/docker/daemon.json"
   if ((RELEASE_PORT)); then
     result "$(passes release_port_listening)" "release port" \
-      "only sshd listens on $RELEASE_PORT ($(echo $(port_users "$RELEASE_PORT")); $SSHD_DROPIN)"
+      "only the ssh service listens on $RELEASE_PORT ($(echo $(port_holders "$RELEASE_PORT")); $SSHD_DROPIN)"
   fi
   if ((FAILURES)); then
     say "$FAILURES check(s) failed"
