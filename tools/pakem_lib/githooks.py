@@ -22,6 +22,7 @@ PREVIOUS_HOOK_SHA256 = {
         "85dc3f0b251ca35538d99c0c558c245b8c6f8fe5cab19efeb7e660c9f1fe9ee8",
         "cb4e5be45985114e36528fcecf6a9c6516a080986205c732fc7207581b333dc3",
         "fe19b8b42273b109961f256870a9188ccdad85768ead47173be3713a3132c97e",
+        "df05f48c534cdeceffadb010400acc636f513d28409a3917e971bbdb835a59aa",
     }),
 }
 PROTECTED_BRANCH_KEY = "pakem.protectedBranch"

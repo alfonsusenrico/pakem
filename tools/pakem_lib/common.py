@@ -43,6 +43,12 @@ class OwnerActionRequired(PakemError):
     exit_code = EXIT_OWNER_ACTION
 
 
+class GapsOpen(PakemError):
+    """Required project decisions are still open; the message names them."""
+
+    exit_code = EXIT_GAPS
+
+
 class CheckFailed(PakemError):
     """The command ran, and the check that proves its result did not pass."""
 

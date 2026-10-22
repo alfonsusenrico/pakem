@@ -1,0 +1,6 @@
+#!/bin/sh
+# pakem:stub - gap backup.restore: write the database backup into "$AF_BACKUP_DIR" here
+# (for example pg_dump through the database service), then remove this line. Until then
+# this hook fails, so a release with migrations never runs without a backup.
+echo "deploy/hooks/backup is still the starter stub" >&2
+exit 1

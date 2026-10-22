@@ -1,0 +1,12 @@
+# pakem:stub - replace the command with the service's own entry point, then remove this line.
+FROM python:3.13-slim
+ARG AF_REVISION
+ENV AF_REVISION=${AF_REVISION}
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
+COPY . .
+RUN uv sync --locked --no-dev
+USER nobody
+CMD ["sh", "-c", "echo 'replace the CMD in Dockerfile with the service entry point' >&2; exit 1"]

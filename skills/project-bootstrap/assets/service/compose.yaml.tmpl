@@ -1,0 +1,7 @@
+# pakem:stub - the starter Compose file for {{name}}; extend it with the project's services.
+services:
+  web:
+    image: ${AF_IMAGE_WEB}
+    env_file: ${AF_RUNTIME_FILE}
+    ports: ["127.0.0.1:${HTTP_PORT}:8000"]
+    restart: unless-stopped

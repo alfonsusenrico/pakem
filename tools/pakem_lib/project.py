@@ -24,6 +24,7 @@ from .pinned import (
     parse_document,
     render_block,
 )
+from .gaps import STUB_MARKER
 from .profiles import Profile, load_profiles
 
 AGENTS_FILE = "AGENTS.md"
@@ -406,6 +407,15 @@ def _check_hooks(repo: Path, report: Report) -> None:
         )
 
 
+def _check_starters(repo: Path, report: Report) -> None:
+    """Starter files from `pakem project init` that the project has not replaced yet."""
+    if not (repo / ".pakem" / "project.toml").is_file() or not is_git_work_tree(repo):
+        return
+    found = run_git(repo, "grep", "-l", "--untracked", "-e", STUB_MARKER, check=False).stdout.split()
+    for path in found:
+        report.warn(f"{path} is still a starter stub (it carries `{STUB_MARKER}`)")
+
+
 def check_repo(framework: Framework, repo: Path) -> Report:
     report = Report()
     agents_path = repo / AGENTS_FILE
@@ -437,6 +447,7 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     _check_billing(document, report)
     _check_project_files(repo, report)
     _check_hooks(repo, report)
+    _check_starters(repo, report)
     return report
 
 

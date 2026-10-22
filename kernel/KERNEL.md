@@ -102,8 +102,8 @@ and rules; they never weaken a floor.
 ## 6. Git and autonomy
 
 - Keep `main` deployable: each fix or feature gets a `<type>/<kebab-topic>` branch from
-  `main` and a merge request into `main`, never into another topic branch. Docs-only
-  changes may go directly to `main`; a project may allow more (`default:branching`).
+  `main` and a merge request into `main`, never into another topic branch. Only docs and
+  a new repository's bootstrap commit go to `main` directly (`default:branching`).
 - Commit subjects use Conventional Commits, subject line only: `type(scope):
   summary`, types feat, fix, docs, refactor, test, chore, ci, perf, build, revert.
   No body and no trailers, including AI attribution (`default:commits`).
