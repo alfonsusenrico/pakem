@@ -644,7 +644,8 @@ def registry_findings(repo: Path) -> list[str]:
                 "(`pakem release`) replaces it: remove it, and switch the host with "
                 "`pakem host allow-device <host> --switch-from-registry`"
             )
-    for relative in ("deploy/af", "deploy/release-signing.pub"):
+    # deploy/af/contracts.py stays useful: a project's own checks may validate its deploy files with it.
+    for relative in ("deploy/af/af_publish.py", "deploy/release-signing.pub"):
         if (repo / relative).exists():
             findings.append(f"{relative} belongs to the registry mode's signing and publishing; remove it with the workflows")
     release = repo / "deploy" / "release.toml"
