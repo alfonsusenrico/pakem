@@ -58,8 +58,7 @@ and rules; they never weaken a floor.
   standards it requires or record the gap as debt with a payback plan.
 - In owner-declared crunch mode only floors, data and money correctness, and
   critical-path tests are non-negotiable; record every deferral as debt.
-- Prefer short, bounded tasks and fresh sessions over long sessions; adherence
-  drops as a session grows.
+- Prefer short, bounded tasks and fresh sessions; adherence drops as a session grows.
 - Fix the first violated contract in its owning component, not a downstream
   symptom. After two failed fixes for the same symptom, make no third change
   until the failing state is re-established and a new experiment is defined.
@@ -102,7 +101,8 @@ and rules; they never weaken a floor.
 
 ## 6. Git and autonomy
 
-- Keep `main` deployable: work on a `<type>/<kebab-topic>` branch. Documentation-only
+- Keep `main` deployable: each fix or feature gets a `<type>/<kebab-topic>` branch from
+  `main` and a merge request into `main`, never into another topic branch. Docs-only
   changes may go directly to `main`; a project may allow more (`default:branching`).
 - Commit subjects use Conventional Commits, subject line only: `type(scope):
   summary`, types feat, fix, docs, refactor, test, chore, ci, perf, build, revert.
