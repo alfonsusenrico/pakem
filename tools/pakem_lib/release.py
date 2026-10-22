@@ -206,6 +206,20 @@ def previous_commit(deployments: list[dict], running: str | None) -> str | None:
     return max(earlier, key=first.__getitem__) if earlier else None
 
 
+def running_of(entry: dict) -> str | None:
+    """The commit an environment runs. A host's receiver reports it; one installed before it
+    did so for registry releases is read from the last deployment record instead."""
+    if entry.get("running"):
+        return entry["running"]
+    current = entry.get("current") or {}
+    result = current.get("result")
+    if result in ("deployed", "unchanged"):
+        return current.get("commit")
+    if result in ("failed", "restored", "refused", "busy"):
+        return current.get("previous_commit")
+    return None
+
+
 def kept_anywhere(history: dict, commit: str) -> bool:
     return any(commit in entry.get("kept", []) for entry in history["environments"].values())
 
@@ -358,7 +372,7 @@ def run_release_promote(args) -> int:
     if args.commit:
         commit = resolve_commit(project, args.commit)
     elif project.has_staging:
-        commit = history["environments"].get(STAGING, {}).get("running")
+        commit = running_of(history["environments"].get(STAGING, {}))
         if commit is None:
             raise CommandRefused("nothing runs in staging; publish a commit first")
         steps.append(f"staging runs {commit[:12]}")
@@ -402,7 +416,7 @@ def run_release_rollback(args) -> int:
     entry = history["environments"].get(environment)
     if entry is None:
         raise CommandRefused(f"{project.name} has no direct {environment} environment on {record.name}")
-    running = entry.get("running")
+    running = running_of(entry)
     if args.target == "previous":
         commit = previous_commit(entry.get("deployments", []), running)
         if commit is None:
@@ -423,7 +437,7 @@ def run_release_rollback(args) -> int:
 
 
 def _running_line(environment: str, entry: dict) -> str:
-    running = entry.get("running")
+    running = running_of(entry)
     line = f"{environment}: running {running[:12] if running else 'nothing'}"
     current = entry.get("current")
     if current:

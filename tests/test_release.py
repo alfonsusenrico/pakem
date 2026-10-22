@@ -286,6 +286,19 @@ class RollbackTests(ReleaseTestCase):
         self.assertEqual((request["action"], request["commit"], request["archive"]), ("rollback", older, None))
         self.assertFalse(request["allow_schema"])
 
+    def test_an_older_receiver_reports_running_through_its_deployment_record(self) -> None:
+        older = self.main
+        git(self.project, "commit", "-q", "--allow-empty", "-m", "feat: newer", home=self.home)
+        newer = git(self.project, "rev-parse", "HEAD", home=self.home).stdout.strip()
+        self.history({"staging": {"running": None, "kept": [], "current": deployment(newer),
+                                  "deployments": [deployment(older), deployment(newer)]}})
+        status = self.release("status")
+        self.assertIn(f"staging: running {newer[:12]}", status.stdout)
+        self.assert_ok(self.release("rollback", "previous", "--yes"))
+        [(request, archive)] = self.payloads()
+        self.assertEqual(request["commit"], older)
+        self.assertNotEqual(archive, b"", "a release the host does not keep goes with its source")
+
     def test_rolling_back_production_needs_the_flag_and_names_a_commit(self) -> None:
         self.history({"production": {"running": None, "kept": [], "deployments": []}})
         completed = self.release("rollback", "previous", "--environment", "production", "--yes")

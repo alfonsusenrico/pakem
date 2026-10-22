@@ -145,6 +145,16 @@ def running_record(host: af_engine.HostConfig) -> dict | None:
     return kept_record(host, Path(os.readlink(link)).name)
 
 
+def current_release(host: af_engine.HostConfig) -> dict | None:
+    """The record of the release `current` points at, however it was delivered (a release
+    from the registry, before this environment moved to direct delivery, counts too)."""
+    link = host.base / "current"
+    if not link.is_symlink():
+        return None
+    path = host.base / os.readlink(link) / "record.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
 def kept_commits(host: af_engine.HostConfig) -> list[str]:
     releases = host.base / "releases"
     if not releases.is_dir():
@@ -457,7 +467,7 @@ class Receiver:
         hosts = self._hosts(project)
         result: dict = {"project": project, "environments": {}}
         for environment, host in hosts.items():
-            running = running_record(host)
+            running = current_release(host)
             entry = {
                 "current": af_engine.read_json(host.base / "deployment.json") or None,
                 "running": running["commit"] if running else None,
@@ -581,7 +591,7 @@ class Receiver:
         commit = request["commit"]
         if not any(entry["commit"] == commit and entry["result"] == "deployed" for entry in history):
             raise ReceiveError(f"{commit[:12]} was never deployed to {host.environment} here")
-        current = running_record(host) or {}
+        current = current_release(host) or {}
         if current.get("commit") == commit:
             raise ReceiveError(f"{commit[:12]} already runs in {host.environment}")
         target_schema = next((entry["schema_version"] for entry in reversed(history) if entry["commit"] == commit), None)
