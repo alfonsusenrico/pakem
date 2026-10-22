@@ -215,7 +215,8 @@ class MigrationTests(LegacyDeviceTestCase):
         self.assertEqual(settings["hooks"]["PostToolUse"], USER_SETTINGS["hooks"]["PostToolUse"])
         self.assertIn("$HOME/.local/share/pakem/guard.py", self.guard_command(settings, "hooks", "PreToolUse"))
         hooks = json.loads(self.antigravity_hooks.read_text())
-        self.assertEqual(list(hooks), ["pakem-guard"])
+        self.assertIn("pakem-guard", hooks)
+        self.assertNotIn("agent-framework-guard", hooks)
         self.assertIn("$HOME/.local/share/pakem/guard.py", self.guard_command(hooks, "pakem-guard", "PreToolUse"))
         self.assertEqual(
             [record["reason"] for record in manifest["backups"]], ["enforce-claude", "rename-claude", "rename-antigravity"]

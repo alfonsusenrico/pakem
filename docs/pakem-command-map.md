@@ -47,14 +47,21 @@ Stage: `experimental` (built 2026-10-22).
     another update runs.
 - `pakem config set update notify|apply`: `notify` (default) only tells the owner; `apply`
   is the owner's standing approval for agents to update.
-- Hooks (`pakem enforce install --host claude`):
+- Hooks (`pakem enforce install --host <host>`), on every supported agent host:
   - a session-start hook prints `pakem status --brief` into each session, with advice
     that follows the `update` setting;
   - a per-message hook compares the installed files with the ones the session started
-    with, without network, and names the files to re-read after a mid-session install.
-- Hosts without these hooks (Codex, Antigravity): a kernel line asks agents to run
-  `pakem status` at session start. It ships in the next kernel batch (ADR 0007), not with
-  the tool.
+    with, without network, and names that host's files to re-read after a mid-session
+    install.
+
+  | Host | Session start | Per message | Output | Notes |
+  |---|---|---|---|---|
+  | Claude Code | `SessionStart` | `UserPromptSubmit` | plain text | in `~/.claude/settings.json` |
+  | Codex | `SessionStart` (startup, resume, clear) | `UserPromptSubmit` | plain text | `~/.codex/hooks.json`; the owner trusts the hooks once in `/hooks` (again after each change) |
+  | Antigravity | `SessionStart` | `PreInvocation` (each model call) | `injectSteps` with an `ephemeralMessage` | `~/.gemini/config/hooks.json`, hook `pakem-status` |
+
+- A host that offers no session hook gets a kernel line asking agents to run
+  `pakem status` at session start; every supported host has one today.
 
 ### 1. Device: `pakem setup device`
 

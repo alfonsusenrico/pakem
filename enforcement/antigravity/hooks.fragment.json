@@ -12,5 +12,21 @@
         ]
       }
     ]
+  },
+  "pakem-status": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "{{pakem}} status --hook session-start --host antigravity",
+        "timeout": 30
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "{{pakem}} status --hook prompt --host antigravity",
+        "timeout": 10
+      }
+    ]
   }
 }

@@ -226,11 +226,24 @@ def _read_hook_input() -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _session_path(hook_input: dict) -> Path | None:
-    session_id = hook_input.get("session_id")
+# Each host names the session and its directory differently in the hook's stdin.
+SESSION_KEYS = ("session_id", "conversationId")
+
+
+def _session_path(host: str, hook_input: dict) -> Path | None:
+    session_id = next((hook_input[key] for key in SESSION_KEYS if key in hook_input), None)
     if not isinstance(session_id, str) or not SESSION_ID.match(session_id):
         return None
-    return _sessions_dir() / f"{session_id}.json"
+    return _sessions_dir() / f"{host}-{session_id}.json"
+
+
+def _hook_cwd(hook_input: dict) -> Path:
+    if isinstance(hook_input.get("cwd"), str):
+        return Path(hook_input["cwd"])
+    workspaces = hook_input.get("workspacePaths")
+    if isinstance(workspaces, list) and workspaces and isinstance(workspaces[0], str):
+        return Path(workspaces[0])
+    return Path.cwd()
 
 
 def _prune_sessions() -> None:
@@ -256,52 +269,63 @@ def _reread_list(before: dict, after: dict) -> tuple[list[str], list[str]]:
     return reread, removed
 
 
-def _hook_session_start(framework: Framework, host: str, hook_input: dict) -> None:
+def _hook_session_start(framework: Framework, host: str, hook_input: dict) -> list[str]:
     manifest = load_manifest()
-    session = _session_path(hook_input)
+    session = _session_path(host, hook_input)
     if session is not None:
         _prune_sessions()
         write_text_atomically(session, json.dumps(_snapshot(manifest, host)) + "\n")
-    cwd = Path(hook_input["cwd"]) if isinstance(hook_input.get("cwd"), str) else Path.cwd()
-    status, project = collect(framework, cwd, network=True, force=False)
-    for line in render_lines(status, project, brief=True, for_agent=True):
-        print(line)
+    status, project = collect(framework, _hook_cwd(hook_input), network=True, force=False)
+    return render_lines(status, project, brief=True, for_agent=True)
 
 
-def _hook_prompt(host: str, hook_input: dict) -> None:
-    session = _session_path(hook_input)
+def _hook_prompt(host: str, hook_input: dict) -> list[str]:
+    session = _session_path(host, hook_input)
     if session is None:
-        return
+        return []
     manifest = load_manifest()
     current = _snapshot(manifest, host)
     if not session.exists():
         write_text_atomically(session, json.dumps(current) + "\n")
-        return
+        return []
     before = json.loads(session.read_text(encoding="utf-8"))
     # installed_at has one-second resolution, so the entries themselves are compared.
     if before.get("entries") == current["entries"]:
-        return
+        return []
     write_text_atomically(session, json.dumps(current) + "\n")
     reread, removed = _reread_list(before, current)
-    if not reread and not removed:
-        return
-    print(f"Pakem was installed during this session ({before.get('version')} -> {current['version']}).")
+    lines = []
+    if reread or removed:
+        lines.append(f"Pakem was installed during this session ({before.get('version')} -> {current['version']}).")
     if reread:
-        print(f"Re-read before continuing: {', '.join(reread)}")
+        lines.append(f"Re-read before continuing: {', '.join(reread)}")
     if removed:
-        print(f"No longer installed, stop using: {', '.join(removed)}")
+        lines.append(f"No longer installed, stop using: {', '.join(removed)}")
+    return lines
+
+
+def _emit(host: str, lines: list[str]) -> None:
+    """Claude and Codex add plain stdout to the context; Antigravity reads JSON steps."""
+    if host == "antigravity":
+        steps = [{"ephemeralMessage": "\n".join(lines)}] if lines else []
+        print(json.dumps({"injectSteps": steps}))
+        return
+    for line in lines:
+        print(line)
 
 
 def run_hook(framework: Framework, hook: str, host: str) -> int:
     try:
         hook_input = _read_hook_input()
         if hook == HOOK_SESSION_START:
-            _hook_session_start(framework, host, hook_input)
+            lines = _hook_session_start(framework, host, hook_input)
         else:
-            _hook_prompt(host, hook_input)
+            lines = _hook_prompt(host, hook_input)
     except Exception as exc:  # noqa: BLE001 - a hook must never break the agent session
+        lines = []
         if hook == HOOK_SESSION_START:
-            print(f"Pakem status could not run ({type(exc).__name__}: {exc}); run `pakem status`.")
+            lines = [f"Pakem status could not run ({type(exc).__name__}: {exc}); run `pakem status`."]
+    _emit(host, lines)
     return 0
 
 

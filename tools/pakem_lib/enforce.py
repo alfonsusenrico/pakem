@@ -30,10 +30,19 @@ from .manifest import BackupSession, load_manifest, save_manifest, shared_data_d
 
 GUARD_RECORD = "guard"
 GUARD_MODE = 0o755
+ENFORCE_HOSTS = ("claude", "codex", "antigravity")
+# Codex keeps its rules file and, beside it, a hooks file merged like the JSON hosts.
+CODEX_HOOKS = "codex-hooks"
 JSON_HOSTS = {
     "claude": ("claude/settings.fragment.json", ".claude/settings.json"),
     "antigravity": ("antigravity/hooks.fragment.json", ".gemini/config/hooks.json"),
+    CODEX_HOOKS: ("codex/hooks.fragment.json", ".codex/hooks.json"),
 }
+GUARDED_HOSTS = ("claude", "antigravity")
+CODEX_TRUST_ACTION = (
+    "OWNER ACTION REQUIRED: open Codex and trust the Pakem hooks with /hooks; Codex skips a hook "
+    "until it is trusted, and again after each change to it"
+)
 CODEX_RULES_SOURCE = "codex/pakem.rules"
 CODEX_RULES_DESTINATION = ".codex/rules/pakem.rules"
 CODEX_PROBE_COMMAND = ["git", "push", "--force", "origin", "main"]
@@ -258,7 +267,8 @@ def install_json_host(framework: Framework, host: str, apply: bool) -> int:
         _print_diff(target_path, before_text, after_text)
     else:
         print(f"  unchanged: {display_path(target_path)} already contains the fragment")
-    _install_guard(framework, manifest, host, apply)
+    if host in GUARDED_HOSTS:
+        _install_guard(framework, manifest, host, apply)
     if not apply:
         print("Dry run: nothing written. Re-run with --apply to write.")
         return 0
@@ -299,7 +309,8 @@ def uninstall_json_host(host: str, apply: bool) -> int:
         _print_diff(target_path, before_text, render_json(data))
     for warning in warnings:
         print(f"WARNING: {warning}")
-    _release_guard(manifest, host, apply)
+    if host in GUARDED_HOSTS:
+        _release_guard(manifest, host, apply)
     if not apply:
         print("Dry run: nothing written. Re-run with --apply to write.")
         return 0
@@ -395,8 +406,16 @@ def run_enforce(args) -> int:
     framework = Framework(Path(args.root))
     if args.enforce_command == "install":
         if args.host == "codex":
-            return install_codex(framework, args.apply)
+            code = install_codex(framework, args.apply)
+            if code != 0:
+                return code
+            code = install_json_host(framework, CODEX_HOOKS, args.apply)
+            print(CODEX_TRUST_ACTION)
+            return code
         return install_json_host(framework, args.host, args.apply)
     if args.host == "codex":
-        return uninstall_codex(args.apply)
+        code = uninstall_codex(args.apply)
+        if code != 0:
+            return code
+        return uninstall_json_host(CODEX_HOOKS, args.apply)
     return uninstall_json_host(args.host, args.apply)
