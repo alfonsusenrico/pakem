@@ -139,47 +139,67 @@ Stage: `experimental` (built 2026-10-22).
 
 ### 3. Project: `pakem project init` / `pakem project adopt`
 
-- **Automatic:** asks the project's fixed facts, then writes the standard files:
-  - **Forge:** GitHub or GitLab; public or private.
-  - **Release kind:** `service`, `artifact` or `none`.
-  - **Delivery:** `us`, `others` (who releases it, and where our work ends), or `nobody`,
-    written to `AGENTS.md`. With `others`, CI and the release steps are the team's;
-    `pakem project init` writes no deploy files and work stops at the merge request.
-  - **Environments:** production only, or staging too.
-  - **Builder:** the host builds from signed source; a GitLab runner; or GitHub-hosted
-    runners on public repositories.
-  - **Capabilities:** database, health endpoint, scheduled jobs, the AI gateway,
-    personal data.
-  - **CI workflow** for the forge and runner: push, pull request and tags; superseded
-    runs cancelled.
-  - **Deploy files:** `deploy/release.toml`, `deploy/settings.toml`,
-    `deploy/env/<env>.env` and hook stubs.
-  - **Agent files:** `AGENTS.md` (framework block plus project sections),
-    `PROJECT_STATE.md`, OpenSpec, and the formatter, linter and test scaffolding for the
-    language.
-  - `pakem project adopt` reads an existing project, keeps what already meets the standard, and
-    reports only differences and gaps.
-- **Owner actions:**
-  - creating the repository if the CLI login cannot;
-  - protecting tags;
-  - setting forge variables that hold secrets.
-- **Gaps (examples, never answered by `pakem`):**
-  - what the health endpoint must prove;
-  - which settings are placement or secret;
-  - backup and restore commands;
-  - migration rules;
-  - shared networks and service names;
-  - single-instance constraints;
-  - data moves;
-  - language of user-facing text;
-  - gateway profiles and budgets.
-- **AGENTS.md:** written once the gaps are settled; later changes update it in the same
-  change.
-- **Decisions:** `pakem decide <gap> <answer>` records an answer; `--provisional
-  <assumption> --revisit <trigger>` or `--pending <what> --from <who> --ask-again <date>`
-  record the other two states, in the committed `.pakem/decisions.toml`.
-- **Check:** `pakem project check` (contracts, CI file, deploy files, `AGENTS.md` blocks),
-  and `pakem project check --gaps`.
+Stage: `experimental` for GitHub (built 2026-10-22); GitLab and the `artifact` kind are
+`draft`.
+
+- **Facts** (asked once on a terminal, or flags; recorded in the committed
+  `.pakem/project.toml`): `--description`, `--visibility private|public` (`--public`),
+  `--kind service|none` (`artifact` comes later), `--delivery us|others|nobody` (with
+  `--delivery-note`), `--environments production|staging,production`, `--stack
+  python|node`, `--capabilities` (the registry's names, or `none`; a service adds
+  `deployed`). Without a terminal a missing fact is a usage error naming its flag.
+- **`pakem project init <directory> [--name] [--repository owner/name]`** (owner
+  decisions 2026-10-22):
+  - writes the standard files: `AGENTS.md` (purpose, `Capabilities:`, `Delivery:`,
+    commands, the generated Open decisions list), `.pakem/`, `.gitignore`,
+    `.editorconfig`, OpenSpec `config.yaml`, `research/`, `CHANGELOG.md` (kind not
+    `none`), CI unless `Delivery: others` (`ci.yml` on push, pull request, and `v*` tags,
+    superseded runs cancelled, plus the verify, security, and database templates the
+    capabilities switch on; private repositories run on the self-hosted runner, public ones
+    on GitHub-hosted runners), the deploy files for a service we release (contracts §4,
+    starters marked `pakem:stub`: `compose.yaml`, `Dockerfile`, `deploy/hooks/backup`,
+    `docs/deployment.md`), and the stack's tooling (uv with ruff, pyright, pytest; or npm
+    with prettier, eslint, TypeScript), with the dev tools added through the stack's
+    package manager;
+  - installs the git hooks, keeps `PROJECT_STATE.md` and `JOURNAL.md` untracked, commits
+    `chore: bootstrap project`, creates the GitHub repository with the owner's `gh` login
+    (private unless `--public`) and pushes `main`: the pre-push hook allows a new
+    repository's single root bootstrap commit, nothing else.
+- **`pakem project adopt [directory]`** (owner decision 2026-10-22): takes what the
+  repository shows (origin, stack, `Delivery:`, `Capabilities:`, deploy files), asks the
+  rest, switches from `main` to `chore/adopt-pakem`, writes only missing files (and the
+  generated Open decisions section of `AGENTS.md`), and lists every difference as a
+  finding: CI templates that differ, missing `AGENTS.md` lines, Python tooling defaults
+  not merged, `deploy/release.toml` contract problems, starter stubs. It installs nothing
+  and touches no forge.
+- **Owner actions:** a self-hosted runner registration for a private repository
+  (`pakem host runner add`); protecting `v*` tags; `pakem host allow-device` before a
+  service's first release; creating the repository when `gh` cannot.
+- **Gaps** (`pakem project check --gaps [--json]`, exit `4` while a required gap is
+  open), from the facts:
+
+  | Gap | Required | Blocks | Proven by |
+  |---|---|---|---|
+  | `language.text` | yes | - | a filled `Language:` line in `AGENTS.md` |
+  | `health.proof` | service | release | `deploy/release.toml [health]` |
+  | `settings.sources` | service | deploy setup, release | `deploy/settings.toml` names its settings |
+  | `network.shared` | no (none) | deploy setup | - |
+  | `single-instance` | no (no constraint) | release | - |
+  | `backup.restore` | database | release | `deploy/hooks/backup` is the project's own, executable |
+  | `migrations.rule` | database | release | - |
+  | `data.moves` | no (none), database | release | - |
+  | `gateway.profile` | llm | release | - |
+
+- **Decisions:** `pakem decide <gap> <answer> [--reason]`,
+  `--provisional <assumption> --revisit <trigger>`, or
+  `--pending <what> --from <who> --ask-again <date>`; `--question` and `--blocks` record a
+  blocker no gap covers. Written to the committed `.pakem/decisions.toml`; the Open
+  decisions list in `AGENTS.md` is regenerated. An answer whose target does not prove it
+  stays open with the reason. `pakem status` counts open, pending, and provisional
+  decisions and raises due ones (also at session start); `pakem release` refuses while a
+  required gap that blocks release is open or pending (exit `4`).
+- **Check:** `pakem project check` (contracts, CI file, deploy files, `AGENTS.md` blocks,
+  starter stubs), and `pakem project check --gaps`.
 
 ### 4. Secrets: `pakem secret`
 
@@ -239,8 +259,8 @@ Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` ar
   and secrets on the host until `pakem secret` exists (area 4); pushing the tag if the
   push fails.
 - **Gaps:** none at release time; all are settled at init. A release refuses a project
-  whose `AGENTS.md` says `Delivery: others` or `nobody`. Refusing while required gaps are
-  open comes with `pakem decide` (area 3).
+  whose `AGENTS.md` says `Delivery: others` or `nobody`, and while a required gap that
+  blocks release is open or pending (area 3).
 - **Decided while building (2026-10-22):** staging and production of a project share one
   host (promotion reuses the staging build there); a host keeps build cache for 7 days.
 - **Check:** the deployment record, the health response reports the commit, and the

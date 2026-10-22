@@ -107,6 +107,9 @@ before acting, and take `--plan` to preview and `--yes` to skip the question.
 | `pakem host runner` | Register a private repository with a server's CI runner |
 | `pakem host allow-device` | Let this device's key release a project on a server (and `revoke-device`), from your terminal |
 | `pakem release` | Publish to staging, promote to production, roll back, and read history: signed source goes to the server, which builds and deploys it |
+| `pakem project init` | Start a project: standard files, CI, deploy files, hooks, and a private GitHub repository |
+| `pakem project adopt` | Bring an existing repository to the standard: adds what is missing, lists the rest |
+| `pakem decide` | Record a project decision (answered, provisional, or pending) on one of its gaps |
 | `pakem config` | Device settings, such as whether agents may run `pakem update` themselves |
 | `pakem install` | Install the kernel and skills into every supported agent on this device |
 | `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |
@@ -156,10 +159,8 @@ Pakem is moving from "a standard your agents read" to "a standard your agents ru
 are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-and-no-billed-services.md),
 [ADR 0011](docs/adr/0011-pakem-standard-core-adaptive-edges.md)):
 
-- `pakem project init` and `pakem project adopt`: start or adopt a project on GitHub or
-  GitLab, with its CI and deploy files.
-- `pakem decide`: record decisions that wait on someone else, and get reminded when they
-  are due.
+- GitLab projects and downloadable releases (`artifact`) for `pakem project` and
+  `pakem release`.
 
 ## Contributing
 
