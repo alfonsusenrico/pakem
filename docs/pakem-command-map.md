@@ -170,11 +170,16 @@ Stage: `experimental` for GitHub (built 2026-10-22); GitLab and the `artifact` k
   rest, switches from `main` to `chore/adopt-pakem`, writes only missing files (and the
   generated Open decisions section of `AGENTS.md`), and lists every difference as a
   finding: CI templates that differ, missing `AGENTS.md` lines, Python tooling defaults
-  not merged, `deploy/release.toml` contract problems, starter stubs. It installs nothing
-  and touches no forge.
-- **Owner actions:** a self-hosted runner registration for a private repository
-  (`pakem host runner add`); protecting `v*` tags; `pakem host allow-device` before a
-  service's first release; creating the repository when `gh` cannot.
+  not merged, `deploy/release.toml` contract problems, starter stubs, and what the
+  registry mode left behind (publishing workflows, `deploy/af/`, the cosign key, no
+  `[build] runner = "local"`). It never adds starter code, keeps the project's own
+  `ci.yml` (the reusable templates come only with a Pakem `ci.yml`), installs nothing,
+  and only reads the forge.
+- **Owner actions** (skipped when GitHub or this device already shows them done): a
+  self-hosted runner registration for a private repository (`pakem host runner add`);
+  protecting `v*` tags (not asked where rulesets need a paid plan, as on free private
+  repositories); `pakem host allow-device` before a service's first release; creating the
+  repository when `gh` cannot.
 - **Gaps** (`pakem project check --gaps [--json]`, exit `4` while a required gap is
   open), from the facts:
 
