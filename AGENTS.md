@@ -27,10 +27,10 @@ it is installed into each host by `tools/pakem install`, not loaded from here.
   characters, body under 500 lines, references one level deep, each reference
   starting with a status header.
 - Instruction text drafted by an agent needs owner review before it is merged.
-- The framework is stable (ADR 0007). Change rules only for a problem a real
-  project hit, batch changes (at most one release a month), one PR per batch, and
-  no release for wording alone. Build no new `pakem` mechanism unless a project needs
-  it.
+- The framework is stable (ADR 0007, amended 2026-10-22). Change rules only for a
+  problem a real project hit, through `pakem propose`: each accepted proposal is its own
+  PR; version releases batch the CHANGELOG (at most one a month), none for wording alone.
+  Build no new `pakem` mechanism unless a project needs it.
 - ADRs only for decisions with real trade-offs. Record each change as a fragment
   `changes/<type>-<kebab-topic>.md` (`changes/README.md`); never edit `CHANGELOG.md`
   on a branch. A release runs `tools/pakem changelog --release X.Y.Z --apply`, which

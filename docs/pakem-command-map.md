@@ -288,6 +288,29 @@ Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` ar
 - **Check:** the deployment record, the health response reports the commit, and the
   notice was sent.
 
+### 7. Proposals: `pakem propose`
+
+Stage: `experimental` (built 2026-10-22; owner decisions: the agent writes proposals, each
+accepted one is its own pull request and applies when merged).
+
+- **Flow:** the agent discusses a case with the owner in the project where it came up,
+  then runs `pakem propose new` there; the owner reviews the issue; on acceptance the
+  agent runs `pakem propose accept <n>`; the owner merges; the agent runs `pakem update`.
+- **`pakem propose new --title --rule --case --why-general --home
+  kernel|skill|reference|template|tooling|adr --change-file DIFF [--evidence ...]
+  [--replaces] [--enforcement] [--project] [--plan] [--new-subject]`:** checks the diff
+  applies to the framework's `origin/main` (in a temporary worktree), refuses when earlier
+  proposals look like the same subject (unless `--new-subject`), and opens an issue
+  labelled `proposal` on the framework repository with the owner's `gh` login.
+- **`revise <n>`** replaces the text after review; **`list [--state]`** and
+  **`show <n>`** read them; **`reject <n> --reason`** comments, labels, and closes.
+- **`accept <n>`** (only after the owner accepted): a branch
+  `docs/proposal-<n>-<slug>` in a separate worktree beside the framework checkout,
+  the drafted change applied, a change fragment, `pakem lint` and the unit tests, push,
+  and a pull request that closes the issue; the worktree is removed afterwards, or kept
+  for a look when a check failed.
+- **Needs:** git, gh, a GitHub login (prepared on demand).
+
 ### 6. Framework and agents (existing commands, regrouped)
 
 `pakem install | uninstall | doctor | lint | changelog | project sync | project check |
