@@ -199,6 +199,16 @@ def eprint(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def confirm_steps(assume_yes: bool, command: str) -> None:
+    """The one confirmation a workflow command asks before acting (`--yes` skips it)."""
+    if assume_yes:
+        return
+    if not sys.stdin.isatty():
+        raise PakemError(f"pass --yes to run {command} without a prompt")
+    if input("Apply these steps? [y/N] ").strip().lower() not in ("y", "yes"):
+        raise CommandRefused(f"{command} cancelled; nothing changed")
+
+
 @dataclass(frozen=True)
 class Framework:
     """Locations inside a framework checkout."""
