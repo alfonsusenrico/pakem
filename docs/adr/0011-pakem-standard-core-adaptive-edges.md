@@ -1,6 +1,6 @@
-# 0011. `af`: a standard core with adaptive edges
+# 0011. `pakem`: a standard core with adaptive edges
 
-- Status: Accepted (owner, 2026-10-21)
+- Status: Accepted (owner, 2026-10-21); amended 2026-10-22 (the command is `pakem`, after the 2.0.0 rename)
 - Date: 2026-10-21
 
 ## Context
@@ -15,9 +15,9 @@ The framework exists to make the owner's development and automation easy. In pra
 
 Each run re-derived the same procedure, and each mistake came from that.
 
-The owner wants one tool, `af`, to do every standard operation: set up any device and
+The owner wants one tool, `pakem`, to do every standard operation: set up any device and
 any server, initialise or adopt a project (GitHub or GitLab), wire its CI, release and
-roll it back. Agents should use `af` for those operations instead of individual commands.
+roll it back. Agents should use `pakem` for those operations instead of individual commands.
 Projects also differ in ways no tool should hard-code:
 - one bot that only one process may poll;
 - a backup hook's contents;
@@ -31,7 +31,7 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
 
 ## Decision
 
-1. **Standard core.** `af` implements every operation that is the same in every project:
+1. **Standard core.** `pakem` implements every operation that is the same in every project:
    - device and host setup, and keys;
    - project initialisation and adoption;
    - CI wiring for each forge;
@@ -40,12 +40,12 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
    - setup checks.
 
    It never contains project- or case-specific logic, names, or infrastructure.
-2. **Adaptive edges.** Every `af` command declares the gaps it leaves open:
+2. **Adaptive edges.** Every `pakem` command declares the gaps it leaves open:
    project- or case-specific decisions, each with a question, its reason, options, a
    default, whether it is required, the file and key where the answer is stored, and the
    check that proves it is filled. The coding agent fills gaps with the developer
-   through the gap protocol (`docs/af-command-map.md`) and writes answers only into those
-   places. `af project check` validates the result against the standard.
+   through the gap protocol (`docs/pakem-command-map.md`) and writes answers only into those
+   places. `pakem project check` validates the result against the standard.
 3. **Firm finish.**
    - Gap gathering is done when every required gap is in one of three states, each
      recorded with its reason: **answered**; **provisional** (a stated, reversible
@@ -56,9 +56,9 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
      only when an answer fails validation or contradicts another, and stops after two
      rounds; anything still unclear becomes pending.
    - Pending gaps are not asked again until they are due.
-4. **Agents use `af` for covered operations.** Once an area is stable, the kernel rule
-   applies to it: use `af`, never hand-run the equivalent. If `af` lacks something or
-   fails, report it and fix `af`; never work around it.
+4. **Agents use `pakem` for covered operations.** Once an area is stable, the kernel rule
+   applies to it: use `pakem`, never hand-run the equivalent. If `pakem` lacks something or
+   fails, report it and fix `pakem`; never work around it.
 5. **Conventions** for every command:
    - interactive for people;
    - `--plan` (what would happen), `--json` (machine output) and explicit flags with no
@@ -70,52 +70,52 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
    - secrets are never printed;
    - only free services unless the project approves a billed one (`default:no-billed`).
 6. **Decisions that wait on the outside world.** Each gap declares the stages it blocks
-   (for example deploy setup and release, but not code or CI), so `af status` shows how
+   (for example deploy setup and release, but not code or CI), so `pakem status` shows how
    far a project can go now.
    - Agents work on every stage that is not blocked, and keep a pending choice open in
      the design (settings instead of constants, clean module boundaries).
    - A due decision (its date passed, or the work reached a stage it blocks) is raised
      at session start as one question.
-   - `af decide <gap> <answer>` records it; `af` regenerates the affected files and lists
+   - `pakem decide <gap> <answer>` records it; `pakem` regenerates the affected files and lists
      provisional work to revisit.
-   - Decisions live in the committed `.af/decisions.toml`, so every agent on every device
+   - Decisions live in the committed `.pakem/decisions.toml`, so every agent on every device
      sees them, with a generated "Open decisions" list in `AGENTS.md`. Client
      repositories keep both out of deliverables.
 7. **Agents know when the framework changed.**
-   - `af status` compares the installed framework with merged `main` (network at most
+   - `pakem status` compares the installed framework with merged `main` (network at most
      every few hours, cached) and the project's pinned version with the installed one.
-   - A session-start hook installed by `af enforce` puts a short notice into each
+   - A session-start hook installed by `pakem enforce` puts a short notice into each
      session, with what changed and what to run. Hosts without hooks follow a kernel
      line instead.
    - A local check on each new message, without network, detects an install made
      mid-session and names the kernel and skill files to re-read.
    - Agents only notify by default. With the owner's standing approval
-     (`af config set update apply`) they install updates themselves, only from merged
+     (`pakem config set update apply`) they install updates themselves, only from merged
      `main`.
-8. **Installs through `af setup` are approved by the owner** who runs the command and
-   confirms its prompt. Agents never run an installing `af setup` without the owner's
-   instruction in that session. The floor text gains this when `af setup` ships.
-9. **Release pace.** The `af` tool may release as often as its areas mature; the kernel and
+8. **Installs through `pakem setup` are approved by the owner** who runs the command and
+   confirms its prompt. Agents never run an installing `pakem setup` without the owner's
+   instruction in that session. The floor text gains this when `pakem setup` ships.
+9. **Release pace.** The `pakem` tool may release as often as its areas mature; the kernel and
    skills keep ADR 0007's monthly batch.
 10. **Maturity per area:** `draft`, then `experimental` (usable, may change), then
-   `stable` (complete, tested end to end, documented in the `af` skill; the kernel rule
-   applies). `af help` shows each area's stage.
+   `stable` (complete, tested end to end, documented in the `pakem` skill; the kernel rule
+   applies). `pakem help` shows each area's stage.
 11. **Repeated answers become standard.** When several projects fill the same gap the
-   same way, the answer is proposed as an `af` default through lessons intake.
+   same way, the answer is proposed as an `pakem` default through lessons intake.
 
 ## Consequences
 
-- `af` grows from a framework installer into the workflow tool. Its existing commands
+- `pakem` grows from a framework installer into the workflow tool. Its existing commands
   (`install`, `doctor`, `lint`, `project`, `hooks`, `enforce`, `eval`, `schedule`,
   `changelog`) keep working and are regrouped in the command map.
-- A new skill, `af`, documents every command, its gaps and errors; the
+- A new skill, `pakem`, documents every command, its gaps and errors; the
   `release-delivery`, `project-bootstrap` and `sensitive-operations` skills point to it
   instead of describing manual steps.
 - `AGENTS.md` is written when onboarding is settled and kept current in the same change
-  that alters it (kernel section 7); `af project check` flags what it can verify.
+  that alters it (kernel section 7); `pakem project check` flags what it can verify.
 - Proof: once setup, init and release are stable, llm-gateway and personal-agent are
-  revised to the standard using only `af`; then portfolio and cash-flow-tracker. A step
-  that needs a manual command is a gap in `af`, not in the project.
+  revised to the standard using only `pakem`; then portfolio and cash-flow-tracker. A step
+  that needs a manual command is a gap in `pakem`, not in the project.
 - Release kinds: deployed services, distributed artifacts (executables), and projects
   with no release share checks, versions and tags; only delivery differs.
 - ADR 0010's deployment plan is rebuilt around these commands.

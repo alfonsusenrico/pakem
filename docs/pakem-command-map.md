@@ -1,10 +1,10 @@
-# `af` command map
+# `pakem` command map
 
-Status: accepted design (ADR 0011), not yet built. Every area starts as `draft`; the kernel rule "use `af` for
+Status: accepted design (ADR 0011), not yet built. Every area starts as `draft`; the kernel rule "use `pakem` for
 covered operations" applies to an area only when it is `stable`.
 
 Each command lists what it does automatically, the gaps it leaves for the project, the
-owner actions it may report, and what `af project check` verifies afterwards.
+owner actions it may report, and what `pakem project check` verifies afterwards.
 
 ## Conventions (all commands)
 
@@ -18,28 +18,28 @@ owner actions it may report, and what `af project check` verifies afterwards.
 | Secrets | Read from hidden input or a file, written straight to their store; never printed, logged, or put in arguments |
 | Billing | Only free services and tiers unless the project approves a billed one (`default:no-billed`) |
 | Output | Short status lines; `--json` gives `{status, done[], owner_actions[], gaps[], checks[]}` |
-| Location facts | Host addresses and device paths live in device-local `~/.config/af/`, never in repositories |
+| Location facts | Host addresses and device paths live in device-local `~/.config/pakem/`, never in repositories |
 
 ## Areas
 
-### 0. Framework status and updates: `af status`, `af update`
+### 0. Framework status and updates: `pakem status`, `pakem update`
 
-- `af status [--brief] [--json]`:
+- `pakem status [--brief] [--json]`:
   - the installed framework against merged `main` (network at most every few hours,
     cached);
   - the project's pinned version against the installed one;
   - the project's readiness per stage, with open, due, and provisional decisions.
-- `af update`: installs the framework from merged `main` only (`af install`'s provenance
+- `pakem update`: installs the framework from merged `main` only (`pakem install`'s provenance
   checks), then lists the kernel and skill files that changed.
-- `af config set update notify|apply`: `notify` (default) only tells the owner; `apply`
+- `pakem config set update notify|apply`: `notify` (default) only tells the owner; `apply`
   is the owner's standing approval for agents to update.
-- Hooks (`af enforce`):
-  - a session-start hook prints `af status --brief` into each session;
+- Hooks (`pakem enforce`):
+  - a session-start hook prints `pakem status --brief` into each session;
   - a per-message hook compares a local install stamp, without network, and names the
     files to re-read after a mid-session install.
-- Hosts without hooks: a kernel line asks agents to run `af status` at session start.
+- Hosts without hooks: a kernel line asks agents to run `pakem status` at session start.
 
-### 1. Device: `af setup device`
+### 1. Device: `pakem setup device`
 
 - **Automatic:**
   - detects the OS and CPU;
@@ -47,14 +47,14 @@ owner actions it may report, and what `af project check` verifies afterwards.
     uv, and a free container runtime (Colima on macOS, Docker Engine on Linux);
   - creates the machine's deploy key, a dedicated SSH key that also signs releases (never
     the login key);
-  - writes `~/.config/af/`;
-  - installs the framework for agent hosts (`af install`).
+  - writes `~/.config/pakem/`;
+  - installs the framework for agent hosts (`pakem install`).
 - **Owner actions:** forge logins (`gh auth login`, `glab auth login`), VPN sign-in if a
   host needs it.
 - **Gaps:** none.
-- **Check:** `af setup check` lists tools, versions, the key, and forge logins.
+- **Check:** `pakem setup check` lists tools, versions, the key, and forge logins.
 
-### 2. Host: `af setup host <ssh-target>`
+### 2. Host: `pakem setup host <ssh-target>`
 
 - **Automatic, over SSH from the device:**
   - installs Docker, the release engine and the deploy user (the current
@@ -64,9 +64,9 @@ owner actions it may report, and what `af project check` verifies afterwards.
     user, resource caps);
   - registers this device's key.
 - Related commands:
-  - `af host allow-device <host> <device-key>` and `revoke-device`;
-  - `af host add-project <host> <project> <env>`: base, host config, placement prompts;
-  - `af host runner add <host> <repo>`: registers a CI runner for one private repository.
+  - `pakem host allow-device <host> <device-key>` and `revoke-device`;
+  - `pakem host add-project <host> <project> <env>`: base, host config, placement prompts;
+  - `pakem host runner add <host> <repo>`: registers a CI runner for one private repository.
 - **Owner actions:**
   - the first SSH access to a new server (its password, once);
   - forge runner registration if a token cannot be fetched with the owner's CLI login.
@@ -75,17 +75,17 @@ owner actions it may report, and what `af project check` verifies afterwards.
   - whether it has a public route (domain and TLS) or is private;
   - runner yes or no;
   - the deploy root.
-- **Check:** `af setup check --host <host>` (the current bootstrap `check`, plus keys,
+- **Check:** `pakem setup check --host <host>` (the current bootstrap `check`, plus keys,
   runner isolation, and each project's base).
 
-### 3. Project: `af project init` / `af project adopt`
+### 3. Project: `pakem project init` / `pakem project adopt`
 
 - **Automatic:** asks the project's fixed facts, then writes the standard files:
   - **Forge:** GitHub or GitLab; public or private.
   - **Release kind:** `service`, `artifact` or `none`.
   - **Delivery:** `us`, `others` (who releases it, and where our work ends), or `nobody`,
     written to `AGENTS.md`. With `others`, CI and the release steps are the team's;
-    `af project init` writes no deploy files and work stops at the merge request.
+    `pakem project init` writes no deploy files and work stops at the merge request.
   - **Environments:** production only, or staging too.
   - **Builder:** the host builds from signed source; a GitLab runner; or GitHub-hosted
     runners on public repositories.
@@ -98,13 +98,13 @@ owner actions it may report, and what `af project check` verifies afterwards.
   - **Agent files:** `AGENTS.md` (framework block plus project sections),
     `PROJECT_STATE.md`, OpenSpec, and the formatter, linter and test scaffolding for the
     language.
-  - `af project adopt` reads an existing project, keeps what already meets the standard, and
+  - `pakem project adopt` reads an existing project, keeps what already meets the standard, and
     reports only differences and gaps.
 - **Owner actions:**
   - creating the repository if the CLI login cannot;
   - protecting tags;
   - setting forge variables that hold secrets.
-- **Gaps (examples, never answered by `af`):**
+- **Gaps (examples, never answered by `pakem`):**
   - what the health endpoint must prove;
   - which settings are placement or secret;
   - backup and restore commands;
@@ -116,32 +116,32 @@ owner actions it may report, and what `af project check` verifies afterwards.
   - gateway profiles and budgets.
 - **AGENTS.md:** written once the gaps are settled; later changes update it in the same
   change.
-- **Decisions:** `af decide <gap> <answer>` records an answer; `--provisional
+- **Decisions:** `pakem decide <gap> <answer>` records an answer; `--provisional
   <assumption> --revisit <trigger>` or `--pending <what> --from <who> --ask-again <date>`
-  record the other two states, in the committed `.af/decisions.toml`.
-- **Check:** `af project check` (contracts, CI file, deploy files, `AGENTS.md` blocks),
-  and `af project check --gaps`.
+  record the other two states, in the committed `.pakem/decisions.toml`.
+- **Check:** `pakem project check` (contracts, CI file, deploy files, `AGENTS.md` blocks),
+  and `pakem project check --gaps`.
 
-### 4. Secrets: `af secret`
+### 4. Secrets: `pakem secret`
 
-- `af secret set <project> <env> <NAME>`: hidden input, or `--from-file`, or
+- `pakem secret set <project> <env> <NAME>`: hidden input, or `--from-file`, or
   `--generate <kind>`. Stored in the host's secret store or the forge's protected
   variables, depending on where the project needs it.
-- `af secret list <project> <env>`: names and ages only.
+- `pakem secret list <project> <env>`: names and ages only.
 - **Owner actions:** typing values only the owner knows.
 - **Check:** every secret named in `deploy/settings.toml` exists.
 
-### 5. Release: `af release`
+### 5. Release: `pakem release`
 
 - **Commands:**
-  - `af release publish`: the current `main` commit to staging. Refused unless its
+  - `pakem release publish`: the current `main` commit to staging. Refused unless its
     required checks passed. Says so when the project has no staging.
-  - `af release promote vX.Y.Z --production`: tags the commit and deploys the same
+  - `pakem release promote vX.Y.Z --production`: tags the commit and deploys the same
     release to production.
-  - `af release rollback previous|<tag or commit> [--production] [--allow-schema]`:
+  - `pakem release rollback previous|<tag or commit> [--production] [--allow-schema]`:
     "previous" is the last successful release first deployed before the current one;
     each run steps one further back.
-  - `af release history [env]`, `af release status [env]`.
+  - `pakem release history [env]`, `pakem release status [env]`.
 - **Delivery by kind:**
   - `service`: a signed `git archive` of the exact commit goes over the device key's
     forced SSH command; the host verifies, builds natively once, and deploys through the
@@ -157,13 +157,13 @@ owner actions it may report, and what `af project check` verifies afterwards.
 
 ### 6. Framework and agents (existing commands, regrouped)
 
-`af install | uninstall | doctor | lint | changelog | project sync | project check |
+`pakem install | uninstall | doctor | lint | changelog | project sync | project check |
 project report | schedule | hooks | enforce | eval`. These are unchanged, documented in
 the same skill.
 
 ## Gap protocol (for coding agents)
 
-A gap is a project- or case-specific decision an `af` command leaves open. `af project
+A gap is a project- or case-specific decision an `pakem` command leaves open. `pakem project
 check --gaps --json` lists them:
 
 ```json
@@ -179,7 +179,7 @@ check --gaps --json` lists them:
 
 The agent fills gaps in this order, and stops when the finish condition holds:
 
-1. Run `af project check --gaps --json`. The list is fixed for this session. Do not add
+1. Run `pakem project check --gaps --json`. The list is fixed for this session. Do not add
    questions, except a blocker no gap covers; record that as a new gap.
 2. Answer what the repository already proves (code, docs, earlier decisions in
    `AGENTS.md`) without asking. Say which gaps were answered this way.
@@ -187,7 +187,7 @@ The agent fills gaps in this order, and stops when the finish condition holds:
    defaults" is a complete answer.
 4. Write each answer to its `target`, with a one-line reason where the target is
    `AGENTS.md` or a decision note.
-5. Run `af project check --gaps`. Ask a follow-up only for answers that failed validation or
+5. Run `pakem project check --gaps`. Ask a follow-up only for answers that failed validation or
    contradict each other, in one message.
 6. **Finish:** every required gap is answered, provisional (with a revisit trigger), or
    pending (with what is missing, from whom, and a date to ask again), each recorded with
@@ -204,11 +204,11 @@ asked one by one.
 
 ## Build order and proof
 
-1. `af setup device`, then `af setup host` (folding in `af_bootstrap.sh`), then
-   `af release` for services, then `af project init` and `af project adopt` for GitHub
-   and services, with decisions. `af status` and `af update` come first.
-2. **Proof 1:** adopt llm-gateway and personal-agent with `af project adopt` and
-   release them with `af release`, using only `af` and the gap protocol.
+1. `pakem setup device`, then `pakem setup host` (folding in `af_bootstrap.sh`), then
+   `pakem release` for services, then `pakem project init` and `pakem project adopt` for GitHub
+   and services, with decisions. `pakem status` and `pakem update` come first.
+2. **Proof 1:** adopt llm-gateway and personal-agent with `pakem project adopt` and
+   release them with `pakem release`, using only `pakem` and the gap protocol.
 3. GitLab and the `artifact` kind.
 4. **Proof 2:** portfolio and cash-flow-tracker.
 5. Each area becomes `stable` after its proof; then the kernel rule applies to it.
