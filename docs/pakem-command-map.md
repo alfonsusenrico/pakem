@@ -1,6 +1,6 @@
 # `pakem` command map
 
-Status: accepted design (ADR 0011), not yet built. Every area starts as `draft`; the kernel rule "use `pakem` for
+Status: accepted design (ADR 0011), being built; each area's stage is in its section and in `pakem help`. Every area starts as `draft`; the kernel rule "use `pakem` for
 covered operations" applies to an area only when it is `stable`.
 
 Each command lists what it does automatically, the gaps it leaves for the project, the
@@ -132,8 +132,8 @@ Stage: `experimental` (built 2026-10-22).
   if SSH asks for one; a GitHub login for runner tokens.
 - **Gaps (per host), answered by flags:** public route or private (`--no-proxy`), runner
   (`--runner`), deploy root (`--deploy-root`), trigger (`--trigger`).
-- **Moved (owner decision 2026-10-22):** `pakem host allow-device` and `revoke-device` go
-  to area 5 with the release receiver the device key's forced command calls;
+- **Moved (owner decision 2026-10-22):** `pakem host allow-device` and `revoke-device` are
+  in area 5 with the release receiver the device key's forced command calls;
   `pakem host add-project` and per-project notification channels go to `pakem project
   init` and the first release (areas 3 and 5), which read the project's own files.
 
@@ -192,25 +192,57 @@ Stage: `experimental` (built 2026-10-22).
 
 ### 5. Release: `pakem release`
 
-- **Commands:**
-  - `pakem release publish`: the current `main` commit to staging. Refused unless its
-    required checks passed. Says so when the project has no staging.
-  - `pakem release promote vX.Y.Z --production`: tags the commit and deploys the same
-    release to production.
-  - `pakem release rollback previous|<tag or commit> [--production] [--allow-schema]`:
-    "previous" is the last successful release first deployed before the current one;
-    each run steps one further back.
-  - `pakem release history [env]`, `pakem release status [env]`.
+Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` are `draft`.
+
+- **Commands** (run in the project's repository, or with `--project-dir`; `--plan`,
+  `--yes`, `--json`):
+  - `pakem release publish`: the current `origin/main` commit to staging. Refused unless
+    its checks passed (GitHub check runs and commit statuses: at least one, none failing
+    or pending), and when the project declares no staging (it names `promote` instead).
+  - `pakem release promote vX.Y.Z --production [--commit REV]`: the commit staging runs
+    (or `origin/main` without staging, or `--commit`) to production, with the same images;
+    the version must be newer than every release tag. After it deploys, the commit is
+    tagged and the tag pushed to `origin`; a failed deployment is never tagged.
+  - `pakem release rollback previous|<tag or commit> [--environment E] [--production]
+    [--allow-schema]`: "previous" is the release first deployed before the running one,
+    so each run steps one further back; failed and restored attempts never count. The
+    host refuses a target never deployed there, and one with another schema version
+    unless `--allow-schema` (after restoring the database from its backup).
+  - `pakem release history [env]`, `pakem release status [env]`: read from the host.
+- **Needs** (prepared on demand): git, ssh, the device key unlocked; gh with a GitHub
+  login for the checks. GitLab checks come with the GitLab area.
 - **Delivery by kind:**
-  - `service`: a signed `git archive` of the exact commit goes over the device key's
-    forced SSH command; the host verifies, builds natively once, and deploys through the
-    engine (lock, preflight, backup, migrate, switch, health, restore, record, notify).
+  - `service` (direct delivery, ADR 0010): the device signs a request
+    (`pakem.release-request/v1`: action, project, environment, commit, version, archive
+    digest, time, device) with `ssh-keygen -Y` and the device key, and sends it as the
+    deploy user `af`, whose `authorized_keys` line forces `af_receive.py serve`. The
+    commit's `git archive` goes along only when no environment on the host keeps a build
+    of it. The host checks the signature against the device's own `allowed_signers` line
+    for that project, refuses requests older than ten minutes, builds each image once per
+    commit in a BuildKit container capped at 2 CPUs and 4 GB (one build at a time; cache
+    pruned after 7 days), and runs the engine (lock, preflight, backup, migrate, switch,
+    health, restore, record, notify). Contracts §13.
   - `artifact`: builds each declared OS and CPU target, signs, and publishes a forge
     release; `rollback` marks a version withdrawn.
   - `none`: tag only.
-- **Gaps:** none at release time; all are settled at init. A release refuses while
-  required gaps are open, and refuses a project whose `Delivery:` is `others` or `nobody`,
-  naming who delivers it.
+- **`pakem host allow-device <host> [--project-dir] [--switch-from-registry]`** (owner's
+  admin login, terminal only, like `setup host`): runs `af_receive.py authorize` as root,
+  which writes a direct host config and deploy base for every environment the project's
+  `deploy/release.toml` declares, the device key's forced-command line listing the
+  projects it may release, and its `allowed_signers` line listing the projects it may
+  sign for; it names placement and secret settings still missing (names only). Records
+  the project for that host in `~/.config/pakem/hosts.toml`. An environment that deploys
+  from a registry moves only with `--switch-from-registry`.
+- **`pakem host revoke-device <host> [--device NAME] [--project P]`:** removes a device's
+  lines, or one project from them; a lost device is revoked from another device by name.
+- **Owner actions:** `allow-device` and `revoke-device` on a terminal; placement values
+  and secrets on the host until `pakem secret` exists (area 4); pushing the tag if the
+  push fails.
+- **Gaps:** none at release time; all are settled at init. A release refuses a project
+  whose `AGENTS.md` says `Delivery: others` or `nobody`. Refusing while required gaps are
+  open comes with `pakem decide` (area 3).
+- **Decided while building (2026-10-22):** staging and production of a project share one
+  host (promotion reuses the staging build there); a host keeps build cache for 7 days.
 - **Check:** the deployment record, the health response reports the commit, and the
   notice was sent.
 

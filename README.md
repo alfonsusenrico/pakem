@@ -105,6 +105,8 @@ before acting, and take `--plan` to preview and `--yes` to skip the question.
 | `pakem setup device` | Prepare a fresh machine in one go; other commands prepare what they need when they run (`setup key` makes the device key, `setup check` only lists) |
 | `pakem setup host` | Install the release engine (and optionally a CI runner) on a server over SSH, from your terminal |
 | `pakem host runner` | Register a private repository with a server's CI runner |
+| `pakem host allow-device` | Let this device's key release a project on a server (and `revoke-device`), from your terminal |
+| `pakem release` | Publish to staging, promote to production, roll back, and read history: signed source goes to the server, which builds and deploys it |
 | `pakem config` | Device settings, such as whether agents may run `pakem update` themselves |
 | `pakem install` | Install the kernel and skills into every supported agent on this device |
 | `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |
@@ -156,8 +158,6 @@ are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-a
 
 - `pakem project init` and `pakem project adopt`: start or adopt a project on GitHub or
   GitLab, with its CI and deploy files.
-- `pakem release publish | promote | rollback previous | history`: build on your server
-  from signed source, deploy with health checks, roll back by one step.
 - `pakem decide`: record decisions that wait on someone else, and get reminded when they
   are due.
 
