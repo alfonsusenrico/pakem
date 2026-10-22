@@ -14,7 +14,7 @@ from .enforce import ENFORCE_HOSTS, run_enforce
 from .evals import HOSTS as EVAL_HOSTS
 from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
-from .host import run_host_check, run_host_runner, run_setup_host
+from .host import run_host_add, run_host_check, run_host_runner, run_setup_host
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
@@ -55,6 +55,30 @@ AREAS = (
         "install, uninstall, doctor, lint, changelog, project sync|check, report, schedule, hooks, enforce, eval",
     ),
 )
+
+
+def _add_host_options(parser: argparse.ArgumentParser) -> None:
+    """A host's options; each is left unset unless given, so a recorded host keeps its own."""
+    if not any(action.dest == "name" for action in parser._actions):
+        parser.add_argument("--name", help="name for the host on this device (default: from the target)")
+    parser.add_argument("--port", type=_bounded_int(1, 65535), help="SSH port (default: SSH's own)")
+    parser.add_argument("--trigger", choices=("pull", "push"), help="deploy trigger (default: pull)")
+    parser.add_argument("--deploy-root", help="deploy root on the host (default: /srv/deploy)")
+    parser.add_argument(
+        "--proxy", action=argparse.BooleanOptionalAction, default=None,
+        help="Caddy reverse proxy for public routes (default: yes; --no-proxy for a private host)",
+    )
+    parser.add_argument(
+        "--runner", action=argparse.BooleanOptionalAction, default=None, help="the isolated CI runner (default: no)"
+    )
+    parser.add_argument(
+        "--release-port", type=_bounded_int(1, 65535), metavar="PORT",
+        help="a second OpenSSH port for releases, when port 22 skips forced commands (Tailscale SSH)",
+    )
+    parser.add_argument(
+        "--project-dir", action="append", metavar="DIR",
+        help="a service project on this device to release there (repeatable; recorded)",
+    )
 
 
 def _add_apply(parser: argparse.ArgumentParser, verb: str = "write") -> None:
@@ -136,23 +160,13 @@ def build_parser() -> argparse.ArgumentParser:
     setup_host = setup_commands.add_parser(
         "host", help="install the release engine on a server over SSH (your own login, from your terminal)"
     )
-    setup_host.add_argument("target", help="SSH target, such as admin@203.0.113.7 or an alias in ~/.ssh/config")
-    setup_host.add_argument("--name", help="name for this host in ~/.config/pakem/hosts.toml (default: from target)")
-    setup_host.add_argument("--port", type=_bounded_int(1, 65535), help="SSH port (default: SSH's own)")
-    setup_host.add_argument("--trigger", choices=("pull", "push"), default="pull", help="deploy trigger (default: pull)")
-    setup_host.add_argument("--deploy-root", default="/srv/deploy", help="deploy root on the host (default: /srv/deploy)")
-    setup_host.add_argument("--no-proxy", action="store_true", help="no Caddy reverse proxy (a private host)")
-    setup_host.add_argument("--runner", action="store_true", help="also install the isolated CI runner")
     setup_host.add_argument(
-        "--project-dir", action="append", metavar="DIR",
-        help="let this device release this service project there (repeatable; default: here, if it is one)",
+        "target", nargs="?",
+        help="a recorded host's name, or a new SSH target (alias or user@address); none: pakem asks",
     )
+    _add_host_options(setup_host)
     setup_host.add_argument(
         "--no-passphrase", action="store_true", help="a new device key without a passphrase (a headless device only)"
-    )
-    setup_host.add_argument(
-        "--release-port", type=_bounded_int(1, 65535), metavar="PORT",
-        help="a second OpenSSH port for releases, when port 22 skips forced commands (Tailscale SSH)",
     )
     setup_host.add_argument(
         "--allow-unmerged", action="store_true", help="upload from a checkout that is not merged main (testing only)"
@@ -168,6 +182,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     host = commands.add_parser("host", help="manage servers set up with `pakem setup host`")
     host_commands = host.add_subparsers(dest="host_command", required=True)
+    host_add = host_commands.add_parser(
+        "add", help="record a server's options on this device only (agents may run it); then `pakem setup host NAME`"
+    )
+    host_add.add_argument("name", help="name for the server on this device")
+    host_add.add_argument("--target", help="its SSH target (alias or user@address); needed for a new host")
+    _add_host_options(host_add)
     runner = host_commands.add_parser("runner", help="register a private repository with the host's CI runner")
     runner_commands = runner.add_subparsers(dest="runner_command", required=True)
     for verb, text in (("add", "register"), ("remove", "unregister")):
@@ -471,6 +491,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_host_check(args, args.host)
     if args.command == "setup" and args.setup_command == "check":
         return run_setup_check(args)
+    if args.command == "host" and args.host_command == "add":
+        return run_host_add(args)
     if args.command == "host" and args.host_command == "runner":
         return run_host_runner(args)
     if args.command == "host" and args.host_command == "allow-device":

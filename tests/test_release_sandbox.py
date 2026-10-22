@@ -175,7 +175,7 @@ class DirectReleaseOverSsh(HostOverSsh):
         self.assertEqual(code, 0, output[-4000:])
         code, output = self.release("publish", "--plan", timeout=120)
         self.assertEqual(code, 3, output[-2000:])
-        self.assertIn("pakem setup host pakem-sandbox --name sandbox", output)
+        self.assertIn("run `pakem setup host sandbox` in your terminal", output)
         self.assertNotEqual(self.device_ssh("status sandbox").returncode, 0, "the host no longer takes the key")
         signers = self.in_host("cat /etc/af/allowed_signers; cat /var/lib/af/.ssh/authorized_keys 2>/dev/null || true")
         self.assertNotIn("pakem-device", signers)

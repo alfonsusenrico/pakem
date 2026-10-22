@@ -165,18 +165,24 @@ def require_checks(project: Project, commit: str) -> str:
 
 
 def owner_setup_action(project_root: Path) -> str:
-    """The one owner step that lets this device release a project: setup host, with its flags."""
+    """The one owner step that lets this device release a project, in its short form. The
+    agent records the server and the project first (`pakem host add`, local only)."""
     known = list(load_hosts().values())
-    command = (setup_host_command(known[0], [project_root]) if len(known) == 1
-               else setup_words("<ssh-target>", [], [project_root]))
-    return f"OWNER ACTION REQUIRED: run `{command}` in your terminal (your own login); then releases need no login"
+    if len(known) == 1:
+        name = known[0].name
+        return (f"record it with `pakem host add {name} --project-dir {shlex.quote(str(project_root))}` (agents may), "
+                f"then OWNER ACTION REQUIRED: run `pakem setup host {name}` in your terminal")
+    return ("ask the owner which server releases it (SSH target, private or public, CI runner, whether port 22 is "
+            f"Tailscale SSH), record it with `pakem host add <name> --target <ssh-target> ... --project-dir "
+            f"{shlex.quote(str(project_root))}` (agents may), then OWNER ACTION REQUIRED: run `pakem setup host <name>` "
+            "in your terminal")
 
 
 def host_for(project: Project) -> HostRecord:
     hosts = [record for record in load_hosts().values() if project.name in record.projects]
     if not hosts:
         raise OwnerActionRequired(
-            f"{owner_setup_action(project.root)}; this device may not release {project.name} anywhere yet"
+            f"this device may not release {project.name} anywhere yet: {owner_setup_action(project.root)}"
         )
     if len(hosts) > 1:
         names = ", ".join(record.name for record in hosts)

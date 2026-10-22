@@ -130,7 +130,7 @@ class SetupHostTests(IsolatedTestCase):
     def test_without_a_terminal_nothing_connects(self) -> None:
         completed = self.pakem("setup", "host", "admin@203.0.113.7", "--yes")
         self.assert_fails(completed, code=3)
-        self.assertIn("OWNER ACTION REQUIRED: run `pakem setup host admin@203.0.113.7", completed.stderr)
+        self.assertIn("OWNER ACTION REQUIRED: run `pakem setup host 203.0.113.7`", completed.stderr)
         self.assertEqual(self.calls(), [])
         planned = self.pakem("setup", "host", "admin@203.0.113.7", "--no-proxy", "--plan")
         self.assert_ok(planned)
@@ -225,11 +225,78 @@ class SetupHostTests(IsolatedTestCase):
         self.assertIn("-p 2222", status)
         self.assertEqual(self.hosts()["prod"]["release_port"], 2222)
 
+    def run_answering(self, answers: list[str], *args: str) -> tuple[int, str]:
+        """Run pakem on a terminal and answer each prompt (a line ending in ': ') in turn."""
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.chdir(self.base)
+            os.execve(sys.executable, [sys.executable, str(PAKEM), "--root", str(self.framework), *args], self.env)
+        output, answered, deadline = b"", 0, time.monotonic() + 30
+        pending = list(answers)
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([fd], [], [], 1)
+            if not ready:
+                continue
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+            if pending and output[answered:].rstrip(b" ").endswith(b":"):
+                os.write(fd, pending.pop(0).encode() + b"\n")
+                answered = len(output)
+        else:
+            os.kill(pid, 9)
+        _, status = os.waitpid(pid, 0)
+        return os.waitstatus_to_exitcode(status), output.decode(errors="replace")
+
+    def test_a_recorded_host_needs_only_its_name(self) -> None:
+        project = self.service_project()
+        added = self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--no-proxy", "--runner",
+                           "--release-port", "2223", "--project-dir", str(project))
+        self.assert_ok(added)
+        self.assertIn("OWNER ACTION REQUIRED: run `pakem setup host prod`", added.stdout)
+        self.assertEqual(self.calls(), [], "host add never connects")
+        self.assertNotIn("set_up_at", self.hosts()["prod"])
+        code, output = self.run_tty("setup", "host", "prod", "--no-passphrase", "--yes")
+        self.assertEqual(code, 0, output)
+        install = next(call for call in self.calls() if "af_bootstrap.sh install" in call)
+        self.assertTrue(install.endswith("--no-proxy --release-port 2223"), install)
+        self.assertTrue([call for call in self.calls() if "af_runner.sh install" in call])
+        self.assertTrue([call for call in self.calls() if "af_receive.py authorize" in call and "--project demo" in call])
+        recorded = self.hosts()["prod"]
+        self.assertEqual((recorded["projects"], recorded["release_port"], recorded["proxy"]), (["demo"], 2223, False))
+        self.assertIn("set_up_at", recorded)
+
+    def test_given_options_change_a_recorded_host(self) -> None:
+        self.assert_ok(self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--no-proxy"))
+        self.assert_ok(self.pakem("host", "add", "prod", "--proxy", "--deploy-root", "/srv/apps"))
+        recorded = self.hosts()["prod"]
+        self.assertEqual((recorded["target"], recorded["proxy"], recorded["deploy_root"]),
+                         ("admin@203.0.113.7", True, "/srv/apps"))
+        self.assert_fails(self.pakem("host", "add", "other"), code=2)
+
+    def test_with_no_host_pakem_asks_on_a_terminal(self) -> None:
+        project = self.service_project()
+        answers = ["admin@203.0.113.7", "prod", "y", "n", "y", "2223", "", str(project)]
+        code, output = self.run_answering(answers, "setup", "host", "--no-passphrase", "--yes")
+        self.assertEqual(code, 0, output)
+        recorded = self.hosts()["prod"]
+        self.assertEqual((recorded["proxy"], recorded["runner"], recorded["release_port"], recorded["projects"]),
+                         (False, False, 2223, ["demo"]))
+        without_terminal = self.pakem("setup", "host", "--yes")
+        self.assert_fails(without_terminal, code=2)
+        self.assertIn("name a host", without_terminal.stderr)
+
     def test_without_a_terminal_the_owner_action_is_the_one_command(self) -> None:
         project = self.service_project()
         completed = self.pakem("setup", "host", "admin@203.0.113.7", "--project-dir", str(project), "--yes")
         self.assert_fails(completed, code=3)
-        self.assertIn(f"--project-dir {project}", completed.stderr)
+        self.assertIn("OWNER ACTION REQUIRED: run `pakem setup host 203.0.113.7`", completed.stderr)
+        recorded = self.hosts()["203.0.113.7"]
+        self.assertEqual(recorded["project_dirs"], [str(project.resolve())], "the agent's options are recorded")
         self.assertEqual(self.calls(), [])
 
     def test_only_merged_main_reaches_a_server(self) -> None:

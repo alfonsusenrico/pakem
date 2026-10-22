@@ -447,7 +447,7 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
         )
     allowed = any(facts.name in record.projects for record in load_hosts().values())
     if facts.releases_here and not allowed:
-        actions.append(f"{owner_setup_action(repo)}; needed once before the first release")
+        actions.append(f"before the first release, {owner_setup_action(repo)}")
     return actions
 
 
