@@ -108,12 +108,21 @@ Stage: `experimental` (built 2026-10-22).
   terminal the command stops with `OWNER ACTION REQUIRED` and the exact command line; it
   never connects. `--plan` works anywhere. The device key is never used for
   administration: it may only deploy, through a forced command (area 5).
-- **`pakem setup host <ssh-target> [--name] [--port] [--trigger pull|push]
-  [--deploy-root] [--no-proxy] [--runner] [--project-dir DIR ...] [--no-passphrase]
-  [--release-port PORT] [--plan] [--yes]`:** the one owner step before releasing (owner request 2026-10-22: one
+- **The agent interviews, the owner runs one short command** (owner decision
+  2026-10-22): the agent asks in chat for the server's SSH target, whether it is private,
+  whether it runs the CI runner, and whether its port 22 is Tailscale SSH (then a free
+  release port), and records the answers with **`pakem host add <name> --target T
+  [--port] [--trigger] [--deploy-root] [--proxy|--no-proxy] [--runner|--no-runner]
+  [--release-port] [--project-dir DIR ...]`**, which writes only `hosts.toml` and never
+  connects. The owner then runs **`pakem setup host <name>`**: a recorded host's options
+  are reused, and given flags only change them. `pakem setup host` with no host, on a
+  terminal, asks the same questions itself; an agent running it without a terminal
+  records what it was given and gets the short command as its owner action.
+- **`pakem setup host [<name or ssh-target>] [options as above] [--no-passphrase]
+  [--plan] [--yes]`:** the one owner step before releasing (owner request 2026-10-22: one
   command, not three):
-  - with projects (each `--project-dir`, or the current directory when it is a service
-    project), first makes this device's key if it has none (`setup key`'s prompt), and
+  - with projects (the host's recorded `--project-dir`s, or the current directory when it
+    is a service project), first makes this device's key if it has none (`setup key`'s prompt), and
     after the install lets the key release each project (`host allow-device`, switching an
     environment that deploys from a registry to direct delivery);
   - after allowing the projects, checks with the device key that the release receiver
