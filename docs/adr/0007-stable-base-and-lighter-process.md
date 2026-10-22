@@ -1,6 +1,6 @@
 # 0007. Stable base and lighter process
 
-- Status: Accepted
+- Status: Accepted; amended 2026-10-22 (owner: each accepted proposal is its own pull request and applies when merged)
 - Date: 2026-10-13
 
 ## Context
@@ -15,8 +15,12 @@ works alone on many projects and wants the framework to reduce work, not add it.
 ## Decision
 
 1. The framework is a stable base. Rules change only for a problem a real project hit,
-   in batches of at most one release a month, one pull request per batch, and no
-   release for wording alone. No new `pakem` mechanism unless a project needs one.
+   and no release for wording alone. No new `pakem` mechanism unless a project needs one.
+   *Amended 2026-10-22 (owner):* a rule change arrives as a `pakem propose` proposal that
+   the agent writes from the case it discussed with the owner; the owner reviews it, and
+   each accepted proposal becomes its own pull request that applies as soon as it is
+   merged and devices run `pakem update` (devices that follow release tags get it with
+   the next release). Version releases still batch the CHANGELOG, at most one a month.
 2. Compliance evals are optional: run by hand after a large host or model change,
    never as a release gate, and read as evidence rather than a score to tune.
 3. Repositories no longer pin the kernel digest (supersedes ADR 0003). The kernel is

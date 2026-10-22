@@ -69,15 +69,17 @@ framework tool is available.
 
 ## 6. Lessons into the framework
 
-Follow [lessons intake](references/lessons-intake.md) to move a project lesson into
-the framework, and [agent tooling policy](references/agent-tooling.md) before adding
-or recommending skills, plugins, or tools.
+When a case in any project looks like it holds beyond that project, discuss it with the
+owner, then propose it with `pakem propose new` from that session, which still has the
+context ([lessons intake](references/lessons-intake.md)). Never edit the framework from a
+project session. Follow the [agent tooling policy](references/agent-tooling.md) before
+adding or recommending skills, plugins, or tools.
 
 ## 7. Changing the framework itself
 
-The framework is stable: change it only for a problem a real project hit, in
-batches (at most one release a month), with ADRs only for real trade-offs. Each change
-is a fragment in `changes/` (never a direct `CHANGELOG.md` edit); a release runs
+The framework is stable: change it only for a problem a real project hit, through an
+accepted `pakem propose` proposal (its own pull request), with ADRs only for real
+trade-offs; version releases batch at most one a month. Each change is a fragment in `changes/` (never a direct `CHANGELOG.md` edit); a release runs
 `pakem changelog --release X.Y.Z --apply` (MAJOR only when a floor changes or an existing
 install or project would break). Run its lint and tests before any commit. Install
 only from merged `main`: fetch, check that the checkout is clean and equal to
