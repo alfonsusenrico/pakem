@@ -199,9 +199,8 @@ class PublishTests(ReleaseTestCase):
         write(self.home / ".config" / "pakem" / "hosts.toml", HOSTS_TOML.replace('projects = ["example"]', ""))
         completed = self.release("publish", "--yes")
         self.assert_fails(completed, code=3)
-        self.assertIn(
-            "OWNER ACTION REQUIRED: run `pakem setup host admin@203.0.113.7 --name prod --trigger pull --deploy-root "
-            f"/srv/deploy --project-dir {self.project.resolve()}` in your terminal", completed.stderr)
+        self.assertIn(f"record it with `pakem host add prod --project-dir {self.project.resolve()}`", completed.stderr)
+        self.assertIn("then OWNER ACTION REQUIRED: run `pakem setup host prod` in your terminal", completed.stderr)
 
     def test_host_results_map_to_pakem_exit_codes(self) -> None:
         for host_exit, code in (("2", 6), ("3", 5), ("5", 5), ("75", 75)):

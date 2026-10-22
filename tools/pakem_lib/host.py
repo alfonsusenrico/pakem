@@ -19,6 +19,7 @@ lives in ~/.config/pakem/hosts.toml; what the host is lives on the host.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import re
@@ -93,6 +94,9 @@ class HostRecord:
     release_port: int | None = None
     # Projects this device may release there (`pakem host allow-device`).
     projects: list[str] = field(default_factory=list)
+    # Service projects on this device to allow there on the next `pakem setup host`.
+    project_dirs: list[str] = field(default_factory=list)
+    set_up_at: str | None = None
 
     @property
     def address(self) -> str:
@@ -122,16 +126,20 @@ def load_hosts() -> dict[str, HostRecord]:
         raise PakemError(f"invalid TOML in {display_path(path)}: {exc}") from exc
     hosts = {}
     for name, table in data.get("hosts", {}).items():
-        keys = ("target", "port", "deploy_root", "trigger", "proxy", "runner", "release_port", "projects")
+        keys = ("target", "port", "deploy_root", "trigger", "proxy", "runner", "release_port", "projects",
+                "project_dirs", "set_up_at")
         fields = {key: table[key] for key in keys if key in table}
         hosts[name] = HostRecord(name, **fields)
     return hosts
 
 
-def save_host(record: HostRecord) -> None:
+def save_host(record: HostRecord, set_up: bool = True) -> None:
+    """Record a host; `set_up` stamps it as just set up (`pakem host add` only records it)."""
     hosts = load_hosts()
+    if set_up:
+        record.set_up_at = utc_now_iso()
     hosts[record.name] = record
-    lines = ["# Written by `pakem setup host` and `pakem host allow-device`; device-local, never committed."]
+    lines = ["# Written by `pakem host add`, `pakem setup host`, and `pakem host allow-device`; device-local."]
     for name in sorted(hosts):
         host = hosts[name]
         lines += ["", f"[hosts.{json.dumps(name)}]", f"target = {json.dumps(host.target)}"]
@@ -147,8 +155,10 @@ def save_host(record: HostRecord) -> None:
             lines.append(f"release_port = {host.release_port}")
         if host.projects:
             lines.append(f"projects = {json.dumps(sorted(host.projects))}")
-        if name == record.name:
-            lines.append(f"set_up_at = {json.dumps(utc_now_iso())}")
+        if host.project_dirs:
+            lines.append(f"project_dirs = {json.dumps(host.project_dirs)}")
+        if host.set_up_at:
+            lines.append(f"set_up_at = {json.dumps(host.set_up_at)}")
     write_text_atomically(hosts_path(), "\n".join(lines) + "\n")
 
 
@@ -244,17 +254,45 @@ def require_terminal(command_line: str) -> None:
         )
 
 
-def _record_from_args(args) -> HostRecord:
-    if not DEPLOY_ROOT.match(args.deploy_root) or args.deploy_root == "/":
+HOST_OPTIONS = ("port", "deploy_root", "trigger", "proxy", "runner", "release_port")
+
+
+def record_from_args(args) -> HostRecord:
+    """The recorded host the arguments name, with only the given options changed; or a new
+    host with defaults for the rest. A re-run therefore needs no flags at all."""
+    hosts = load_hosts()
+    if args.name:
+        known = hosts.get(args.name)
+    else:
+        # The argument is a recorded name, or the target of exactly one recorded host.
+        by_target = [record for record in hosts.values() if record.target == args.target]
+        known = hosts.get(args.target) or (by_target[0] if len(by_target) == 1 else None)
+    if known is not None:
+        record = dataclasses.replace(known, projects=list(known.projects), project_dirs=list(known.project_dirs))
+        if args.target and args.target not in (known.name, known.target):
+            record.target = args.target
+    elif args.target:
+        record = HostRecord(args.name or default_name(args.target), args.target)
+    else:
+        raise PakemError("name a host: `pakem setup host <name>`; a new one needs its SSH target, too")
+    for option in HOST_OPTIONS:
+        value = getattr(args, option, None)
+        if value is not None:
+            setattr(record, option, value)
+    for directory in args.project_dir or []:
+        resolved = str(Path(directory).expanduser().resolve())
+        read_project(Path(resolved))
+        if resolved not in record.project_dirs:
+            record.project_dirs.append(resolved)
+    if not DEPLOY_ROOT.match(record.deploy_root) or record.deploy_root == "/":
         raise PakemError("--deploy-root must be an absolute path other than /")
-    name = args.name or default_name(args.target)
-    if not HOST_NAME.match(name):
-        raise PakemError(f"invalid host name {name!r}: lowercase letters, digits, dots, and hyphens")
-    return HostRecord(name, args.target, args.port, args.deploy_root, args.trigger, not args.no_proxy, args.runner,
-                      args.release_port)
+    if not HOST_NAME.match(record.name):
+        raise PakemError(f"invalid host name {record.name!r}: lowercase letters, digits, dots, and hyphens")
+    return record
 
 
 def setup_flags(record: HostRecord) -> list[str]:
+    """Every option, spelled out (for a host that is not recorded on this device yet)."""
     words = ["--name", record.name]
     if record.port is not None:
         words += ["--port", str(record.port)]
@@ -269,16 +307,60 @@ def setup_flags(record: HostRecord) -> list[str]:
 
 
 def setup_host_command(record: HostRecord, project_roots: list[Path] | None = None) -> str:
-    """The command line that repeats this setup, for the owner to run on a terminal."""
+    """What the owner runs on a terminal: the short form once the host is recorded here."""
+    recorded = load_hosts().get(record.name)
+    if recorded is not None and recorded == record and not project_roots:
+        return f"pakem setup host {record.name}"
     return setup_words(record.target, setup_flags(record), project_roots or [])
 
 
-def _projects(args) -> list[Project]:
-    """The projects to allow: each --project-dir, or the current directory if it is a service."""
-    directories = [Path(directory) for directory in args.project_dir or []]
+def _projects(record: HostRecord) -> list[Project]:
+    """The projects to allow: those recorded for the host, or the current directory if it is
+    a service project; a recorded directory missing on this device is skipped with a note."""
+    directories = list(record.project_dirs)
     if not directories and is_service_project(Path.cwd()):
-        directories = [Path.cwd()]
-    return [read_project(directory) for directory in directories]
+        directories = [str(Path.cwd().resolve())]
+        record.project_dirs = directories
+    projects = []
+    for directory in directories:
+        if not is_service_project(Path(directory)):
+            print(f"  note: {directory} is no service project on this device any more; skipped")
+            continue
+        projects.append(read_project(Path(directory)))
+    return projects
+
+
+def interview(args) -> None:
+    """On a terminal, `pakem setup host` with no host asks for what it needs."""
+    def ask(question: str, default: str = "") -> str:
+        shown = f" [{default}]" if default else ""
+        return input(f"{question}{shown}: ").strip() or default
+
+    def yes(question: str, default: bool) -> bool:
+        return ask(f"{question} (y/n)", "y" if default else "n").lower().startswith("y")
+
+    args.target = ask("SSH target of the server (an alias in ~/.ssh/config, or user@address)")
+    if not args.target:
+        raise PakemError("a server's SSH target is needed")
+    args.name = ask("Name for it on this device", default_name(args.target))
+    args.proxy = not yes("Is it private (no public web traffic, no Caddy)?", False)
+    args.runner = yes("Does it run (or should it run) the CI runner for private repositories?", False)
+    if yes("Is its port 22 answered by Tailscale SSH (or anything that skips authorized_keys)?", False):
+        args.release_port = int(ask("Free port for releases", "2223"))
+    args.deploy_root = ask("Deploy root on the server", "/srv/deploy")
+    here = [str(Path.cwd())] if is_service_project(Path.cwd()) else []
+    answer = ask("Service projects on this device to release there (comma-separated paths)", ",".join(here))
+    args.project_dir = [part.strip() for part in answer.split(",") if part.strip()]
+
+
+def run_host_add(args) -> int:
+    """Record a host's options on this device only; no connection is made."""
+    record = record_from_args(args)
+    save_host(record, set_up=False)
+    projects = ", ".join(Path(directory).name for directory in record.project_dirs) or "none yet"
+    print(f"Recorded host {record.name} ({record.target}) in {display_path(hosts_path())}; projects: {projects}.")
+    print(f"OWNER ACTION REQUIRED: run `pakem setup host {record.name}` in your terminal (your own login)")
+    return EXIT_DONE
 
 
 def _check_source(framework: Framework, args) -> str:
@@ -297,11 +379,12 @@ def _check_source(framework: Framework, args) -> str:
 
 def run_setup_host(args) -> int:
     framework = Framework(Path(args.root))
-    record = _record_from_args(args)
-    known = load_hosts().get(record.name)
-    if known is not None:
-        record.projects = known.projects
-    projects = _projects(args)
+    if args.target is None and args.name is None:
+        if not sys.stdin.isatty():
+            raise PakemError("name a host: `pakem setup host <name>` (agents record a new one with `pakem host add`)")
+        interview(args)
+    record = record_from_args(args)
+    projects = _projects(record)
     source = _check_source(framework, args)
     install = shlex.join(["sudo", "bash", str(BOOTSTRAP), "install", *record.bootstrap_flags()])
     steps = []
@@ -327,7 +410,10 @@ def run_setup_host(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
-    require_terminal(setup_host_command(record, [project.root for project in projects]))
+    if not sys.stdin.isatty():
+        # An agent: keep what it was told here, so the owner's step is the short command.
+        save_host(record, set_up=False)
+    require_terminal(f"pakem setup host {record.name}")
     confirm_steps(args.yes, "pakem setup host")
     if projects:
         create_device_key(passphrase=not args.no_passphrase)
