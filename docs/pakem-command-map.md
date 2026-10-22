@@ -24,20 +24,37 @@ owner actions it may report, and what `pakem project check` verifies afterwards.
 
 ### 0. Framework status and updates: `pakem status`, `pakem update`
 
-- `pakem status [--brief] [--json]`:
-  - the installed framework against merged `main` (network at most every few hours,
-    cached);
-  - the project's pinned version against the installed one;
-  - the project's readiness per stage, with open, due, and provisional decisions.
-- `pakem update`: installs the framework from merged `main` only (`pakem install`'s provenance
-  checks), then lists the kernel and skill files that changed.
+Stage: `experimental` (built 2026-10-22).
+
+- `pakem status [--brief] [--json] [--refresh | --offline]`:
+  - the installed framework against merged `main`: a `main` checkout follows
+    `origin/main`, a release checkout (what `install.sh` makes) follows the newest
+    release tag on `main`, and any other checkout follows nothing (the check is off and
+    `pakem update` refuses);
+  - network at most every 4 hours (`git fetch` without prompts, cached in the state
+    directory); `--refresh` fetches now, `--offline` never;
+  - the project's profile pins in `AGENTS.md` against the installed profiles, and
+    `pakem project check`'s error count;
+  - read-only apart from the fetch and its cache; always exit `0`.
+- `pakem update [--plan] [--yes] [--json]`:
+  - fast-forwards a `main` checkout to `origin/main`, or checks out the newest release;
+  - re-runs the new checkout's `pakem install --apply` with the hosts and profiles the
+    last install recorded, then `pakem enforce install` for every host enforced before;
+  - lists the kernel and skill files that changed, to re-read;
+  - refuses (`6`) a checkout on another branch, with uncommitted changes, or with commits
+    `origin/main` lacks; an install made before options were recorded that used profiles
+    needs one `pakem install --apply --profile ...` first (`3`); busy (`75`) while
+    another update runs.
 - `pakem config set update notify|apply`: `notify` (default) only tells the owner; `apply`
   is the owner's standing approval for agents to update.
-- Hooks (`pakem enforce`):
-  - a session-start hook prints `pakem status --brief` into each session;
-  - a per-message hook compares a local install stamp, without network, and names the
-    files to re-read after a mid-session install.
-- Hosts without hooks: a kernel line asks agents to run `pakem status` at session start.
+- Hooks (`pakem enforce install --host claude`):
+  - a session-start hook prints `pakem status --brief` into each session, with advice
+    that follows the `update` setting;
+  - a per-message hook compares the installed files with the ones the session started
+    with, without network, and names the files to re-read after a mid-session install.
+- Hosts without these hooks (Codex, Antigravity): a kernel line asks agents to run
+  `pakem status` at session start. It ships in the next kernel batch (ADR 0007), not with
+  the tool.
 
 ### 1. Device: `pakem setup device`
 
