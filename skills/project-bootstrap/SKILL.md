@@ -6,7 +6,9 @@ description: Use when starting a new repository, adopting this framework in an e
 # Project Bootstrap
 
 Set up a repository so any agent can work in it to the owner's standard from the
-first commit. For an existing project, follow
+first commit. `pakem project init` (new) and `pakem project adopt` (existing) do the
+steps below for GitHub projects (stage `experimental`), then list the project's gaps for
+the gap protocol; do by hand only what they report. For an existing project, follow
 [adoption](references/adoption-checklist.md) instead of starting over.
 
 ## 1. Before scaffolding
@@ -52,9 +54,9 @@ capabilities, and stack. Record the decision in `research/notes/`.
 11. **CI**: add CI from the `release-delivery` skill templates for the declared
     capabilities; CI exists before the first feature lands.
 12. **First commit**: `chore: bootstrap project` on `main`, then branch for the first
-    change. The pre-push hook lets only documentation reach `main`, so the first push of
-    a bootstrapped `main` that contains code is done once by the owner with
-    `AF_ALLOW_PROTECTED_PUSH=1 git push -u origin main`; agents never set that variable.
+    change. The pre-push hook lets only documentation reach `main`, except a new
+    repository's first push of that single root commit; `pakem project init` makes and
+    pushes it. Agents never set `AF_ALLOW_PROTECTED_PUSH`.
 
 ## 3. Capabilities
 
