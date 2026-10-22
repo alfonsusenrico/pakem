@@ -34,6 +34,7 @@ from pathlib import Path
 from .common import (
     EXIT_DONE,
     CheckFailed,
+    CommandBusy,
     CommandRefused,
     Framework,
     OwnerActionRequired,
@@ -65,6 +66,18 @@ CONTROL_PERSIST_SECONDS = 120
 # A Unix socket path is limited to 104 bytes on macOS, and its TMPDIR alone is about 50, so
 # the ControlMaster socket lives under /tmp (in a 0700 directory of its own).
 CONTROL_PARENT = "/tmp"
+DEPLOY_USER = "af"
+# The receiver's exit codes (the engine's, contracts §5).
+HOST_OK, HOST_REFUSED, HOST_BUSY = 0, 2, 75
+HOST_RESULTS = {
+    1: "failed; nothing to restore",
+    3: "failed; the previous release was restored and verified",
+    4: "failed, and restoring the previous release failed too",
+    5: "failed after a schema change; services are stopped for you",
+}
+SSH_FAILED = 255
+# A POSIX shell's exit code for a command it cannot find.
+SHELL_NOT_FOUND = 127
 
 
 @dataclass
@@ -76,6 +89,8 @@ class HostRecord:
     trigger: str = "pull"
     proxy: bool = True
     runner: bool = False
+    # OpenSSH's port for releases when port 22 skips forced commands (Tailscale SSH).
+    release_port: int | None = None
     # Projects this device may release there (`pakem host allow-device`).
     projects: list[str] = field(default_factory=list)
 
@@ -87,6 +102,8 @@ class HostRecord:
         flags = ["--trigger", self.trigger, "--deploy-root", self.deploy_root]
         if not self.proxy:
             flags.append("--no-proxy")
+        if self.release_port is not None:
+            flags += ["--release-port", str(self.release_port)]
         return flags
 
 
@@ -105,7 +122,7 @@ def load_hosts() -> dict[str, HostRecord]:
         raise PakemError(f"invalid TOML in {display_path(path)}: {exc}") from exc
     hosts = {}
     for name, table in data.get("hosts", {}).items():
-        keys = ("target", "port", "deploy_root", "trigger", "proxy", "runner", "projects")
+        keys = ("target", "port", "deploy_root", "trigger", "proxy", "runner", "release_port", "projects")
         fields = {key: table[key] for key in keys if key in table}
         hosts[name] = HostRecord(name, **fields)
     return hosts
@@ -126,6 +143,8 @@ def save_host(record: HostRecord) -> None:
             f"proxy = {json.dumps(host.proxy)}",
             f"runner = {json.dumps(host.runner)}",
         ]
+        if host.release_port is not None:
+            lines.append(f"release_port = {host.release_port}")
         if host.projects:
             lines.append(f"projects = {json.dumps(sorted(host.projects))}")
         if name == record.name:
@@ -231,7 +250,8 @@ def _record_from_args(args) -> HostRecord:
     name = args.name or default_name(args.target)
     if not HOST_NAME.match(name):
         raise PakemError(f"invalid host name {name!r}: lowercase letters, digits, dots, and hyphens")
-    return HostRecord(name, args.target, args.port, args.deploy_root, args.trigger, not args.no_proxy, args.runner)
+    return HostRecord(name, args.target, args.port, args.deploy_root, args.trigger, not args.no_proxy, args.runner,
+                      args.release_port)
 
 
 def setup_flags(record: HostRecord) -> list[str]:
@@ -243,6 +263,8 @@ def setup_flags(record: HostRecord) -> list[str]:
         words.append("--no-proxy")
     if record.runner:
         words.append("--runner")
+    if record.release_port is not None:
+        words += ["--release-port", str(record.release_port)]
     return words
 
 
@@ -335,8 +357,12 @@ def run_setup_host(args) -> int:
         raise PakemError(f"host setup failed on {record.target} with exit {code}; see the lines above")
     save_host(record)
     print(f"Host {record.name} is ready; recorded in {display_path(hosts_path())}.")
+    for name in allowed:
+        # The device key must reach the receiver, not a shell (see DeviceLink.failure).
+        DeviceLink(record).query(f"status {name}")
     if allowed:
-        print(f"This device may release {', '.join(allowed)} there: `pakem release` runs without your login now.")
+        print(f"This device may release {', '.join(allowed)} there (checked with its key): `pakem release` runs "
+              "without your login now.")
     return EXIT_DONE
 
 
@@ -415,3 +441,58 @@ def run_host_runner(args) -> int:
         raise PakemError(f"runner {verb} failed on {record.target} with exit {code}; see the lines above")
     print(f"Runner {args.runner_command} done for {args.repository} on {record.name}.")
     return EXIT_DONE
+
+
+class DeviceLink:
+    """SSH as the deploy user with the device key; the host's forced command answers."""
+
+    def __init__(self, record: HostRecord) -> None:
+        self.record = record
+
+    def command(self, remote: str) -> list[str]:
+        command = [
+            "ssh", "-i", str(device_key.private_path()), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+        ]
+        port = self.record.release_port or self.record.port
+        if port is not None:
+            command += ["-p", str(port)]
+        return [*command, f"{DEPLOY_USER}@{self.record.address}", remote]
+
+    def query(self, remote: str) -> dict:
+        completed = subprocess.run(self.command(remote), stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        if completed.returncode != HOST_OK:
+            raise self.failure(completed.returncode, (completed.stdout + completed.stderr).strip(), remote)
+        try:
+            return json.loads(completed.stdout)
+        except ValueError as exc:
+            raise PakemError(f"{self.record.name} answered `{remote}` with something other than JSON") from exc
+
+    def send(self, payload: Path, quiet: bool) -> int:
+        """Send a signed request; the host's progress goes to this terminal (stderr with --json)."""
+        with payload.open("rb") as stdin:
+            completed = subprocess.run(self.command("release"), stdin=stdin, stdout=sys.stderr if quiet else None)
+        return completed.returncode
+
+    def failure(self, code: int, detail: str = "", operation: str = "release") -> PakemError:
+        last = detail.splitlines()[-1] if detail else "see the lines above"
+        if code == SHELL_NOT_FOUND:
+            # A shell ran the request: something answered before OpenSSH's forced command,
+            # such as Tailscale SSH on port 22, which logs in by tailnet identity.
+            return CheckFailed(
+                f"{self.record.name} gave the device key a shell instead of the release receiver ({last}); "
+                "something on that port skips authorized_keys forced commands (Tailscale SSH does). Set up a "
+                f"release port: `{setup_host_command(self.record)} --release-port 2222`"
+            )
+        if code == SSH_FAILED:
+            return PakemError(
+                f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}); if this device "
+                f"was never allowed there, run `{setup_host_command(self.record)} --project-dir <project>` in your "
+                "terminal"
+            )
+        if code == HOST_REFUSED:
+            return CommandRefused(f"{self.record.name} refused: {last}")
+        if code == HOST_BUSY:
+            return CommandBusy(f"{self.record.name}: another deployment holds the lock; try again shortly")
+        if operation != "release":
+            return CheckFailed(f"{self.record.name}: `{operation}` failed with exit {code}: {last}")
+        return CheckFailed(f"{self.record.name}: release {HOST_RESULTS.get(code, f'failed with exit {code}')}")

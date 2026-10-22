@@ -2,8 +2,9 @@
 # Prepare a Debian or Ubuntu host for the deployment standard (ADR 0009; contracts v1 §11).
 #
 #   sudo ./af_bootstrap.sh install [--trigger pull|push] [--deploy-root /srv/deploy]
-#                                  [--no-proxy] [--replace-caddyfile]
+#                                  [--no-proxy] [--replace-caddyfile] [--release-port PORT]
 #   sudo ./af_bootstrap.sh check   [--trigger pull|push] [--deploy-root /srv/deploy] [--no-proxy]
+#                                  [--release-port PORT]
 #
 # Run it from a checkout of a tagged framework release (this directory). `install` is
 # idempotent and never replaces what it did not create: an existing Docker keeps its
@@ -14,9 +15,11 @@
 # Installs: Docker Engine with the Compose plugin and Caddy from their signed apt
 # repositories (key fingerprints pinned below), cosign as a checksum-pinned binary, the
 # `af` deploy user, the engine and the direct delivery receiver in /opt/af, /etc/af, the
-# deploy root, and the af-agent and af-monitor timers. Project files (host configs, keys,
-# placement, secrets) are added per project afterwards: `pakem host allow-device` for
-# direct delivery, contracts §11 steps 3 to 7 for a registry.
+# deploy root, the af-agent and af-monitor timers, and with --release-port a second OpenSSH
+# port where only `af` logs in with a key (for hosts whose port 22 is taken over by Tailscale
+# SSH or similar, which skip authorized_keys forced commands). Project files (host configs,
+# keys, placement, secrets) are added per project afterwards: `pakem setup host
+# --project-dir` for direct delivery, contracts §11 steps 3 to 7 for a registry.
 set -euo pipefail
 
 DOCKER_KEY_FINGERPRINT=9DC858229FC7DD38854AE2D88D81803C0EBFCD88
@@ -35,6 +38,8 @@ TRIGGER=pull
 DEPLOY_ROOT=/srv/deploy
 PROXY=1
 REPLACE_CADDYFILE=0
+RELEASE_PORT=0
+SSHD_DROPIN=/etc/ssh/sshd_config.d/pakem-release.conf
 FRESH_DOCKER=0
 FRESH_CADDY=0
 FAILURES=0
@@ -43,7 +48,7 @@ say() { printf 'af-bootstrap: %s\n' "$*"; }
 die() { say "error: $*" >&2; exit 2; }
 
 usage() {
-  sed -n '4,7p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '4,8p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -56,11 +61,13 @@ parse_arguments() {
       --deploy-root) DEPLOY_ROOT=${2:-}; shift 2 ;;
       --no-proxy) PROXY=0; shift ;;
       --replace-caddyfile) REPLACE_CADDYFILE=1; shift ;;
+      --release-port) RELEASE_PORT=${2:-}; shift 2 ;;
       *) usage ;;
     esac
   done
   [[ "$TRIGGER" == pull || "$TRIGGER" == push ]] || die "--trigger must be pull or push"
   [[ "$DEPLOY_ROOT" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_ROOT" != / ]] || die "--deploy-root must be an absolute path"
+  [[ "$RELEASE_PORT" =~ ^[0-9]{1,5}$ ]] && ((RELEASE_PORT <= 65535)) || die "--release-port must be a TCP port"
 }
 
 # -- host facts ------------------------------------------------------------------------
@@ -268,6 +275,69 @@ install_units() {
   fi
 }
 
+# -- the release port ---------------------------------------------------------------------
+
+sshd_ports() {
+  # With a Match LocalPort block, `sshd -T` needs a connection spec; ports are global anyway.
+  sshd -T -C "lport=1,user=af,host=localhost,addr=127.0.0.1" | awk '$1 == "port" { print $2 }'
+}
+
+release_port_text() {
+  # A Port line in a drop-in replaces the default 22, so the ports sshd listens on now are
+  # kept explicitly unless the main file names its own.
+  local port
+  printf '%s\n' "# Written by af_bootstrap.sh (Pakem ADR 0010): a second OpenSSH port for releases." \
+    "# Only the deploy user, with a key, so its authorized_keys forced commands always apply."
+  if ! grep -qsE '^[[:space:]]*Port[[:space:]]' /etc/ssh/sshd_config; then
+    for port in $1; do [[ "$port" == "$RELEASE_PORT" ]] || printf 'Port %s\n' "$port"; done
+  fi
+  printf '%s\n' "Port $RELEASE_PORT" "Match LocalPort $RELEASE_PORT" "  AllowUsers af" \
+    "  AuthenticationMethods publickey" "  PasswordAuthentication no" "  KbdInteractiveAuthentication no" \
+    "  PermitRootLogin no"
+}
+
+reload_sshd() {
+  # Socket activation (Ubuntu) generates its listeners from sshd_config on daemon-reload.
+  if systemctl is-active --quiet ssh.socket; then
+    reload_systemd "ssh.socket listeners"
+    systemctl restart ssh.socket
+  else
+    systemctl reload ssh 2>/dev/null || systemctl reload sshd
+  fi
+}
+
+configure_release_port() {
+  ((RELEASE_PORT)) || return 0
+  command -v sshd >/dev/null || die "--release-port needs the OpenSSH server (sshd)"
+  local before wanted saved="" port problem=""
+  before=$(sshd_ports) || die "sshd -T could not read the current configuration; nothing changed"
+  wanted=$(release_port_text "$before")
+  if [[ -f "$SSHD_DROPIN" && "$(cat "$SSHD_DROPIN")" == "$wanted" ]]; then
+    say "sshd release port $RELEASE_PORT present"
+    return
+  fi
+  if [[ -f "$SSHD_DROPIN" ]]; then saved=$(mktemp); cp -p "$SSHD_DROPIN" "$saved"; fi
+  install -d -m 0755 /etc/ssh/sshd_config.d
+  printf '%s\n' "$wanted" > "$SSHD_DROPIN"
+  chmod 0644 "$SSHD_DROPIN"
+  if ! sshd -t; then
+    problem="sshd rejected the release port settings"
+  elif ! sshd_ports 2>/dev/null | grep -x "$RELEASE_PORT" >/dev/null; then
+    problem="sshd does not read /etc/ssh/sshd_config.d (no Include line); add the port by hand"
+  else
+    for port in $before; do
+      sshd_ports 2>/dev/null | grep -x "$port" >/dev/null || problem="the settings would drop port $port"
+    done
+  fi
+  if [[ -n "$problem" ]]; then
+    if [[ -n "$saved" ]]; then mv "$saved" "$SSHD_DROPIN"; else rm -f "$SSHD_DROPIN"; fi
+    die "$problem; sshd was left as it was"
+  fi
+  rm -f "$saved"
+  say "sshd: release port $RELEASE_PORT for the deploy user (keys only); ports $(echo $before) stay"
+  reload_sshd
+}
+
 # -- check ------------------------------------------------------------------------------
 
 result() {
@@ -297,6 +367,7 @@ agent_disabled() { ! systemctl is-enabled --quiet af-agent.timer; }
 admin_socket_ready() { [[ "$(stat -c '%a %G' /run/caddy/admin.sock)" == "660 caddy" ]]; }
 sites_ready() { af_in_group caddy && [[ "$(stat -c %U /etc/caddy/sites)" == af ]]; }
 logs_bounded() { grep -q '"max-size"' /etc/docker/daemon.json; }
+release_port_listening() { ss -Hltn "sport = :$RELEASE_PORT" | grep -q .; }
 
 check() {
   say "checking this host"
@@ -322,6 +393,9 @@ check() {
     result "$(passes sites_ready)" "caddy sites" "/etc/caddy/sites owned by af, af in the caddy group"
   fi
   result "$(passes logs_bounded)" "container logs" "size limit in /etc/docker/daemon.json"
+  if ((RELEASE_PORT)); then
+    result "$(passes release_port_listening)" "release port" "sshd listens on $RELEASE_PORT ($SSHD_DROPIN)"
+  fi
   if ((FAILURES)); then
     say "$FAILURES check(s) failed"
     return 1
@@ -343,6 +417,7 @@ main() {
     fi
     install_engine
     install_units
+    configure_release_port
     ((FRESH_DOCKER)) || say "note: an existing Docker keeps its daemon.json; add a log size limit there if 'container logs' fails"
   fi
   check

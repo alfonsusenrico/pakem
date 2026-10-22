@@ -80,7 +80,7 @@ class HostOverSsh(unittest.TestCase):
         self.name = f"pakem-setup-host-{os.getpid()}"
         docker(
             "run", "-d", "--name", self.name, "--privileged", "--cgroupns=private",
-            "-p", "127.0.0.1::22", "-v", "/var/lib/docker", "-v", "/var/lib/containerd",
+            "-p", "127.0.0.1::22", *self.published_ports(), "-v", "/var/lib/docker", "-v", "/var/lib/containerd",
             HOST_IMAGE,
         )
         self.addCleanup(docker, "rm", "--force", "--volumes", self.name, check=False)
@@ -113,6 +113,10 @@ class HostOverSsh(unittest.TestCase):
         wrapper.chmod(0o755)
         self.bin = wrapper.parent
         self.env = isolated_env(self.home, {"PATH": f"{self.bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"})
+
+    def published_ports(self) -> list[str]:
+        """Extra `docker run -p` arguments a subclass needs."""
+        return []
 
     def pakem(self, *args: str, timeout: float = 900) -> tuple[int, str]:
         argv = [sys.executable, str(PAKEM), "--root", str(REPO_ROOT), *args]

@@ -148,6 +148,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-passphrase", action="store_true", help="a new device key without a passphrase (a headless device only)"
     )
     setup_host.add_argument(
+        "--release-port", type=_bounded_int(1, 65535), metavar="PORT",
+        help="a second OpenSSH port for releases, when port 22 skips forced commands (Tailscale SSH)",
+    )
+    setup_host.add_argument(
         "--allow-unmerged", action="store_true", help="upload from a checkout that is not merged main (testing only)"
     )
     setup_host.add_argument(

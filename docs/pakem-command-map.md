@@ -110,12 +110,20 @@ Stage: `experimental` (built 2026-10-22).
   administration: it may only deploy, through a forced command (area 5).
 - **`pakem setup host <ssh-target> [--name] [--port] [--trigger pull|push]
   [--deploy-root] [--no-proxy] [--runner] [--project-dir DIR ...] [--no-passphrase]
-  [--plan] [--yes]`:** the one owner step before releasing (owner request 2026-10-22: one
+  [--release-port PORT] [--plan] [--yes]`:** the one owner step before releasing (owner request 2026-10-22: one
   command, not three):
   - with projects (each `--project-dir`, or the current directory when it is a service
     project), first makes this device's key if it has none (`setup key`'s prompt), and
     after the install lets the key release each project (`host allow-device`, switching an
     environment that deploys from a registry to direct delivery);
+  - after allowing the projects, checks with the device key that the release receiver
+    answers; when a shell answers instead (Tailscale SSH on port 22 logs in by tailnet
+    identity and never reads `authorized_keys`, so forced commands do not apply), it stops
+    with exit `5` and names `--release-port`;
+  - `--release-port PORT` (hosts like that only; a normal OpenSSH host needs none): the
+    bootstrap adds an sshd drop-in, checked with `sshd -t` and undone on any problem,
+    where OpenSSH also listens on PORT for the `af` user with keys only; every port sshd
+    listened on before stays; releases use that port, recorded in `hosts.toml`;
   - one SSH connection (ControlMaster), so a password is asked at most once;
   - uploads `VERSION` and the deploy assets, in the checkout's layout, to a temporary
     directory, runs `af_bootstrap.sh install` with sudo (Docker, cosign, Caddy unless

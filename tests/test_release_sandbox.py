@@ -1,8 +1,9 @@
 """Direct delivery end to end over real SSH (opt-in: AF_SANDBOX_HOST=1; slow, downloads).
 
-A systemd Debian 13 container is the host. One `pakem setup host --project-dir` run, with
-the owner's admin login, makes the device key, installs the engine, and lets the key
-release a small web project. Then, with only the
+A systemd Debian 13 container is the host. Its port 22 lets the deploy user in without a
+key, as Tailscale SSH does, so `pakem setup host --project-dir` must refuse; with
+`--release-port`, one run makes the device key, installs the engine with a second OpenSSH
+port, and lets the key release a small web project there. Then, with only the
 device key: publish two commits to staging (each built on the host), promote the second
 to production (reusing its images), roll staging back, read the history, and revoke the
 device. A fake gh stands in for GitHub's check results; everything else is real.
@@ -15,7 +16,7 @@ import subprocess
 import textwrap
 import unittest
 
-from engine_sandbox import APP, BACKUP_HOOK, COMPOSE, RELEASE_TOML, SETTINGS_TOML
+from engine_sandbox import APP, BACKUP_HOOK, COMPOSE, RELEASE_TOML, SETTINGS_TOML, free_port
 from support import git, init_repo, write
 from test_setup_host_sandbox import ENABLED, HostOverSsh
 
@@ -43,6 +44,10 @@ PORTS = {"staging": 18080, "production": 18081}
 
 @unittest.skipUnless(ENABLED, "set AF_SANDBOX_HOST=1 to release over SSH to a container host")
 class DirectReleaseOverSsh(HostOverSsh):
+    def published_ports(self) -> list[str]:
+        self.release_port = free_port()
+        return ["-p", f"127.0.0.1:{self.release_port}:{self.release_port}"]
+
     def setUp(self) -> None:
         super().setUp()
         write(self.bin / "gh", FAKE_GH, mode=0o755)
@@ -74,7 +79,7 @@ class DirectReleaseOverSsh(HostOverSsh):
         key = self.home / ".ssh" / "pakem_device_ed25519"
         return subprocess.run(
             [str(self.bin / "ssh"), "-i", str(key), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
-             "af@pakem-sandbox", command],
+             "-p", str(self.release_port), "af@pakem-sandbox", command],
             env=self.env, capture_output=True, text=True, stdin=subprocess.DEVNULL,
         )
 
@@ -94,11 +99,25 @@ class DirectReleaseOverSsh(HostOverSsh):
 
     def test_publish_promote_rollback_and_revoke(self) -> None:
         first = self.commit("feat: first")
-        # The one owner step: the device key, the host, and this project, in one run.
         waivers = ("--allow-unmerged", "--allow-dirty")
+        code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--yes", *waivers)
+        self.assertEqual(code, 0, output[-4000:])
+        # Port 22 now lets the deploy user in with no key, as Tailscale SSH does: forced commands
+        # never run there, so setup must notice and name the release port.
+        self.in_host(
+            "passwd -q -d af && printf 'Match LocalPort 22 User af\\n  PermitEmptyPasswords yes\\n"
+            "  PasswordAuthentication yes\\n' > /etc/ssh/sshd_config.d/00-keyless-af.conf && sshd -t "
+            "&& systemctl reload ssh"
+        )
         code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--no-passphrase",
                                   "--project-dir", str(self.project), "--yes", *waivers)
+        self.assertEqual(code, 5, output[-4000:])
+        self.assertIn("gave the device key a shell instead of the release receiver", output)
+        # The one owner step: the device key, the host, a release port, and this project.
+        code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--release-port",
+                                  str(self.release_port), "--project-dir", str(self.project), "--yes", *waivers)
         self.assertEqual(code, 0, output[-4000:])
+        self.assertIn(f"sshd: release port {self.release_port}", output)
         self.assertIn("missing placement settings: HTTP_PORT, PUBLIC_HOST", output)
         self.assertIn("This device may release sandbox there", output)
         for environment, port in PORTS.items():

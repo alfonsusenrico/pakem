@@ -21,13 +21,21 @@ FAKE_SSH = """#!/bin/sh
 echo "ssh $*" >> "{log}"
 while [ $# -gt 0 ]; do
   case "$1" in
-    -o|-p) shift 2 ;;
+    -o|-p|-i) shift 2 ;;
     -O) exit 0 ;;
     -t) shift ;;
     *) break ;;
   esac
 done
+target="$1"
 shift
+# The deploy user's key reaches the release receiver; set state/af-shell to play a host whose
+# port 22 hands it a shell instead (Tailscale SSH).
+case "$target" in
+  af@*)
+    if [ -e "{state}/af-shell" ]; then exec sh -c "$*"; fi
+    echo '{{"project": "demo", "environments": {{}}}}'; exit 0 ;;
+esac
 PATH="{remote_bin}:$PATH" exec sh -c "$*"
 """
 FAKE_SUDO = """#!/bin/sh
@@ -195,6 +203,27 @@ class SetupHostTests(IsolatedTestCase):
             self.assertIn(part, line)
         self.assertEqual(sorted(self.hosts()["prod"]["projects"]), ["demo", "other"])
         self.assertIn("This device may release demo, other there", output)
+
+    def test_a_shell_for_the_device_key_names_the_release_port(self) -> None:
+        (self.state / "af-shell").touch()
+        project = self.service_project()
+        code, output = self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--no-passphrase",
+                                    "--project-dir", str(project), "--yes")
+        self.assertEqual(code, 5, output)
+        self.assertIn("gave the device key a shell instead of the release receiver", output)
+        self.assertIn("--release-port 2222", output)
+        self.assertEqual(self.hosts()["prod"]["projects"], ["demo"], "the host is recorded before the check")
+
+    def test_the_release_port_reaches_the_bootstrap_and_the_device_link(self) -> None:
+        project = self.service_project()
+        code, output = self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--no-passphrase",
+                                    "--release-port", "2222", "--project-dir", str(project), "--yes")
+        self.assertEqual(code, 0, output)
+        install = next(call for call in self.calls() if "af_bootstrap.sh install" in call)
+        self.assertTrue(install.endswith("--release-port 2222"), install)
+        status = next(call for call in self.calls() if call.startswith("ssh") and "af@203.0.113.7" in call)
+        self.assertIn("-p 2222", status)
+        self.assertEqual(self.hosts()["prod"]["release_port"], 2222)
 
     def test_without_a_terminal_the_owner_action_is_the_one_command(self) -> None:
         project = self.service_project()
