@@ -30,6 +30,7 @@ from .common import (
     Framework,
     OwnerActionRequired,
     PakemError,
+    confirm_steps,
     display_path,
     run_git,
     version_tuple,
@@ -124,14 +125,6 @@ def _run_tool(framework: Framework, arguments: list[str], capture: bool) -> None
         raise PakemError(f"`pakem {' '.join(arguments)}` failed with exit {completed.returncode}{detail}")
 
 
-def _confirm(args) -> None:
-    if args.yes:
-        return
-    if not sys.stdin.isatty():
-        raise PakemError("pass --yes to update without a prompt")
-    answer = input("Apply these steps? [y/N] ").strip().lower()
-    if answer not in ("y", "yes"):
-        raise CommandRefused("update cancelled; nothing changed")
 
 
 def _reread(before: dict, after: dict) -> list[str]:
@@ -199,7 +192,7 @@ def run_update(args) -> int:
             result["status"] = "planned"
             result["done"] = [description for description, _ in steps]
             return _finish(args, result, ["Plan only: nothing changed."])
-        _confirm(args)
+        confirm_steps(args.yes, "pakem update")
         for description, arguments in steps:
             if arguments is None:
                 _move_checkout(framework.root, target)
