@@ -102,7 +102,7 @@ before acting, and take `--plan` to preview and `--yes` to skip the question.
 |---|---|
 | `pakem status` | Whether this device runs the latest merged Pakem, and whether this project's pins match |
 | `pakem update` | Install the latest merged Pakem and list the files agents must re-read |
-| `pakem setup device` | Install the tools, container runtime, and device key this machine needs (`setup check` only lists them) |
+| `pakem setup device` | Prepare a fresh machine in one go; other commands prepare what they need when they run (`setup key` makes the device key, `setup check` only lists) |
 | `pakem config` | Device settings, such as whether agents may run `pakem update` themselves |
 | `pakem install` | Install the kernel and skills into every supported agent on this device |
 | `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |

@@ -1,6 +1,7 @@
 # 0011. `pakem`: a standard core with adaptive edges
 
-- Status: Accepted (owner, 2026-10-21); amended 2026-10-22 (the command is `pakem`, after the 2.0.0 rename)
+- Status: Accepted (owner, 2026-10-21); amended 2026-10-22 (the command is `pakem`, after
+  the 2.0.0 rename; decision 8: commands prepare what they need, approved per session)
 - Date: 2026-10-21
 
 ## Context
@@ -92,9 +93,20 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
    - Agents only notify by default. With the owner's standing approval
      (`pakem config set update apply`) they install updates themselves, only from merged
      `main`.
-8. **Installs through `pakem setup` are approved by the owner** who runs the command and
-   confirms its prompt. Agents never run an installing `pakem setup` without the owner's
-   instruction in that session. The floor text gains this when `pakem setup` ships.
+8. **Commands prepare what they need; the owner approves per session.** Each command
+   declares its needs (tools such as `gh` or `glab`, a container runtime, the device key,
+   forge logins) and provides what is missing as part of its own plan: no separate manual
+   setup first. `pakem setup device` stays only to prepare a fresh machine in one go.
+   - The owner's instruction in the session to run a command approves the installs that
+     command lists, which pakem prints before installing; there is no standing approval.
+     This is how the existing floor's "owner's approval" for global tooling is given, so
+     the floor text does not change.
+   - What only the owner can do stays an owner action: browser logins, sudo without a
+     terminal, the device key's passphrase, and what the package manager cannot provide.
+   - The device key has a passphrase by default and is used through ssh-agent on macOS,
+     Linux, and WSL (the macOS Keychain unlocks it without prompts); a device nobody can
+     unlock is created with `--no-passphrase`, recorded per device. Native Windows is not
+     supported; WSL is.
 9. **Release pace.** The `pakem` tool may release as often as its areas mature; the kernel and
    skills keep ADR 0007's monthly batch.
 10. **Maturity per area:** `draft`, then `experimental` (usable, may change), then

@@ -17,6 +17,7 @@ owner actions it may report, and what `pakem project check` verifies afterwards.
 | Production | Any production change needs `--production` and, for agents, the owner's instruction in the session |
 | Secrets | Read from hidden input or a file, written straight to their store; never printed, logged, or put in arguments |
 | Billing | Only free services and tiers unless the project approves a billed one (`default:no-billed`) |
+| Requirements | Each command declares what it needs (tools, runtime, device key, logins) and prepares what is missing in its own plan; the owner's instruction in the session to run it approves the installs it lists (ADR 0011, decision 8) |
 | Output | Short status lines; `--json` gives `{status, done[], owner_actions[], gaps[], checks[]}` |
 | Location facts | Host addresses and device paths live in device-local `~/.config/pakem/`, never in repositories |
 
@@ -63,34 +64,40 @@ Stage: `experimental` (built 2026-10-22).
 - A host that offers no session hook gets a kernel line asking agents to run
   `pakem status` at session start; every supported host has one today.
 
-### 1. Device: `pakem setup device`
+### 1. Device: `pakem setup device`, `pakem setup key`, `pakem setup check`
 
-Stage: `experimental` (built 2026-10-22).
+Stage: `experimental` (built 2026-10-22; on-demand requirements and key passphrase
+2026-10-22).
 
-- **Automatic** (`pakem setup device [--plan] [--yes] [--json]`):
-  - detects the OS and CPU;
-  - installs what is missing after one confirmation, with Homebrew on macOS or apt
-    (through sudo) on Debian and Ubuntu: git, the forge CLIs (`gh`, `glab`), uv, and the
-    docker CLI;
-  - keeps any container runtime that already answers `docker info`; otherwise starts
-    Colima on macOS (installed if missing);
-  - creates the device key `~/.ssh/pakem_device_ed25519`, a dedicated ed25519 key without
-    a passphrase that connects to hosts and signs releases (never the login key; hosts
-    restrict it with a forced command). The private key is never read or printed;
-  - writes `~/.config/pakem/device.toml` (name, OS, CPU, key path and fingerprint);
-  - installs the framework for agent hosts (`pakem install --apply`) when it is not
-    installed yet; later versions come through `pakem update`.
-- **Owner actions:**
-  - forge logins (`gh auth login`, `glab auth login`), VPN sign-in if a host needs it;
-  - Homebrew itself on macOS, and tools apt cannot provide (uv on most Linux
-    releases), each with the official instruction;
-  - on Linux, starting Docker Engine and joining the `docker` group.
+- **Requirements on demand** (`tools/pakem_lib/requirements.py`): every command names the
+  needs it uses from this list and prepares what is missing, with the same plan, one
+  confirmation, and owner actions as the rest of the command:
+
+  | Need | Prepared by pakem | Owner action when pakem cannot |
+  |---|---|---|
+  | `git`, `gh`, `glab`, `uv`, `docker` | Homebrew (macOS), apt (Debian, Ubuntu, WSL) | sudo without a terminal; tools apt lacks (uv); no package manager |
+  | `container-runtime` | keeps any runtime that answers `docker info`; installs and starts Colima on macOS | Linux: start Docker Engine and join the `docker` group; WSL: Docker Desktop's WSL integration or Docker Engine |
+  | `device-key` | on a terminal, `ssh-keygen` asks for the passphrase | without a terminal: `pakem setup key` |
+  | `device-key-unlocked` | macOS: reloads the passphrase from the Keychain; on a terminal, `ssh-add` | `ssh-add ~/.ssh/pakem_device_ed25519`, or start an ssh-agent |
+  | `github-login`, `gitlab-login` | none | `gh auth login`, `glab auth login` |
+  | `framework` | `pakem install --apply` | none |
+  | `device-settings` | writes `~/.config/pakem/device.toml` (name, system, WSL, CPU, key path, fingerprint, passphrase) | none |
+
+  For example `pakem project init` for a GitHub project needs `git`, `gh`, and
+  `github-login`, never `glab`.
+- **Device key** `~/.ssh/pakem_device_ed25519`: a dedicated ed25519 key that connects to
+  hosts and signs releases, never the login key; pakem never reads or prints its private
+  half. It has a passphrase by default and is used through ssh-agent, the same on every
+  system: the macOS Keychain unlocks it without prompts (with Apple's `ssh-add`); Linux
+  and WSL need `ssh-add` once per login or boot. `pakem setup key --no-passphrase` is
+  only for a device nobody can unlock (a headless machine), recorded in `device.toml`.
+- `pakem setup device [--plan] [--yes] [--json]`: prepares every need at once, for a fresh
+  machine.
+- `pakem setup check [--json]`: lists every need without changing anything; exit `0` all
+  present, `3` owner actions remain, `5` something pakem would prepare is missing.
+- **Systems:** macOS, Linux, and WSL (detected from the kernel); native Windows is refused
+  with a pointer to WSL.
 - **Gaps:** none.
-- **Check:** `pakem setup check [--json]` lists tools, versions, the runtime, the key, the
-  framework, the settings file, and forge logins; exit `0` all present, `3` only owner
-  actions remain, `5` something `pakem setup device` would install is missing.
-- Only the owner runs an installing `pakem setup device` (ADR 0011, decision 8); the
-  floor text that says so ships with the release that contains this command.
 
 ### 2. Host: `pakem setup host <ssh-target>`
 
