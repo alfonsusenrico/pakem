@@ -10,7 +10,7 @@ from .common import Framework, PakemError, eprint
 from .device_config import SETTINGS, run_config
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
-from .enforce import run_enforce
+from .enforce import ENFORCE_HOSTS, run_enforce
 from .evals import HOSTS as EVAL_HOSTS
 from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
@@ -24,7 +24,6 @@ from .status import HOOK_PROMPT, HOOK_SESSION_START, run_status
 from .update import run_update
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent
-ENFORCE_HOSTS = ("claude", "codex", "antigravity")
 # Commands that write installed state migrate it from the former name first;
 # install does so itself, after its source checks.
 MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
@@ -95,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     network.add_argument("--offline", action="store_true", help="never fetch; use the last check")
     status.add_argument("--hook", choices=(HOOK_SESSION_START, HOOK_PROMPT), help=argparse.SUPPRESS)
-    status.add_argument("--host", default="claude", help=argparse.SUPPRESS)
+    status.add_argument("--host", default="claude", choices=ENFORCE_HOSTS, help=argparse.SUPPRESS)
 
     update = commands.add_parser(
         "update", help="install the framework from merged main, then list the files that changed"

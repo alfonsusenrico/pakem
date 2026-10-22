@@ -35,6 +35,7 @@ from .common import (
     run_git,
     version_tuple,
 )
+from .enforce import ENFORCE_HOSTS
 from .manifest import load_manifest, state_dir
 from .source import INSTALL_BRANCH, REMOTE, has_uncommitted_changes, head_release_tag, resolve_commit
 from .upstream import (
@@ -163,7 +164,8 @@ def plan_update(framework: Framework, manifest: dict) -> tuple[list[tuple[str, l
     if move is not None or current != target.commit or manifest.get("framework_clean") is False:
         arguments = ["install", "--apply", *install_arguments(manifest)]
         steps.append((f"pakem {' '.join(arguments)}", arguments))
-        for host in sorted(key for key in manifest.get("enforcement", {}) if key != "guard"):
+        # Records such as the guard and Codex's hooks file belong to a host and are refreshed with it.
+        for host in sorted(key for key in manifest.get("enforcement", {}) if key in ENFORCE_HOSTS):
             arguments = ["enforce", "install", "--host", host, "--apply"]
             steps.append((f"pakem {' '.join(arguments)}", arguments))
     return steps, target

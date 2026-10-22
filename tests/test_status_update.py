@@ -304,3 +304,73 @@ class CacheTests(StatusUpdateTestCase):
         result = self.status_json()
         self.assertEqual(result["status"], "up-to-date")
         self.assertIsNotNone(result["framework"]["fetch"]["checked_at"], "a damaged cache triggers a fresh check")
+
+
+class OtherHostHookTests(StatusUpdateTestCase):
+    def hook_for(self, host: str, kind: str, payload: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(PAKEM), "--root", str(self.framework), "status", "--hook", kind, "--host", host],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            env=isolated_env(self.home),
+            cwd=str(self.base),
+        )
+
+    def reinstall_with_new_kernel(self) -> None:
+        kernel = self.framework / "kernel" / "KERNEL.md"
+        kernel.write_text(kernel.read_text() + "New rule.\n")
+        self.commit(self.framework, "feat: new rule")
+        self.assert_ok(self.pakem("install", "--apply", "--allow-unmerged"))
+
+    def test_codex_hooks_use_its_session_id_and_plain_text(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply"))
+        payload = {"session_id": "codex-1", "cwd": str(self.base), "hook_event_name": "SessionStart"}
+        start = self.hook_for("codex", "session-start", payload)
+        self.assertIn("Pakem 0.2.0 is up to date", start.stdout)
+        self.reinstall_with_new_kernel()
+        notice = self.hook_for("codex", "prompt", {"session_id": "codex-1", "prompt": "hi"})
+        self.assertIn("Re-read before continuing: ~/.codex/AGENTS.md", notice.stdout)
+        self.assertNotIn(".claude", notice.stdout)
+
+    def test_antigravity_hooks_answer_with_inject_steps(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply"))
+        payload = {"conversationId": "ec33ebf9-0cba", "workspacePaths": [str(self.base)]}
+        start = json.loads(self.hook_for("antigravity", "session-start", payload).stdout)
+        self.assertIn("Pakem 0.2.0 is up to date", start["injectSteps"][0]["ephemeralMessage"])
+        quiet = json.loads(self.hook_for("antigravity", "prompt", payload).stdout)
+        self.assertEqual(quiet, {"injectSteps": []})
+        self.reinstall_with_new_kernel()
+        notice = json.loads(self.hook_for("antigravity", "prompt", payload).stdout)
+        self.assertIn("~/.gemini/GEMINI.md", notice["injectSteps"][0]["ephemeralMessage"])
+        failed = self.hook_for("antigravity", "session-start", {"conversationId": "x"})
+        self.assertEqual(failed.returncode, 0)
+        json.loads(failed.stdout)
+
+    def test_enforce_writes_codex_and_antigravity_hooks(self) -> None:
+        codex = self.pakem("enforce", "install", "--host", "codex", "--apply")
+        self.assert_ok(codex)
+        self.assertIn("OWNER ACTION REQUIRED: open Codex and trust the Pakem hooks with /hooks", codex.stdout)
+        codex_hooks = json.loads((self.home / ".codex" / "hooks.json").read_text())["hooks"]
+        self.assertTrue(codex_hooks["SessionStart"][0]["hooks"][0]["command"].endswith("--hook session-start --host codex"))
+        self.assertTrue(codex_hooks["UserPromptSubmit"][0]["hooks"][0]["command"].endswith("--hook prompt --host codex"))
+        self.assertFalse((self.home / ".local" / "share" / "pakem" / "guard.py").exists(), "Codex hooks need no guard")
+
+        self.assert_ok(self.pakem("enforce", "install", "--host", "antigravity", "--apply"))
+        agy = json.loads((self.home / ".gemini" / "config" / "hooks.json").read_text())["pakem-status"]
+        self.assertTrue(agy["SessionStart"][0]["command"].endswith("--hook session-start --host antigravity"))
+        self.assertTrue(agy["PreInvocation"][0]["command"].endswith("--hook prompt --host antigravity"))
+
+        self.assert_ok(self.pakem("enforce", "uninstall", "--host", "codex", "--apply"))
+        self.assertFalse((self.home / ".codex" / "hooks.json").exists())
+        self.assertNotIn("codex-hooks", self.manifest()["enforcement"])
+
+    def test_update_refreshes_codex_as_one_host(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply"))
+        self.assert_ok(self.pakem("enforce", "install", "--host", "codex", "--apply"))
+        self.push_upstream()
+        updated = self.pakem("update", "--yes", "--json")
+        self.assert_ok(updated)
+        done = json.loads(updated.stdout)["done"]
+        self.assertIn("pakem enforce install --host codex --apply", done)
+        self.assertFalse([step for step in done if "codex-hooks" in step])
