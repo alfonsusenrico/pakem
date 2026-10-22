@@ -141,6 +141,13 @@ def build_parser() -> argparse.ArgumentParser:
     setup_host.add_argument("--no-proxy", action="store_true", help="no Caddy reverse proxy (a private host)")
     setup_host.add_argument("--runner", action="store_true", help="also install the isolated CI runner")
     setup_host.add_argument(
+        "--project-dir", action="append", metavar="DIR",
+        help="let this device release this service project there (repeatable; default: here, if it is one)",
+    )
+    setup_host.add_argument(
+        "--no-passphrase", action="store_true", help="a new device key without a passphrase (a headless device only)"
+    )
+    setup_host.add_argument(
         "--allow-unmerged", action="store_true", help="upload from a checkout that is not merged main (testing only)"
     )
     setup_host.add_argument(

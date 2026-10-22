@@ -170,6 +170,39 @@ class SetupHostTests(IsolatedTestCase):
         self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
         self.assert_fails(self.pakem("host", "runner", "add", "prod", "not a repo", "--yes"), code=2)
 
+    def service_project(self, name: str = "demo"):
+        project = self.base / name
+        write(project / "deploy" / "release.toml",
+              f'project = "{name}"\n\n[environments.staging]\n\n[environments.production]\n')
+        write(project / "deploy" / "settings.toml", 'placement = ["HTTP_PORT"]\nsecrets = ["DB_PASSWORD"]\n')
+        return project
+
+    def test_one_run_makes_the_key_sets_up_the_host_and_allows_the_projects(self) -> None:
+        first, second = self.service_project("demo"), self.service_project("other")
+        code, output = self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--no-passphrase",
+                                    "--project-dir", str(first), "--project-dir", str(second), "--yes")
+        self.assertEqual(code, 0, output)
+        key = self.home / ".ssh" / "pakem_device_ed25519.pub"
+        self.assertTrue(key.is_file(), "the device key is made first")
+        calls = self.calls()
+        install = next(i for i, call in enumerate(calls) if "af_bootstrap.sh install" in call)
+        authorize = [i for i, call in enumerate(calls) if call.startswith("sudo python3 /opt/af/af_receive.py authorize")]
+        self.assertEqual(len(authorize), 2)
+        self.assertTrue(all(index > install for index in authorize), "projects are allowed after the install")
+        line = calls[authorize[0]]
+        for part in ("--project demo", "--environment production", "--environment staging", "--placement HTTP_PORT",
+                     "--secret DB_PASSWORD", "--switch-from-registry", "--proxy", " ".join(key.read_text().split()[:2])):
+            self.assertIn(part, line)
+        self.assertEqual(sorted(self.hosts()["prod"]["projects"]), ["demo", "other"])
+        self.assertIn("This device may release demo, other there", output)
+
+    def test_without_a_terminal_the_owner_action_is_the_one_command(self) -> None:
+        project = self.service_project()
+        completed = self.pakem("setup", "host", "admin@203.0.113.7", "--project-dir", str(project), "--yes")
+        self.assert_fails(completed, code=3)
+        self.assertIn(f"--project-dir {project}", completed.stderr)
+        self.assertEqual(self.calls(), [])
+
     def test_only_merged_main_reaches_a_server(self) -> None:
         git(self.framework, "checkout", "-q", "-b", "feat/topic", home=self.home)
         refused = self.pakem("setup", "host", "admin@203.0.113.7", "--plan")

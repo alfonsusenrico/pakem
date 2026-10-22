@@ -1,8 +1,8 @@
 """Direct delivery end to end over real SSH (opt-in: AF_SANDBOX_HOST=1; slow, downloads).
 
-A systemd Debian 13 container is the host. `pakem setup host` installs the engine with
-the owner's admin login, `pakem setup key --no-passphrase` makes the device key, and
-`pakem host allow-device` lets it release a small web project. Then, with only the
+A systemd Debian 13 container is the host. One `pakem setup host --project-dir` run, with
+the owner's admin login, makes the device key, installs the engine, and lets the key
+release a small web project. Then, with only the
 device key: publish two commits to staging (each built on the host), promote the second
 to production (reusing its images), roll staging back, read the history, and revoke the
 device. A fake gh stands in for GitHub's check results; everything else is real.
@@ -93,16 +93,14 @@ class DirectReleaseOverSsh(HostOverSsh):
         return json.loads(body)["revision"]
 
     def test_publish_promote_rollback_and_revoke(self) -> None:
-        waivers = ("--allow-unmerged", "--allow-dirty")
-        code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--yes", *waivers)
-        self.assertEqual(code, 0, output[-4000:])
-        code, output = self.pakem("setup", "key", "--no-passphrase", timeout=60)
-        self.assertEqual(code, 0, output[-2000:])
         first = self.commit("feat: first")
-
-        code, output = self.pakem("host", "allow-device", "sandbox", "--project-dir", str(self.project), "--yes")
+        # The one owner step: the device key, the host, and this project, in one run.
+        waivers = ("--allow-unmerged", "--allow-dirty")
+        code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--no-passphrase",
+                                  "--project-dir", str(self.project), "--yes", *waivers)
         self.assertEqual(code, 0, output[-4000:])
         self.assertIn("missing placement settings: HTTP_PORT, PUBLIC_HOST", output)
+        self.assertIn("This device may release sandbox there", output)
         for environment, port in PORTS.items():
             base = f"/srv/deploy/sandbox/{environment}"
             self.in_host(
@@ -151,7 +149,7 @@ class DirectReleaseOverSsh(HostOverSsh):
         self.assertEqual(code, 0, output[-4000:])
         code, output = self.release("publish", "--plan", timeout=120)
         self.assertEqual(code, 3, output[-2000:])
-        self.assertIn("pakem host allow-device", output)
+        self.assertIn("pakem setup host pakem-sandbox --name sandbox", output)
         self.assertNotEqual(self.device_ssh("status sandbox").returncode, 0, "the host no longer takes the key")
         signers = self.in_host("cat /etc/af/allowed_signers; cat /var/lib/af/.ssh/authorized_keys 2>/dev/null || true")
         self.assertNotIn("pakem-device", signers)
