@@ -259,6 +259,19 @@ class ReleaseTests(DirectHost):
         code, output = self.serve("status example")
         self.assertEqual(json.loads(output)["environments"]["staging"]["current"]["commit"], B)
 
+    def test_a_release_from_the_registry_era_counts_as_running(self) -> None:
+        base = self.base("production")
+        release = base / "releases" / A
+        release.mkdir(parents=True)
+        (release / "record.json").write_text(json.dumps({"schema": "af.release/v1", "commit": A, "schema_version": "0001"}))
+        (base / "current").symlink_to(f"releases/{A}")
+        (base / "deployments.jsonl").write_text(json.dumps({"commit": A, "result": "deployed", "schema_version": "0001"}) + "\n")
+        code, output = self.serve("status example")
+        self.assertEqual(json.loads(output)["environments"]["production"]["running"], A)
+        code, output = self.serve("release", self.request("rollback", "production", A))
+        self.assertEqual(code, 2)
+        self.assertIn("already runs in production", output, "the rollback check sees it too")
+
     def test_a_missing_image_fails_before_anything_stops(self) -> None:
         self.publish(A)
         record = json.loads((self.base("staging") / "releases" / A / "record.json").read_text())
