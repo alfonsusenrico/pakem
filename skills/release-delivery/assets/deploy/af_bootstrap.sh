@@ -103,6 +103,18 @@ port_owner() {
   ss -Hltnp "sport = :$1" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1
 }
 
+port_users() {
+  # Every process listening on a TCP port, IPv4 and IPv6, one name per line.
+  ss -Hltnp "sport = :$1" 2>/dev/null | grep -oE '"[^"]+",pid=' | cut -d'"' -f2 | sort -u
+}
+
+sshd_only_on() {
+  # Something listens on the port, and all of it is sshd.
+  local users
+  users=$(port_users "$1")
+  [[ -n "$users" ]] && ! grep -qvxE 'sshd|sshd-session' <<<"$users"
+}
+
 # -- apt repositories --------------------------------------------------------------------
 
 add_apt_key() {
@@ -284,12 +296,12 @@ sshd_ports() {
 
 release_port_text() {
   # A Port line in a drop-in replaces the default 22, so the ports sshd listens on now are
-  # kept explicitly unless the main file names its own.
+  # kept explicitly unless the main file names its own; an earlier release port ($2) goes.
   local port
   printf '%s\n' "# Written by af_bootstrap.sh (Pakem ADR 0010): a second OpenSSH port for releases." \
     "# Only the deploy user, with a key, so its authorized_keys forced commands always apply."
   if ! grep -qsE '^[[:space:]]*Port[[:space:]]' /etc/ssh/sshd_config; then
-    for port in $1; do [[ "$port" == "$RELEASE_PORT" ]] || printf 'Port %s\n' "$port"; done
+    for port in $1; do [[ "$port" == "$RELEASE_PORT" || "$port" == "$2" ]] || printf 'Port %s\n' "$port"; done
   fi
   printf '%s\n' "Port $RELEASE_PORT" "Match LocalPort $RELEASE_PORT" "  AllowUsers af" \
     "  AuthenticationMethods publickey" "  PasswordAuthentication no" "  KbdInteractiveAuthentication no" \
@@ -309,9 +321,12 @@ reload_sshd() {
 configure_release_port() {
   ((RELEASE_PORT)) || return 0
   command -v sshd >/dev/null || die "--release-port needs the OpenSSH server (sshd)"
-  local before wanted saved="" port problem=""
+  local before wanted saved="" port problem="" previous="" others
+  others=$(port_users "$RELEASE_PORT" | grep -vxE 'sshd|sshd-session' || true)
+  [[ -z "$others" ]] || die "port $RELEASE_PORT is already used by $(echo $others); choose another --release-port (nothing changed)"
   before=$(sshd_ports) || die "sshd -T could not read the current configuration; nothing changed"
-  wanted=$(release_port_text "$before")
+  [[ -f "$SSHD_DROPIN" ]] && previous=$(sed -n 's/^Match LocalPort \([0-9]*\)$/\1/p' "$SSHD_DROPIN")
+  wanted=$(release_port_text "$before" "$previous")
   if [[ -f "$SSHD_DROPIN" && "$(cat "$SSHD_DROPIN")" == "$wanted" ]]; then
     say "sshd release port $RELEASE_PORT present"
     return
@@ -326,6 +341,7 @@ configure_release_port() {
     problem="sshd does not read /etc/ssh/sshd_config.d (no Include line); add the port by hand"
   else
     for port in $before; do
+      [[ "$port" == "$previous" ]] && continue
       sshd_ports 2>/dev/null | grep -x "$port" >/dev/null || problem="the settings would drop port $port"
     done
   fi
@@ -333,9 +349,17 @@ configure_release_port() {
     if [[ -n "$saved" ]]; then mv "$saved" "$SSHD_DROPIN"; else rm -f "$SSHD_DROPIN"; fi
     die "$problem; sshd was left as it was"
   fi
-  rm -f "$saved"
-  say "sshd: release port $RELEASE_PORT for the deploy user (keys only); ports $(echo $before) stay"
+  say "sshd: release port $RELEASE_PORT for the deploy user (keys only); other ports stay"
   reload_sshd
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    sshd_only_on "$RELEASE_PORT" && { rm -f "$saved"; return; }
+    sleep 1
+  done
+  # sshd could not take the port on every address: put the old settings back.
+  if [[ -n "$saved" ]]; then mv "$saved" "$SSHD_DROPIN"; else rm -f "$SSHD_DROPIN"; fi
+  reload_sshd
+  die "sshd did not take port $RELEASE_PORT on every address ($(echo $(port_users "$RELEASE_PORT"))); the old settings are back"
 }
 
 # -- check ------------------------------------------------------------------------------
@@ -367,7 +391,7 @@ agent_disabled() { ! systemctl is-enabled --quiet af-agent.timer; }
 admin_socket_ready() { [[ "$(stat -c '%a %G' /run/caddy/admin.sock)" == "660 caddy" ]]; }
 sites_ready() { af_in_group caddy && [[ "$(stat -c %U /etc/caddy/sites)" == af ]]; }
 logs_bounded() { grep -q '"max-size"' /etc/docker/daemon.json; }
-release_port_listening() { ss -Hltn "sport = :$RELEASE_PORT" | grep -q .; }
+release_port_listening() { sshd_only_on "$RELEASE_PORT"; }
 
 check() {
   say "checking this host"
@@ -394,7 +418,8 @@ check() {
   fi
   result "$(passes logs_bounded)" "container logs" "size limit in /etc/docker/daemon.json"
   if ((RELEASE_PORT)); then
-    result "$(passes release_port_listening)" "release port" "sshd listens on $RELEASE_PORT ($SSHD_DROPIN)"
+    result "$(passes release_port_listening)" "release port" \
+      "only sshd listens on $RELEASE_PORT ($(echo $(port_users "$RELEASE_PORT")); $SSHD_DROPIN)"
   fi
   if ((FAILURES)); then
     say "$FAILURES check(s) failed"

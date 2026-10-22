@@ -113,6 +113,13 @@ class DirectReleaseOverSsh(HostOverSsh):
                                   "--project-dir", str(self.project), "--yes", *waivers)
         self.assertEqual(code, 5, output[-4000:])
         self.assertIn("gave the device key a shell instead of the release receiver", output)
+        # A port another program holds (here a listener like a Git server's SSH) is refused.
+        self.in_host("(nohup python3 -c 'import socket,time; s=socket.socket(); s.bind((\"0.0.0.0\", 39222)); "
+                     "s.listen(); time.sleep(3600)' >/dev/null 2>&1 &) ; sleep 1")
+        code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--release-port", "39222",
+                                  "--project-dir", str(self.project), "--yes", *waivers)
+        self.assertNotEqual(code, 0, output[-4000:])
+        self.assertIn("port 39222 is already used by python3", output)
         # The one owner step: the device key, the host, a release port, and this project.
         code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--release-port",
                                   str(self.release_port), "--project-dir", str(self.project), "--yes", *waivers)
