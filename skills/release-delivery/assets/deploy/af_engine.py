@@ -10,8 +10,9 @@ Host configuration (TOML, private):
     project = "example"
     environment = "production"
     base = "/srv/deploy/example/production"     # private directory, owned by this user
-    pointer = "ghcr.io/owner/example:release-production"
-    public_key = "/etc/af/keys/example.pub"     # the project's release signing key
+    delivery = "registry"                       # or "direct": releases arrive through af_receive.py
+    pointer = "ghcr.io/owner/example:release-production"   # registry only
+    public_key = "/etc/af/keys/example.pub"     # registry only: the project's release signing key
     registry_credentials = "/etc/af/registries.json"   # optional, read-only tokens
     lock_wait_seconds = 0
     notify = "/etc/af/notify.toml"              # optional channels file (af_notify.py)
@@ -95,42 +96,57 @@ class ProxyConfig:
         return cls(Path(sites), reload, tls)
 
 
+DELIVERY_REGISTRY = "registry"
+DELIVERY_DIRECT = "direct"
+
+
 @dataclass
 class HostConfig:
     project: str
     environment: str
     base: Path
-    pointer: str
-    public_key: Path
+    pointer: str | None
+    public_key: Path | None
     registry_credentials: Path | None = None
     lock_wait_seconds: int = 0
     notify: Path | None = None
     proxy: ProxyConfig | None = None
+    delivery: str = DELIVERY_REGISTRY
 
     @classmethod
     def load(cls, path: Path) -> HostConfig:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         allowed = {
             "project", "environment", "base", "pointer", "public_key", "registry_credentials", "lock_wait_seconds",
-            "notify", "proxy",
+            "notify", "proxy", "delivery",
         }
         unknown = set(data) - allowed
         if unknown:
             raise EngineError(f"host config has unknown keys: {', '.join(sorted(unknown))}", EXIT_REFUSED)
+        delivery = data.get("delivery", DELIVERY_REGISTRY)
+        if delivery == DELIVERY_REGISTRY:
+            if "pointer" not in data or "public_key" not in data:
+                raise EngineError("a registry host config needs pointer and public_key", EXIT_REFUSED)
+        elif delivery == DELIVERY_DIRECT:
+            if {"pointer", "public_key", "registry_credentials"} & set(data):
+                raise EngineError("a direct host config takes no pointer, public_key, or registry_credentials", EXIT_REFUSED)
+        else:
+            raise EngineError("host config delivery must be registry or direct", EXIT_REFUSED)
         try:
             config = cls(
                 project=data["project"],
                 environment=data["environment"],
                 base=Path(data["base"]),
-                pointer=data["pointer"],
-                public_key=Path(data["public_key"]),
+                pointer=data.get("pointer"),
+                public_key=Path(data["public_key"]) if "public_key" in data else None,
                 registry_credentials=Path(data["registry_credentials"]) if data.get("registry_credentials") else None,
                 lock_wait_seconds=int(data.get("lock_wait_seconds", 0)),
                 notify=Path(data["notify"]) if data.get("notify") else None,
                 proxy=ProxyConfig.parse(data["proxy"]) if "proxy" in data else None,
+                delivery=delivery,
             )
         except (KeyError, TypeError, ValueError):
-            raise EngineError("host config needs project, environment, base, pointer, public_key", EXIT_REFUSED) from None
+            raise EngineError("host config needs project, environment, and base", EXIT_REFUSED) from None
         if not contracts.PROJECT.fullmatch(config.project) or not contracts.ENVIRONMENT.fullmatch(config.environment):
             raise EngineError("host config has an invalid project or environment name", EXIT_REFUSED)
         if not config.base.is_absolute() or (config.notify is not None and not config.notify.is_absolute()):
@@ -183,6 +199,66 @@ def probe_health(url: str) -> dict | None:
     return body if isinstance(body, dict) else None
 
 
+class ReleaseSource:
+    """Where the engine gets a release from: the registry (ADR 0009) or a direct delivery
+    (ADR 0010, af_receive.py). Each method acts before anything running is changed."""
+
+    def fetch(self) -> af_release.Release:
+        """The verified release record to deploy."""
+        raise NotImplementedError
+
+    def unpack(self, record: dict, destination: Path) -> dict:
+        """Write the release's deploy bundle into `destination`; return its release.toml."""
+        raise NotImplementedError
+
+    def same_files(self, running: dict, record: dict) -> bool:
+        """Whether a new record for the running commit carries the same deploy files."""
+        raise NotImplementedError
+
+    def load_images(self, record: dict, env: dict[str, str], runner: Runner, query: Query) -> str | None:
+        """Make the record's images available locally; the reason when one is not."""
+        raise NotImplementedError
+
+    def discard(self, record: dict, in_use: set[str], runner: Runner) -> None:
+        """Free the images of a release retention removed (never one still in use)."""
+        raise NotImplementedError
+
+
+class ReceiverOnly(ReleaseSource):
+    """A direct environment seen from the engine's own commands (status, monitor)."""
+
+    def fetch(self) -> af_release.Release:
+        raise EngineError("direct releases arrive through af_receive.py, not af_engine.py deploy", EXIT_REFUSED)
+
+
+class RegistrySource(ReleaseSource):
+    def __init__(self, host: HostConfig, registry: af_oci.Registry, verify: af_release.Verify) -> None:
+        self.host = host
+        self.registry = registry
+        self.verify = verify
+
+    def fetch(self) -> af_release.Release:
+        return af_release.fetch_release(self.registry, self.host.pointer, self.host.project, self.verify)
+
+    def unpack(self, record: dict, destination: Path) -> dict:
+        return af_release.fetch_bundle(self.registry, record, destination)
+
+    def same_files(self, running: dict, record: dict) -> bool:
+        return running["bundle"] == record["bundle"]
+
+    def load_images(self, record: dict, env: dict[str, str], runner: Runner, query: Query) -> str | None:
+        for reference in record["images"].values():
+            if runner(["docker", "pull", "--quiet", reference], env, None, COMMAND_TIMEOUT) != 0:
+                return "image pull failed"
+        return None
+
+    def discard(self, record: dict, in_use: set[str], runner: Runner) -> None:
+        env = {key: os.environ[key] for key in ("PATH", "HOME", "DOCKER_HOST") if key in os.environ}
+        for image in record["images"].values():
+            if image not in in_use:
+                runner(["docker", "image", "rm", image], env, None, COMMAND_TIMEOUT)
+
+
 @dataclass
 class Release:
     """One unpacked release on this host."""
@@ -216,13 +292,19 @@ class Engine:
         actor: str = "agent",
         placement_values: dict[str, str] | None = None,
         notifier: af_notify.Notifier | None = None,
+        source: ReleaseSource | None = None,
     ) -> None:
         self.host = host
-        credentials = (
-            af_oci.credentials_file(host.registry_credentials) if host.registry_credentials else af_oci.no_credentials
-        )
-        self.registry = registry or af_oci.Registry(credentials)
-        self.verify = verify or af_release.CosignVerifier(host.public_key)
+        if source is None and host.delivery == DELIVERY_DIRECT:
+            source = ReceiverOnly()
+        if source is None:
+            if registry is None:
+                credentials = (
+                    af_oci.credentials_file(host.registry_credentials) if host.registry_credentials else af_oci.no_credentials
+                )
+                registry = af_oci.Registry(credentials)
+            source = RegistrySource(host, registry, verify or af_release.CosignVerifier(host.public_key))
+        self.source = source
         self.runner = runner
         self.query = query
         self.health = health
@@ -423,14 +505,14 @@ class Engine:
         if current is not None and current.directory == directory:
             # Same commit, new record (a re-promotion or rollback record): the running
             # release's files stay in place; only an identical bundle may be reused.
-            if current.record["bundle"] != release.record["bundle"]:
+            if not self.source.same_files(current.record, release.record):
                 raise EngineError("the running commit was republished with a different bundle", EXIT_REFUSED)
             write_json(directory / "record.json", release.record)
             return Release(directory, release.record, current.config)
         if directory.exists():
             shutil.rmtree(directory)
         directory.mkdir(mode=0o700, parents=True)
-        config = af_release.fetch_bundle(self.registry, release.record, directory / "bundle")
+        config = self.source.unpack(release.record, directory / "bundle")
         write_json(directory / "record.json", release.record)
         return Release(directory, release.record, config)
 
@@ -452,15 +534,12 @@ class Engine:
             record_path = directory / "record.json"
             if record_path.exists():
                 in_use.update(json.loads(record_path.read_text(encoding="utf-8"))["images"].values())
-        env = {key: os.environ[key] for key in ("PATH", "HOME", "DOCKER_HOST") if key in os.environ}
         for directory in directories[keep:]:
             if directory.name in protect:
                 continue
             record_path = directory / "record.json"
-            images = json.loads(record_path.read_text(encoding="utf-8"))["images"].values() if record_path.exists() else []
-            for image in images:
-                if image not in in_use:
-                    self.runner(["docker", "image", "rm", image], env, None, COMMAND_TIMEOUT)
+            if record_path.exists():
+                self.source.discard(json.loads(record_path.read_text(encoding="utf-8")), in_use, self.runner)
             shutil.rmtree(directory)
 
     # -- the sequence ------------------------------------------------------------------
@@ -493,7 +572,7 @@ class Engine:
     def _deploy(self, started: str) -> dict:
         previous = self.current()
         try:
-            fetched = af_release.fetch_release(self.registry, self.host.pointer, self.host.project, self.verify)
+            fetched = self.source.fetch()
             order = af_release.check_order(previous.record if previous else None, fetched.record)
         except af_release.ReleaseError as error:
             raise EngineError(str(error), EXIT_REFUSED) from None
@@ -520,9 +599,9 @@ class Engine:
             log(f"generated secrets: {', '.join(settings.generated)}")
 
         # Nothing has changed yet: failures here leave the running release untouched.
-        for reference in candidate.record["images"].values():
-            if self.runner(["docker", "pull", "--quiet", reference], self._env(candidate), None, COMMAND_TIMEOUT) != 0:
-                return self._fail_early("image pull failed", fetched, previous, started)
+        missing = self.source.load_images(candidate.record, self._env(candidate), self.runner, self.query)
+        if missing is not None:
+            return self._fail_early(missing, fetched, previous, started)
         if self.compose(candidate, "config", "--quiet") != 0:
             return self._fail_early("compose configuration is invalid", fetched, previous, started)
         preflight = candidate.config.get("preflight") or []

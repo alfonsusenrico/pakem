@@ -67,8 +67,9 @@ def run_tty(argv: list[str], env: dict, timeout: float) -> tuple[int, str]:
     return os.waitstatus_to_exitcode(status), output.decode(errors="replace")
 
 
-@unittest.skipUnless(ENABLED, "set AF_SANDBOX_HOST=1 to set up a container host over SSH")
-class SetupHostOverSsh(unittest.TestCase):
+class HostOverSsh(unittest.TestCase):
+    """A container host with sshd and an admin login; `pakem` runs against it on a terminal."""
+
     def setUp(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("docker is not installed")
@@ -110,11 +111,21 @@ class SetupHostOverSsh(unittest.TestCase):
         wrapper.parent.mkdir()
         wrapper.write_text(f'#!/bin/sh\nexec /usr/bin/ssh -F "{ssh_dir}/config" "$@"\n')
         wrapper.chmod(0o755)
-        self.env = isolated_env(self.home, {"PATH": f"{wrapper.parent}:{os.environ.get('PATH', '/usr/bin:/bin')}"})
+        self.bin = wrapper.parent
+        self.env = isolated_env(self.home, {"PATH": f"{self.bin}:{os.environ.get('PATH', '/usr/bin:/bin')}"})
 
     def pakem(self, *args: str, timeout: float = 900) -> tuple[int, str]:
         argv = [sys.executable, str(PAKEM), "--root", str(REPO_ROOT), *args]
         return run_tty(argv, self.env, timeout)
+
+    def in_host(self, script: str) -> str:
+        completed = docker("exec", self.name, "bash", "-c", script, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stdout[-3000:] + completed.stderr[-3000:])
+        return completed.stdout
+
+
+@unittest.skipUnless(ENABLED, "set AF_SANDBOX_HOST=1 to set up a container host over SSH")
+class SetupHostOverSsh(HostOverSsh):
 
     def test_setup_twice_then_check(self) -> None:
         # The checkout under test may be a branch; a release runs from merged main.

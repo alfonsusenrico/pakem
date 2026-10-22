@@ -513,7 +513,8 @@ class HostBootstrapTests(unittest.TestCase):
 
     def test_installs_every_host_module(self) -> None:
         listed = set(re.search(r'^ENGINE_FILES="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
-        host_side = {path.name for path in DEPLOY_ROOT.glob("af_*.py")} - {"af_publish.py"} | {"contracts.py", "af_runner.sh"}
+        # af_publish.py too: the direct receiver packs bundles and reads schema versions with it.
+        host_side = {path.name for path in DEPLOY_ROOT.glob("af_*.py")} | {"contracts.py", "af_runner.sh"}
         self.assertEqual(listed, host_side)
         units = set(re.search(r'^UNITS="([^"]+)"$', self.script, re.MULTILINE).group(1).split())
         self.assertEqual(units, {path.name for path in (DEPLOY_ROOT / "systemd").iterdir()})

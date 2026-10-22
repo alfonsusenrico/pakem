@@ -19,6 +19,14 @@ from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
 from .project import run_check, run_sync
+from .release import (
+    run_host_allow_device,
+    run_host_revoke_device,
+    run_release_promote,
+    run_release_publish,
+    run_release_report,
+    run_release_rollback,
+)
 from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, default_context, run_schedule
 from .setup_device import run_setup_check, run_setup_device, run_setup_key
 from .status import HOOK_PROMPT, HOOK_SESSION_START, run_status
@@ -35,7 +43,7 @@ AREAS = (
     ("host", "experimental", "setup host, setup check --host, host runner add|remove"),
     ("project", "draft", "project init, project adopt, decide"),
     ("secrets", "draft", "secret"),
-    ("release", "draft", "release"),
+    ("release", "experimental", "release publish|promote|rollback|history|status, host allow-device|revoke-device"),
     (
         "framework and agents",
         "stable",
@@ -153,6 +161,48 @@ def build_parser() -> argparse.ArgumentParser:
         runner_parser.add_argument("--plan", action="store_true", help="print the steps without doing them")
         runner_parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
         runner_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    allow = host_commands.add_parser(
+        "allow-device", help="let this device's key release a project there (your own login, from your terminal)"
+    )
+    allow.add_argument("host", help="host name or target from ~/.config/pakem/hosts.toml")
+    allow.add_argument("--project-dir", default=".", help="the project's repository (default: here)")
+    allow.add_argument(
+        "--switch-from-registry", action="store_true", help="move environments that deploy from a registry to direct"
+    )
+    revoke = host_commands.add_parser("revoke-device", help="remove a device's key, or one of its projects")
+    revoke.add_argument("host", help="host name or target from ~/.config/pakem/hosts.toml")
+    revoke.add_argument("--device", help="device name as the host records it (default: this device)")
+    revoke.add_argument("--project", help="revoke only this project")
+    for device_parser in (allow, revoke):
+        device_parser.add_argument("--plan", action="store_true", help="print the steps without doing them")
+        device_parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+        device_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+
+    release = commands.add_parser("release", help="release a service: signed source to its host, built there")
+    release_commands = release.add_subparsers(dest="release_command", required=True)
+    publish = release_commands.add_parser("publish", help="the current main commit to staging (checks must pass)")
+    promote = release_commands.add_parser("promote", help="tag a release and deploy it to production")
+    promote.add_argument("version", help="vMAJOR.MINOR.PATCH, newer than every release tag")
+    promote.add_argument("--commit", help="promote this commit instead of the one staging runs")
+    rollback = release_commands.add_parser("rollback", help="go back to an earlier release kept on the host")
+    rollback.add_argument("target", help="previous, a release tag, or a commit")
+    rollback.add_argument("--environment", help="default: staging when the project has it, else production")
+    rollback.add_argument(
+        "--allow-schema", action="store_true", help="the target has another database schema; you restored the backup"
+    )
+    for changing in (promote, rollback):
+        changing.add_argument("--production", action="store_true", help="confirm a production change")
+    for changing in (publish, promote, rollback):
+        changing.add_argument("--plan", action="store_true", help="print the steps without doing them")
+        changing.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    for name, text in (("history", "every release and result per environment"), ("status", "what runs where")):
+        report = release_commands.add_parser(name, help=text)
+        report.add_argument("environment", nargs="?", help="one environment only")
+        report.add_argument("--plan", action="store_true", help=argparse.SUPPRESS)
+        report.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    for release_parser in release_commands.choices.values():
+        release_parser.add_argument("--project-dir", default=".", help="the project's repository (default: here)")
+        release_parser.add_argument("--json", action="store_true", help="machine-readable result")
 
     config = commands.add_parser("config", help="device settings in ~/.config/pakem/config.toml")
     config_commands = config.add_subparsers(dest="config_command", required=True)
@@ -369,6 +419,19 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_setup_check(args)
     if args.command == "host" and args.host_command == "runner":
         return run_host_runner(args)
+    if args.command == "host" and args.host_command == "allow-device":
+        return run_host_allow_device(args)
+    if args.command == "host" and args.host_command == "revoke-device":
+        return run_host_revoke_device(args)
+    if args.command == "release":
+        commands = {
+            "publish": run_release_publish,
+            "promote": run_release_promote,
+            "rollback": run_release_rollback,
+            "history": run_release_report,
+            "status": run_release_report,
+        }
+        return commands[args.release_command](args)
     if args.command == "install":
         return run_install(args)
     if args.command == "uninstall":

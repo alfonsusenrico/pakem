@@ -1,0 +1,602 @@
+"""`pakem release` and `pakem host allow-device|revoke-device`: releases for services.
+
+Direct delivery (ADR 0010): the device signs a request for one commit with its device key
+(`ssh-keygen -Y`, namespace pakem-release) and sends it, with the `git archive` of the
+commit when the host does not keep that release yet, over SSH to the deploy user. The
+key's forced command on the host (af_receive.py) verifies the request, builds the images
+natively once per commit, and runs the engine. No registry is involved; promotion and
+rollback reuse what the host built and kept.
+
+Where each project is released lives in ~/.config/pakem/hosts.toml (`projects`), written
+by `pakem host allow-device`, which runs with the owner's own admin login on a terminal.
+Releases use only the device key, so agents can run them; production needs --production.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import tomllib
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import device_key
+from .common import (
+    EXIT_DONE,
+    CheckFailed,
+    CommandBusy,
+    CommandRefused,
+    Framework,
+    OwnerActionRequired,
+    PakemError,
+    confirm_steps,
+    display_path,
+    run_git,
+    version_tuple,
+)
+from .host import CONTROL_PARENT, HostRecord, Remote, hosts_path, load_hosts, require_terminal, resolve_host, save_host
+from .host import setup_host_command
+from .requirements import device_label, ensure
+
+DEPLOY_USER = "af"
+INSTALLED_RECEIVER = "/opt/af/af_receive.py"
+NAMESPACE = "pakem-release"
+REQUEST_SCHEMA = "pakem.release-request/v1"
+STAGING = "staging"
+PRODUCTION = "production"
+MAIN = "origin/main"
+VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
+DELIVERY_LINE = re.compile(r"\bDelivery:?\**\s*:?\s*\**\s*(us|others|nobody)\b", re.IGNORECASE)
+PASSED_CONCLUSIONS = {"success", "neutral", "skipped"}
+# The receiver's exit codes (the engine's, contracts §5).
+HOST_OK, HOST_REFUSED, HOST_BUSY = 0, 2, 75
+HOST_RESULTS = {
+    1: "failed; nothing to restore",
+    3: "failed; the previous release was restored and verified",
+    4: "failed, and restoring the previous release failed too",
+    5: "failed after a schema change; services are stopped for you",
+}
+SSH_FAILED = 255
+SERVICE_NEEDS = ("git", "ssh", "device-key", "device-key-unlocked")
+CHECK_NEEDS = ("gh", "github-login")
+
+
+# -- the project's own files ---------------------------------------------------------------
+
+
+@dataclass
+class Project:
+    root: Path
+    name: str
+    environments: list[str]
+    placement: list[str] = field(default_factory=list)
+    secrets: list[str] = field(default_factory=list)
+
+    @property
+    def has_staging(self) -> bool:
+        return STAGING in self.environments
+
+
+def read_project(directory: Path) -> Project:
+    root = directory.resolve()
+    release_file = root / "deploy" / "release.toml"
+    settings_file = root / "deploy" / "settings.toml"
+    if not release_file.is_file():
+        raise PakemError(f"{display_path(root)} is not a service project: it has no deploy/release.toml")
+    try:
+        config = tomllib.loads(release_file.read_text(encoding="utf-8"))
+        settings = tomllib.loads(settings_file.read_text(encoding="utf-8")) if settings_file.is_file() else {}
+    except tomllib.TOMLDecodeError as exc:
+        raise PakemError(f"invalid TOML in the project's deploy files: {exc}") from exc
+    name = config.get("project")
+    environments = sorted(config.get("environments") or {})
+    if not isinstance(name, str) or not environments:
+        raise PakemError("deploy/release.toml needs project and at least one [environments.<name>]")
+    return Project(root, name, environments, list(settings.get("placement", [])), list(settings.get("secrets", [])))
+
+
+def check_delivery(project: Project) -> None:
+    """A project another team or nobody delivers is never released from here (area 3)."""
+    agents = project.root / "AGENTS.md"
+    if not agents.is_file():
+        return
+    match = DELIVERY_LINE.search(agents.read_text(encoding="utf-8"))
+    if match and match[1].lower() != "us":
+        raise CommandRefused(f"AGENTS.md says Delivery: {match[1]}; {project.name} is not released by pakem")
+
+
+def source_url(project: Project) -> str | None:
+    remote = run_git(project.root, "config", "--get", "remote.origin.url", check=False).stdout.strip()
+    match = GITHUB_REMOTE.match(remote)
+    return f"https://github.com/{match[1]}/{match[2]}" if match else None
+
+
+def github_repository(project: Project) -> str:
+    remote = run_git(project.root, "config", "--get", "remote.origin.url", check=False).stdout.strip()
+    match = GITHUB_REMOTE.match(remote)
+    if not match:
+        raise CommandRefused(
+            "release checks are read from GitHub for now; GitLab comes with its own area "
+            f"(origin is {remote or 'missing'})"
+        )
+    return f"{match[1]}/{match[2]}"
+
+
+def main_commit(project: Project) -> str:
+    run_git(project.root, "fetch", "--quiet", "origin")
+    return run_git(project.root, "rev-parse", f"{MAIN}^{{commit}}").stdout.strip()
+
+
+def resolve_commit(project: Project, revision: str) -> str:
+    completed = run_git(project.root, "rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}", check=False)
+    if completed.returncode != 0:
+        raise PakemError(f"{revision!r} names no commit in {display_path(project.root)}")
+    return completed.stdout.strip()
+
+
+def commit_checks(repository: str, commit: str) -> tuple[list[str], list[str]]:
+    """Names of passed and of not-passed checks of a commit, from GitHub's check runs and
+    commit statuses (ADR 0010, decision 2: a release refuses a commit whose checks did not pass)."""
+    runs = subprocess.run(
+        ["gh", "api", "--paginate", f"repos/{repository}/commits/{commit}/check-runs",
+         "--jq", ".check_runs[] | [.name, .status, (.conclusion // \"\")] | @tsv"],
+        capture_output=True, text=True,
+    )
+    statuses = subprocess.run(
+        ["gh", "api", f"repos/{repository}/commits/{commit}/status", "--jq", ".statuses[] | [.context, .state] | @tsv"],
+        capture_output=True, text=True,
+    )
+    for completed in (runs, statuses):
+        if completed.returncode != 0:
+            detail = completed.stderr.strip().splitlines()
+            raise PakemError(f"gh could not read the checks of {commit[:12]}: {detail[-1] if detail else 'no output'}")
+    passed, other = [], []
+    for line in runs.stdout.splitlines():
+        name, status, conclusion = (line.split("\t") + ["", ""])[:3]
+        if status == "completed" and conclusion in PASSED_CONCLUSIONS:
+            passed.append(name)
+        else:
+            other.append(f"{name} ({conclusion or status})")
+    for line in statuses.stdout.splitlines():
+        name, state = (line.split("\t") + [""])[:2]
+        if state == "success":
+            passed.append(name)
+        else:
+            other.append(f"{name} ({state})")
+    return passed, other
+
+
+def require_checks(project: Project, commit: str) -> str:
+    passed, other = commit_checks(github_repository(project), commit)
+    if other:
+        raise CheckFailed(f"checks of {commit[:12]} have not passed: {', '.join(other)}")
+    if not passed:
+        raise CheckFailed(f"{commit[:12]} has no checks; a release needs the project's CI to pass first")
+    return f"checks passed: {', '.join(passed)}"
+
+
+# -- where the project is released ---------------------------------------------------------
+
+
+def host_for(project: Project) -> HostRecord:
+    hosts = [record for record in load_hosts().values() if project.name in record.projects]
+    if not hosts:
+        raise OwnerActionRequired(
+            f"OWNER ACTION REQUIRED: run `pakem host allow-device <host> --project-dir "
+            f"{shlex.quote(str(project.root))}` in your terminal; this device may not release {project.name} anywhere yet"
+        )
+    if len(hosts) > 1:
+        names = ", ".join(record.name for record in hosts)
+        raise PakemError(f"{project.name} is recorded for several hosts ({names}) in {display_path(hosts_path())}")
+    return hosts[0]
+
+
+class DeviceLink:
+    """SSH as the deploy user with the device key; the host's forced command answers."""
+
+    def __init__(self, record: HostRecord) -> None:
+        self.record = record
+
+    def command(self, remote: str) -> list[str]:
+        command = [
+            "ssh", "-i", str(device_key.private_path()), "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+        ]
+        if self.record.port is not None:
+            command += ["-p", str(self.record.port)]
+        return [*command, f"{DEPLOY_USER}@{self.record.address}", remote]
+
+    def query(self, remote: str) -> dict:
+        completed = subprocess.run(self.command(remote), stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        if completed.returncode != HOST_OK:
+            raise self.failure(completed.returncode, (completed.stdout + completed.stderr).strip())
+        try:
+            return json.loads(completed.stdout)
+        except ValueError as exc:
+            raise PakemError(f"{self.record.name} answered `{remote}` with something other than JSON") from exc
+
+    def send(self, payload: Path, quiet: bool) -> int:
+        """Send a signed request; the host's progress goes to this terminal (stderr with --json)."""
+        with payload.open("rb") as stdin:
+            completed = subprocess.run(self.command("release"), stdin=stdin, stdout=sys.stderr if quiet else None)
+        return completed.returncode
+
+    def failure(self, code: int, detail: str = "") -> PakemError:
+        last = detail.splitlines()[-1] if detail else "see the lines above"
+        if code == SSH_FAILED:
+            return PakemError(
+                f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}); if this device "
+                f"was never allowed there, run `pakem host allow-device {self.record.name}` in your terminal"
+            )
+        if code == HOST_REFUSED:
+            return CommandRefused(f"{self.record.name} refused: {last}")
+        if code == HOST_BUSY:
+            return CommandBusy(f"{self.record.name}: another deployment holds the lock; try again shortly")
+        return CheckFailed(f"{self.record.name}: release {HOST_RESULTS.get(code, f'failed with exit {code}')}")
+
+
+# -- history and the meaning of "previous" ----------------------------------------------------
+
+
+def previous_commit(deployments: list[dict], running: str | None) -> str | None:
+    """The release first deployed before the running one; failed and restored attempts never
+    count, and after a rollback the next "previous" steps one further back (ADR 0010)."""
+    first: dict[str, int] = {}
+    for index, entry in enumerate(deployments):
+        if entry.get("result") == "deployed" and entry["commit"] not in first:
+            first[entry["commit"]] = index
+    if running is None or running not in first:
+        return None
+    earlier = [commit for commit, index in first.items() if index < first[running]]
+    return max(earlier, key=first.__getitem__) if earlier else None
+
+
+def kept_anywhere(history: dict, commit: str) -> bool:
+    return any(commit in entry.get("kept", []) for entry in history["environments"].values())
+
+
+# -- requests ------------------------------------------------------------------------------------
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def build_payload(work: Path, request: dict, archive: Path | None) -> Path:
+    """Request line, signature line, then the archive: what the receiver reads."""
+    request_file = work / "request.json"
+    request_file.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":")).encode())
+    signature = device_key.sign(request_file, NAMESPACE)
+    payload = work / "payload"
+    with payload.open("wb") as output:
+        output.write(request_file.read_bytes() + b"\n")
+        output.write(base64.b64encode(signature) + b"\n")
+        if archive is not None:
+            with archive.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    output.write(chunk)
+    return payload
+
+
+def git_archive(project: Project, commit: str, destination: Path) -> str:
+    with destination.open("wb") as output:
+        completed = subprocess.run(["git", "-C", str(project.root), "archive", "--format=tar", commit],
+                                   stdout=output, stderr=subprocess.PIPE, text=False)
+    if completed.returncode != 0:
+        raise PakemError(f"git archive {commit[:12]} failed: {completed.stderr.decode(errors='replace').strip()}")
+    digest = hashlib.sha256()
+    with destination.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
+
+
+@dataclass
+class Plan:
+    action: str
+    environment: str
+    commit: str
+    version: str | None = None
+    allow_schema: bool = False
+    steps: list[str] = field(default_factory=list)
+
+
+def deliver(args, project: Project, record: HostRecord, plan: Plan, history: dict) -> None:
+    """Sign and send the request, with the archive when the host keeps no release of it."""
+    needs_archive = not kept_anywhere(history, plan.commit)
+    with tempfile.TemporaryDirectory(prefix="pakem-release-") as directory:
+        work = Path(directory)
+        archive = work / "source.tar" if needs_archive else None
+        request = {
+            "schema": REQUEST_SCHEMA, "action": plan.action, "project": project.name,
+            "environment": plan.environment, "commit": plan.commit, "version": plan.version,
+            "archive": git_archive(project, plan.commit, archive) if archive is not None else None,
+            "created": utc_now(), "device": device_label(), "source": source_url(project),
+            "allow_schema": plan.allow_schema,
+        }
+        payload = build_payload(work, request, archive)
+        print(f"Sending the signed request{' and the source archive' if archive else ''} to {record.name}.",
+              file=sys.stderr if args.json else sys.stdout, flush=True)
+        link = DeviceLink(record)
+        code = link.send(payload, quiet=args.json)
+    if code != HOST_OK:
+        raise link.failure(code)
+
+
+def print_plan(args, project: Project, record: HostRecord, plan: Plan) -> None:
+    title = f"pakem release {plan.action} {project.name} {plan.environment} {plan.commit[:12]}"
+    if plan.version:
+        title += f" {plan.version}"
+    lines = [title, *[f"  {step}" for step in plan.steps]]
+    lines += [
+        f"  sign the request with this device's key and send it to {DEPLOY_USER}@{record.address} "
+        "(with the source archive when the host keeps no release of this commit)",
+        "  the host builds it once if needed, then the engine deploys it",
+    ]
+    print("\n".join(lines), file=sys.stderr if args.json else sys.stdout)
+
+
+def finish(args, plan: Plan, project: Project, record: HostRecord, done: list[str]) -> int:
+    if args.json:
+        print(json.dumps({"status": "done", "done": done, "owner_actions": [], "gaps": [], "checks": []}, indent=2))
+    else:
+        version = f" ({plan.version})" if plan.version else ""
+        print(f"Released {project.name} {plan.commit[:12]}{version} to {plan.environment} on {record.name}.")
+    return EXIT_DONE
+
+
+def _prepare(args, needs: tuple[str, ...]) -> tuple[Project, HostRecord]:
+    framework = Framework(Path(args.root))
+    project = read_project(Path(args.project_dir))
+    check_delivery(project)
+    ensure(framework, needs, args, f"pakem release {args.release_command}")
+    return project, host_for(project)
+
+
+def _require_production(args, environment: str) -> None:
+    if environment == PRODUCTION and not args.production:
+        raise CommandRefused("this changes production; pass --production (agents: only on the owner's instruction)")
+
+
+def run_release_publish(args) -> int:
+    project, record = _prepare(args, SERVICE_NEEDS + CHECK_NEEDS)
+    if not project.has_staging:
+        raise CommandRefused(
+            f"{project.name} declares no staging; release it with `pakem release promote vX.Y.Z --production`"
+        )
+    commit = main_commit(project)
+    plan = Plan("publish", STAGING, commit, steps=[f"{MAIN} is {commit[:12]}", require_checks(project, commit)])
+    print_plan(args, project, record, plan)
+    if args.plan:
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
+    confirm_steps(args.yes, "pakem release publish")
+    history = DeviceLink(record).query(f"history {project.name}")
+    deliver(args, project, record, plan, history)
+    return finish(args, plan, project, record, [f"published {commit} to staging"])
+
+
+def existing_tag(project: Project, version: str) -> str | None:
+    run_git(project.root, "fetch", "--quiet", "--tags", "origin")
+    completed = run_git(project.root, "rev-parse", "--verify", "--quiet", f"refs/tags/{version}^{{commit}}", check=False)
+    return completed.stdout.strip() if completed.returncode == 0 else None
+
+
+def newest_version(project: Project) -> str | None:
+    tags = run_git(project.root, "tag", "--list", "v*").stdout.split()
+    versions = [tag for tag in tags if VERSION.match(tag)]
+    return max(versions, key=lambda tag: version_tuple(tag[1:])) if versions else None
+
+
+def run_release_promote(args) -> int:
+    if not VERSION.match(args.version):
+        raise PakemError(f"version must look like v1.2.3, not {args.version!r}")
+    _require_production(args, PRODUCTION)
+    project, record = _prepare(args, SERVICE_NEEDS + CHECK_NEEDS)
+    if PRODUCTION not in project.environments:
+        raise CommandRefused(f"{project.name} declares no [environments.production]")
+    tagged = existing_tag(project, args.version)
+    history = DeviceLink(record).query(f"history {project.name}")
+    steps = []
+    if args.commit:
+        commit = resolve_commit(project, args.commit)
+    elif project.has_staging:
+        commit = history["environments"].get(STAGING, {}).get("running")
+        if commit is None:
+            raise CommandRefused("nothing runs in staging; publish a commit first")
+        steps.append(f"staging runs {commit[:12]}")
+    else:
+        commit = main_commit(project)
+        steps.append(f"{MAIN} is {commit[:12]} (no staging)")
+    if tagged is not None and tagged != commit:
+        raise CommandRefused(f"tag {args.version} already names {tagged[:12]}, not {commit[:12]}")
+    newest = newest_version(project)
+    if tagged is None and newest is not None and version_tuple(args.version[1:]) <= version_tuple(newest[1:]):
+        raise CommandRefused(f"{args.version} is not newer than the newest release tag {newest}")
+    steps.append(require_checks(project, commit))
+    plan = Plan("promote", PRODUCTION, commit, version=args.version, steps=steps)
+    plan.steps.append(f"after it deploys, tag {commit[:12]} as {args.version} and push the tag to origin")
+    print_plan(args, project, record, plan)
+    if args.plan:
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
+    confirm_steps(args.yes, "pakem release promote")
+    deliver(args, project, record, plan, history)
+    done = [f"promoted {commit} to production as {args.version}"]
+    if tagged is None:
+        run_git(project.root, "tag", "--annotate", args.version, "--message", f"Release {args.version}", commit)
+        pushed = run_git(project.root, "push", "--quiet", "origin", f"refs/tags/{args.version}", check=False)
+        if pushed.returncode != 0:
+            raise OwnerActionRequired(
+                f"OWNER ACTION REQUIRED: {args.version} is live but its tag was not pushed; run "
+                f"`git -C {shlex.quote(str(project.root))} push origin {args.version}`"
+            )
+        done.append(f"tagged {args.version} and pushed the tag")
+    return finish(args, plan, project, record, done)
+
+
+def run_release_rollback(args) -> int:
+    project, record = _prepare(args, SERVICE_NEEDS)
+    environment = args.environment or (STAGING if project.has_staging else PRODUCTION)
+    if environment not in project.environments:
+        raise CommandRefused(f"{project.name} declares no [environments.{environment}]")
+    _require_production(args, environment)
+    history = DeviceLink(record).query(f"history {project.name}")
+    entry = history["environments"].get(environment)
+    if entry is None:
+        raise CommandRefused(f"{project.name} has no direct {environment} environment on {record.name}")
+    running = entry.get("running")
+    if args.target == "previous":
+        commit = previous_commit(entry.get("deployments", []), running)
+        if commit is None:
+            raise CommandRefused(f"no release ran in {environment} before {running[:12] if running else 'now'}")
+    else:
+        commit = resolve_commit(project, args.target)
+    if commit == running:
+        raise CommandRefused(f"{commit[:12]} already runs in {environment}")
+    steps = [f"{environment} runs {running[:12] if running else 'nothing'}; back to {commit[:12]}"]
+    plan = Plan("rollback", environment, commit, allow_schema=args.allow_schema, steps=steps)
+    print_plan(args, project, record, plan)
+    if args.plan:
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
+    confirm_steps(args.yes, "pakem release rollback")
+    deliver(args, project, record, plan, history)
+    return finish(args, plan, project, record, [f"rolled {environment} back to {commit}"])
+
+
+def _running_line(environment: str, entry: dict) -> str:
+    running = entry.get("running")
+    line = f"{environment}: running {running[:12] if running else 'nothing'}"
+    current = entry.get("current")
+    if current:
+        line += f"; last attempt {current['result']} {current['commit'][:12]} at {current['finished']}"
+    return line
+
+
+def _deployment_line(item: dict) -> str:
+    version = item.get("version") or "-"
+    return f"  {item['finished']}  {item['commit'][:12]}  {version:<9} {item['result']:<14} {item['actor']}"
+
+
+def run_release_report(args) -> int:
+    project, record = _prepare(args, ("ssh", "device-key", "device-key-unlocked"))
+    kind = "history" if args.release_command == "history" else "status"
+    data = DeviceLink(record).query(f"{kind} {project.name}")
+    environments = data["environments"]
+    if args.environment:
+        if args.environment not in environments:
+            raise PakemError(f"{project.name} has no {args.environment} environment on {record.name}")
+        environments = {args.environment: environments[args.environment]}
+    if args.json:
+        print(json.dumps({"project": project.name, "host": record.name, "environments": environments}, indent=2))
+        return EXIT_DONE
+    lines = [f"{project.name} on {record.name}"]
+    for environment, entry in sorted(environments.items()):
+        lines.append(_running_line(environment, entry))
+        if kind == "history":
+            lines += [_deployment_line(item) for item in reversed(entry.get("deployments", []))]
+    print("\n".join(lines))
+    return EXIT_DONE
+
+
+# -- device registration (the owner's admin login, on a terminal) ------------------------------
+
+
+def _require_receiver(remote: Remote, record: HostRecord) -> None:
+    if remote.run(f"test -f {INSTALLED_RECEIVER}").returncode != 0:
+        raise CheckFailed(
+            f"{record.name} runs an engine without direct delivery; update it with `{setup_host_command(record)}`"
+        )
+
+
+def _admin(record: HostRecord, arguments: list[str]) -> int:
+    with tempfile.TemporaryDirectory(prefix="pk-", dir=CONTROL_PARENT) as control_dir:
+        remote = Remote(record, Path(control_dir))
+        try:
+            _require_receiver(remote, record)
+            return remote.run(shlex.join(arguments), tty=True).returncode
+        finally:
+            remote.close()
+
+
+def run_host_allow_device(args) -> int:
+    framework = Framework(Path(args.root))
+    project = read_project(Path(args.project_dir))
+    record = resolve_host(args.host)
+    ensure(framework, ("ssh", "device-key"), args, "pakem host allow-device")
+    device = device_label()
+    key = " ".join(device_key.public_path().read_text(encoding="utf-8").split()[:2])
+    arguments = [
+        "sudo", "python3", INSTALLED_RECEIVER, "authorize", "--device", device, "--key", key,
+        "--project", project.name, "--deploy-root", record.deploy_root,
+    ]
+    for environment in project.environments:
+        arguments += ["--environment", environment]
+    for name in project.placement:
+        arguments += ["--placement", name]
+    for name in project.secrets:
+        arguments += ["--secret", name]
+    if record.proxy:
+        arguments.append("--proxy")
+    if args.switch_from_registry:
+        arguments.append("--switch-from-registry")
+    print(f"pakem host allow-device {record.name}: device {device} may release {project.name}")
+    print(f"  sign in to {record.target} with your own login")
+    print(
+        f"  sudo {INSTALLED_RECEIVER} authorize: direct configs and deploy bases for "
+        f"{', '.join(project.environments)} under {record.deploy_root}/{project.name}, this device's key "
+        "limited to the release receiver, and its signer line"
+    )
+    print(f"  record {project.name} for {record.name} in {display_path(hosts_path())}")
+    if args.plan:
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
+    words = ["pakem", "host", "allow-device", args.host, "--project-dir", str(project.root)]
+    if args.switch_from_registry:
+        words.append("--switch-from-registry")
+    require_terminal(shlex.join(words))
+    confirm_steps(args.yes, "pakem host allow-device")
+    code = _admin(record, arguments)
+    if code != 0:
+        raise PakemError(f"allowing the device failed on {record.target} with exit {code}; see the lines above")
+    if project.name not in record.projects:
+        record.projects.append(project.name)
+    save_host(record)
+    print(f"Device {device} may release {project.name} on {record.name}.")
+    return EXIT_DONE
+
+
+def run_host_revoke_device(args) -> int:
+    record = resolve_host(args.host)
+    this_device = device_label()
+    device = args.device or this_device
+    scope = args.project or "every project"
+    arguments = ["sudo", "python3", INSTALLED_RECEIVER, "revoke", "--device", device]
+    words = ["pakem", "host", "revoke-device", args.host, "--device", device]
+    if args.project:
+        arguments += ["--project", args.project]
+        words += ["--project", args.project]
+    print(f"pakem host revoke-device {record.name}: device {device} may no longer release {scope}")
+    print(f"  sign in to {record.target} with your own login")
+    print(f"  sudo {INSTALLED_RECEIVER} revoke: remove the device's key lines for {scope}")
+    if args.plan:
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
+    require_terminal(shlex.join(words))
+    confirm_steps(args.yes, "pakem host revoke-device")
+    code = _admin(record, arguments)
+    if code != 0:
+        raise PakemError(f"revoking the device failed on {record.target} with exit {code}; see the lines above")
+    if device == this_device:
+        record.projects = [] if args.project is None else [name for name in record.projects if name != args.project]
+        save_host(record)
+    print(f"Device {device} may no longer release {scope} on {record.name}.")
+    return EXIT_DONE
