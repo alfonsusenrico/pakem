@@ -163,11 +163,15 @@ class Files:
 
     texts: dict[str, str] = field(default_factory=dict)
     executable: set[str] = field(default_factory=set)
+    # Starter code for a new repository only; adopt never adds it to an existing project.
+    starters: set[str] = field(default_factory=set)
 
-    def add(self, path: str, text: str, executable: bool = False) -> None:
+    def add(self, path: str, text: str, executable: bool = False, starter: bool = False) -> None:
         self.texts[path] = text
         if executable:
             self.executable.add(path)
+        if starter:
+            self.starters.add(path)
 
 
 def _template(framework: Framework, relative: str) -> str:
@@ -277,8 +281,9 @@ def stack_files(framework: Framework, facts: Facts, description: str, files: Fil
             f"description = {json.dumps(description)}", 'requires-python = ">=3.12"', "dependencies = []", "",
             "[build-system]", 'requires = ["hatchling"]', 'build-backend = "hatchling.build"', "",
         ]) + "\n" + fragment)
-        files.add(f"src/{package}/__init__.py", f'"""{description}"""\n')
-        files.add("tests/test_package.py", f"import {package}\n\n\ndef test_imports() -> None:\n    assert {package}.__doc__\n")
+        files.add(f"src/{package}/__init__.py", f'"""{description}"""\n', starter=True)
+        files.add("tests/test_package.py", f"import {package}\n\n\ndef test_imports() -> None:\n    assert {package}.__doc__\n",
+                  starter=True)
     else:
         files.add("package.json", json.dumps({
             "name": facts.name, "version": "0.1.0", "private": True, "type": "module", "description": description,
@@ -303,8 +308,8 @@ def stack_files(framework: Framework, facts: Facts, description: str, files: Fil
         files.add("eslint.config.mjs", _template(framework, f"{tooling}/node/eslint.config.mjs"))
         files.add(".prettierrc.json", "{}\n")
         files.add(".prettierignore", "dist/\ncoverage/\nPROJECT_STATE.md\nJOURNAL.md\n")
-        files.add("src/index.ts", f"// {description}\nexport const name = {json.dumps(facts.name)};\n")
-        files.add("test/smoke.test.mjs", 'import test from "node:test";\n\ntest("runs", () => {});\n')
+        files.add("src/index.ts", f"// {description}\nexport const name = {json.dumps(facts.name)};\n", starter=True)
+        files.add("test/smoke.test.mjs", 'import test from "node:test";\n\ntest("runs", () => {});\n', starter=True)
 
 
 def standard_files(framework: Framework, facts: Facts, description: str) -> Files:
@@ -385,10 +390,43 @@ def install_dev_tools(repo: Path, stack: str) -> None:
 # -- owner actions and the result ---------------------------------------------------------------
 
 
+def _gh_api(endpoint: str) -> tuple[bool, object]:
+    """A read-only GitHub API call with the owner's gh login: (ok, JSON or the error text)."""
+    completed = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True)
+    if completed.returncode != 0:
+        return False, completed.stderr.strip()
+    try:
+        return True, json.loads(completed.stdout)
+    except ValueError:
+        return False, "gh answered with something other than JSON"
+
+
+def runner_registered(repository: str) -> bool:
+    """Whether GitHub lists a Pakem self-hosted runner for the repository."""
+    ok, data = _gh_api(f"repos/{repository}/actions/runners")
+    if not ok or not isinstance(data, dict):
+        return False
+    return any(
+        "pakem" in {label.get("name") for label in runner.get("labels", [])} for runner in data.get("runners", [])
+    )
+
+
+def tag_protection(repository: str) -> str:
+    """protected, unprotected, or unavailable (rulesets need a paid plan on private repositories)."""
+    ok, data = _gh_api(f"repos/{repository}/rulesets")
+    if not ok:
+        return "unavailable" if "Upgrade to GitHub Pro" in str(data) else "unprotected"
+    if isinstance(data, list) and any(ruleset.get("target") == "tag" for ruleset in data):
+        return "protected"
+    return "unprotected"
+
+
 def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
+    """Owner-only steps still missing; what GitHub or this device already shows is skipped."""
     actions = []
     runner_hosts = [record.name for record in load_hosts().values() if record.runner]
-    if facts.delivery != "others" and facts.visibility == "private":
+    needs_runner = facts.delivery != "others" and facts.visibility == "private"
+    if needs_runner and not runner_registered(facts.repository):
         if runner_hosts:
             actions.append(
                 f"OWNER ACTION REQUIRED: run `pakem host runner add {runner_hosts[0]} {facts.repository}` in your "
@@ -400,12 +438,14 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
                 "`pakem setup host <target> --runner`, then `pakem host runner add <host> "
                 f"{facts.repository}`"
             )
-    if facts.kind != "none":
+    # Rulesets on a private repository need a paid plan (default:no-billed): then only the
+    # owner's own pushes create tags, and nothing is asked.
+    if facts.kind != "none" and tag_protection(facts.repository) == "unprotected":
         actions.append(
-            f"OWNER ACTION REQUIRED: protect release tags `v*` on {facts.repository} "
-            "(Settings > Rules > Rulesets) where your plan allows it"
+            f"OWNER ACTION REQUIRED: protect release tags `v*` on {facts.repository} (Settings > Rules > Rulesets)"
         )
-    if facts.releases_here:
+    allowed = any(facts.name in record.projects for record in load_hosts().values())
+    if facts.releases_here and not allowed:
         actions.append(
             f"OWNER ACTION REQUIRED: run `pakem host allow-device <host> --project-dir {shlex.quote(str(repo))}` "
             "in your terminal before the first release"
@@ -590,9 +630,37 @@ def project_name(repo: Path, existing: Facts | None) -> str:
     return repo.name
 
 
+REGISTRY_MARKERS = ("af_publish.py", "release-production", "release-staging")
+
+
+def registry_findings(repo: Path) -> list[str]:
+    """What the registry mode (ADR 0009) left behind once direct delivery replaces it."""
+    findings = []
+    workflows = repo / ".github" / "workflows"
+    for path in sorted(workflows.glob("*.y*ml")) if workflows.is_dir() else []:
+        if any(marker in read_text(path) for marker in REGISTRY_MARKERS):
+            findings.append(
+                f".github/workflows/{path.name} publishes releases to a registry (ADR 0009); direct delivery "
+                "(`pakem release`) replaces it: remove it, and switch the host with "
+                "`pakem host allow-device <host> --switch-from-registry`"
+            )
+    for relative in ("deploy/af", "deploy/release-signing.pub"):
+        if (repo / relative).exists():
+            findings.append(f"{relative} belongs to the registry mode's signing and publishing; remove it with the workflows")
+    release = repo / "deploy" / "release.toml"
+    if release.is_file():
+        try:
+            build = tomllib.loads(read_text(release)).get("build")
+        except tomllib.TOMLDecodeError:
+            build = None
+        if not isinstance(build, dict) or build.get("runner") != "local":
+            findings.append('deploy/release.toml has no `[build] runner = "local"` (the host builds direct releases)')
+    return findings
+
+
 def adopt_findings(framework: Framework, repo: Path, files: Files) -> list[str]:
     """Differences from the standard in files adopt does not overwrite."""
-    findings = []
+    findings = registry_findings(repo)
     for relative in sorted(files.texts):
         path = repo / relative
         if not path.exists() or relative.endswith(".gitkeep") or relative.startswith(".pakem/"):
@@ -651,6 +719,12 @@ def run_project_adopt(args) -> int:
     answers = gather_answers(args, known, capability_names)
     facts = build_facts(name, repository, answers, capability_names)
     files = standard_files(framework, facts, answers["description"])
+    for starter in files.starters:
+        files.texts.pop(starter, None)
+    if (repo / ".github" / "workflows" / "ci.yml").exists():
+        # The project's own CI stays; the reusable templates come only with a Pakem ci.yml.
+        for name in ci_workflows(facts):
+            files.texts.pop(f".github/workflows/{name}", None)
     missing = [relative for relative in files.texts if not (repo / relative).exists()]
     branch = run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     steps = []

@@ -20,6 +20,10 @@ echo "gh $*" >> "{log}"
 case "$1 $2" in
   "auth status") echo "Logged in" ;;
   "api user") echo octo ;;
+  "api repos/"*"/actions/runners") cat "{state}/runners.json" 2>/dev/null || echo '{"total_count": 0, "runners": []}' ;;
+  "api repos/"*"/rulesets")
+    [ -e "{state}/rulesets-paid" ] && { echo "Upgrade to GitHub Pro or make this repository public" >&2; exit 1; }
+    cat "{state}/rulesets.json" 2>/dev/null || echo '[]' ;;
   "repo create")
     [ -e "{state}/gh-fails" ] && { echo "HTTP 403" >&2; exit 1; }
     source=""; while [ $# -gt 0 ]; do [ "$1" = --source ] && source="$2"; shift; done
@@ -312,7 +316,34 @@ class AdoptTests(ProjectTestCase):
         self.assertIn("FINDING  AGENTS.md has no `Language:` line", output)
         self.assertIn("FINDING  pyproject.toml lacks the Python tooling defaults", output)
         self.assertIn("FINDING  deploy/release.toml: release.toml: compose_files must list at least one file", output)
-        self.assertEqual(self.calls(), [], "adopt runs no installers and touches no forge")
+        writes = [call for call in self.calls() if not call.startswith("gh api repos/")]
+        self.assertEqual(writes, [], "adopt runs no installers and only reads the forge")
+        self.assertFalse((self.repo / "tests" / "test_package.py").exists(), "no starter code in an existing project")
+        self.assertFalse((self.repo / "src").exists())
+
+    def test_own_ci_stays_and_registry_releases_are_findings(self) -> None:
+        write(self.repo / ".github" / "workflows" / "ci.yml", "name: CI\n")
+        write(self.repo / ".github" / "workflows" / "release.yml", "run: python3 deploy/af/af_publish.py publish\n")
+        write(self.repo / "deploy" / "release-signing.pub", "cosign key\n")
+        completed = self.adopt("--yes")
+        self.assertFalse((self.repo / ".github" / "workflows" / "security.yml").exists())
+        self.assertIn("FINDING  .github/workflows/release.yml publishes releases to a registry", completed.stdout)
+        self.assertIn("FINDING  deploy/release-signing.pub belongs to the registry mode", completed.stdout)
+        self.assertIn('FINDING  deploy/release.toml has no `[build] runner = "local"`', completed.stdout)
+
+    def test_owner_actions_skip_what_github_already_shows(self) -> None:
+        (self.state / "runners.json").write_text(
+            '{"total_count": 1, "runners": [{"name": "r", "labels": [{"name": "self-hosted"}, {"name": "pakem"}]}]}'
+        )
+        (self.state / "rulesets-paid").touch()
+        completed = self.adopt("--yes")
+        self.assertNotIn("self-hosted runner", completed.stdout)
+        self.assertNotIn("protect release tags", completed.stdout, "rulesets need a paid plan here (no-billed)")
+        self.assertIn("pakem host allow-device <host>", completed.stdout)
+        write(self.home / ".config" / "pakem" / "hosts.toml",
+              '[hosts.prod]\ntarget = "admin@203.0.113.7"\nprojects = ["demo"]\n')
+        again = self.adopt("--yes")
+        self.assertNotIn("allow-device", again.stdout, "this device may already release it")
 
     def test_plan_writes_nothing(self) -> None:
         completed = self.adopt("--plan")
