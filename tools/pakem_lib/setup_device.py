@@ -52,12 +52,16 @@ def run_setup_check(args) -> int:
 
 
 def run_setup_key(args) -> int:
+    return create_device_key(passphrase=not args.no_passphrase)
+
+
+def create_device_key(passphrase: bool) -> int:
+    """The device key, made on the owner's terminal (ssh-keygen asks for the passphrase)."""
     device = detect_device()
     private, public = device_key.private_path(), device_key.public_path()
     if private.exists() and public.exists():
         print(f"{display_path(private)} already exists ({device_key.fingerprint(public)}); nothing to do")
         return EXIT_DONE
-    passphrase = not args.no_passphrase
     if passphrase and not sys.stdin.isatty():
         raise OwnerActionRequired(SETUP_KEY_ACTION)
     device_key.create(f"pakem-device {device_name()}", passphrase)

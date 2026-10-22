@@ -108,7 +108,7 @@ class InitTests(ProjectTestCase):
         tracked = git(self.repo, "ls-files", home=self.home).stdout.split()
         self.assertNotIn("PROJECT_STATE.md", tracked)
         self.assertTrue((self.repo / "PROJECT_STATE.md").is_file())
-        self.assertIn("pakem host allow-device <host>", completed.stdout)
+        self.assertIn("pakem setup host <ssh-target> --project-dir", completed.stdout)
         self.assertIn("Open gaps (5): language.text, health.proof, settings.sources, backup.restore, migrations.rule",
                       completed.stdout)
 
@@ -343,11 +343,11 @@ class AdoptTests(ProjectTestCase):
         completed = self.adopt("--yes")
         self.assertNotIn("self-hosted runner", completed.stdout)
         self.assertNotIn("protect release tags", completed.stdout, "rulesets need a paid plan here (no-billed)")
-        self.assertIn("pakem host allow-device <host>", completed.stdout)
+        self.assertIn("pakem setup host <ssh-target> --project-dir", completed.stdout)
         write(self.home / ".config" / "pakem" / "hosts.toml",
               '[hosts.prod]\ntarget = "admin@203.0.113.7"\nprojects = ["demo"]\n')
         again = self.adopt("--yes")
-        self.assertNotIn("allow-device", again.stdout, "this device may already release it")
+        self.assertNotIn("setup host", again.stdout, "this device may already release it")
 
     def test_plan_writes_nothing(self) -> None:
         completed = self.adopt("--plan")

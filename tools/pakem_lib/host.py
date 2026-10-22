@@ -1,5 +1,10 @@
 """`pakem setup host`, `pakem setup check --host`, and `pakem host runner add|remove`.
 
+`pakem setup host <target> --project-dir DIR...` is the one owner step before releasing:
+it makes this device's key if it has none, installs or updates the engine, and lets the
+key release each project there (switching a project that deployed from a registry to
+direct delivery), all over one connection.
+
 Server administration signs in with the owner's own admin login and sudo, from the
 owner's terminal only (ADR 0011, decision 8): agents never drive a personal identity, so
 without a terminal these commands stop with an owner action and change nothing. The
@@ -39,7 +44,10 @@ from .common import (
     write_text_atomically,
 )
 from .device_config import config_dir
+from . import device_key
 from .requirements import ensure
+from .service_project import Project, authorize_arguments, is_service_project, read_project, setup_words
+from .setup_device import create_device_key
 from .source import WAIVER_DIRTY, WAIVER_UNMERGED, framework_source_status
 
 DEPLOY_ASSETS = Path("skills") / "release-delivery" / "assets" / "deploy"
@@ -226,9 +234,8 @@ def _record_from_args(args) -> HostRecord:
     return HostRecord(name, args.target, args.port, args.deploy_root, args.trigger, not args.no_proxy, args.runner)
 
 
-def setup_host_command(record: HostRecord) -> str:
-    """The command line that repeats this setup, for the owner to run on a terminal."""
-    words = ["pakem", "setup", "host", record.target, "--name", record.name]
+def setup_flags(record: HostRecord) -> list[str]:
+    words = ["--name", record.name]
     if record.port is not None:
         words += ["--port", str(record.port)]
     words += ["--trigger", record.trigger, "--deploy-root", record.deploy_root]
@@ -236,7 +243,20 @@ def setup_host_command(record: HostRecord) -> str:
         words.append("--no-proxy")
     if record.runner:
         words.append("--runner")
-    return shlex.join(words)
+    return words
+
+
+def setup_host_command(record: HostRecord, project_roots: list[Path] | None = None) -> str:
+    """The command line that repeats this setup, for the owner to run on a terminal."""
+    return setup_words(record.target, setup_flags(record), project_roots or [])
+
+
+def _projects(args) -> list[Project]:
+    """The projects to allow: each --project-dir, or the current directory if it is a service."""
+    directories = [Path(directory) for directory in args.project_dir or []]
+    if not directories and is_service_project(Path.cwd()):
+        directories = [Path.cwd()]
+    return [read_project(directory) for directory in directories]
 
 
 def _check_source(framework: Framework, args) -> str:
@@ -259,24 +279,37 @@ def run_setup_host(args) -> int:
     known = load_hosts().get(record.name)
     if known is not None:
         record.projects = known.projects
+    projects = _projects(args)
     source = _check_source(framework, args)
     install = shlex.join(["sudo", "bash", str(BOOTSTRAP), "install", *record.bootstrap_flags()])
-    steps = [
+    steps = []
+    if projects and not device_key.private_path().exists():
+        steps.append("create this device's release key (ssh-keygen asks for its passphrase here)")
+    steps += [
         f"sign in to {record.target} with your own login (one connection; a password is asked at most once)",
         f"upload the deploy assets of Pakem {framework.version()} to a temporary directory there",
         install,
     ]
     if record.runner:
         steps.append(f"sudo bash {RUNNER} install")
-    steps += ["remove the temporary directory", f"record host {record.name} in {display_path(hosts_path())}"]
+    steps.append("remove the temporary directory")
+    for project in projects:
+        steps.append(
+            f"let this device's key release {project.name} ({', '.join(project.environments)}); an environment "
+            "that deploys from a registry moves to direct delivery, keeping its settings, secrets, and backups"
+        )
+    steps.append(f"record host {record.name} in {display_path(hosts_path())}")
     print(f"pakem setup host {record.target} (framework {source})")
     for step in steps:
         print(f"  {step}")
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
-    require_terminal(setup_host_command(record))
+    require_terminal(setup_host_command(record, [project.root for project in projects]))
     confirm_steps(args.yes, "pakem setup host")
+    if projects:
+        create_device_key(passphrase=not args.no_passphrase)
+    allowed = []
     with tempfile.TemporaryDirectory(prefix="pk-", dir=CONTROL_PARENT) as control_dir:
         remote = Remote(record, Path(control_dir))
         try:
@@ -287,8 +320,14 @@ def run_setup_host(args) -> int:
                     code = run_sudo(remote, directory, RUNNER, ["install"])
             finally:
                 remote.output(f"rm -rf {shlex.quote(directory)}")
+            for project in projects if code == 0 else []:
+                arguments = authorize_arguments(project, record.deploy_root, record.proxy, switch_from_registry=True)
+                if remote.run(shlex.join(arguments), tty=True).returncode != 0:
+                    raise PakemError(f"allowing this device to release {project.name} failed; see the lines above")
+                allowed.append(project.name)
         finally:
             remote.close()
+    record.projects = sorted(set(record.projects) | set(allowed))
     if code == BOOTSTRAP_CHECK_FAILED:
         save_host(record)
         raise CheckFailed(f"{record.target} is installed but its check failed; see the lines above")
@@ -296,6 +335,8 @@ def run_setup_host(args) -> int:
         raise PakemError(f"host setup failed on {record.target} with exit {code}; see the lines above")
     save_host(record)
     print(f"Host {record.name} is ready; recorded in {display_path(hosts_path())}.")
+    if allowed:
+        print(f"This device may release {', '.join(allowed)} there: `pakem release` runs without your login now.")
     return EXIT_DONE
 
 

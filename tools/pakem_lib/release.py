@@ -22,7 +22,6 @@ import shlex
 import subprocess
 import sys
 import tempfile
-import tomllib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -46,13 +45,19 @@ from .gaps import blocking, evaluate, load_facts
 from .host import CONTROL_PARENT, HostRecord, Remote, hosts_path, load_hosts, require_terminal, resolve_host, save_host
 from .host import setup_host_command
 from .requirements import device_label, ensure
+from .service_project import (
+    INSTALLED_RECEIVER,
+    PRODUCTION,
+    STAGING,
+    Project,
+    authorize_arguments,
+    read_project,
+    setup_words,
+)
 
 DEPLOY_USER = "af"
-INSTALLED_RECEIVER = "/opt/af/af_receive.py"
 NAMESPACE = "pakem-release"
 REQUEST_SCHEMA = "pakem.release-request/v1"
-STAGING = "staging"
-PRODUCTION = "production"
 MAIN = "origin/main"
 VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
@@ -72,37 +77,6 @@ CHECK_NEEDS = ("gh", "github-login")
 
 
 # -- the project's own files ---------------------------------------------------------------
-
-
-@dataclass
-class Project:
-    root: Path
-    name: str
-    environments: list[str]
-    placement: list[str] = field(default_factory=list)
-    secrets: list[str] = field(default_factory=list)
-
-    @property
-    def has_staging(self) -> bool:
-        return STAGING in self.environments
-
-
-def read_project(directory: Path) -> Project:
-    root = directory.resolve()
-    release_file = root / "deploy" / "release.toml"
-    settings_file = root / "deploy" / "settings.toml"
-    if not release_file.is_file():
-        raise PakemError(f"{display_path(root)} is not a service project: it has no deploy/release.toml")
-    try:
-        config = tomllib.loads(release_file.read_text(encoding="utf-8"))
-        settings = tomllib.loads(settings_file.read_text(encoding="utf-8")) if settings_file.is_file() else {}
-    except tomllib.TOMLDecodeError as exc:
-        raise PakemError(f"invalid TOML in the project's deploy files: {exc}") from exc
-    name = config.get("project")
-    environments = sorted(config.get("environments") or {})
-    if not isinstance(name, str) or not environments:
-        raise PakemError("deploy/release.toml needs project and at least one [environments.<name>]")
-    return Project(root, name, environments, list(settings.get("placement", [])), list(settings.get("secrets", [])))
 
 
 def check_gaps(project: Project) -> None:
@@ -199,12 +173,19 @@ def require_checks(project: Project, commit: str) -> str:
 # -- where the project is released ---------------------------------------------------------
 
 
+def owner_setup_action(project_root: Path) -> str:
+    """The one owner step that lets this device release a project: setup host, with its flags."""
+    known = list(load_hosts().values())
+    command = (setup_host_command(known[0], [project_root]) if len(known) == 1
+               else setup_words("<ssh-target>", [], [project_root]))
+    return f"OWNER ACTION REQUIRED: run `{command}` in your terminal (your own login); then releases need no login"
+
+
 def host_for(project: Project) -> HostRecord:
     hosts = [record for record in load_hosts().values() if project.name in record.projects]
     if not hosts:
         raise OwnerActionRequired(
-            f"OWNER ACTION REQUIRED: run `pakem host allow-device <host> --project-dir "
-            f"{shlex.quote(str(project.root))}` in your terminal; this device may not release {project.name} anywhere yet"
+            f"{owner_setup_action(project.root)}; this device may not release {project.name} anywhere yet"
         )
     if len(hosts) > 1:
         names = ", ".join(record.name for record in hosts)
@@ -246,7 +227,8 @@ class DeviceLink:
         if code == SSH_FAILED:
             return PakemError(
                 f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}); if this device "
-                f"was never allowed there, run `pakem host allow-device {self.record.name}` in your terminal"
+                f"was never allowed there, run `{setup_host_command(self.record)} --project-dir <project>` in your "
+                "terminal"
             )
         if code == HOST_REFUSED:
             return CommandRefused(f"{self.record.name} refused: {last}")
@@ -548,21 +530,7 @@ def run_host_allow_device(args) -> int:
     record = resolve_host(args.host)
     ensure(framework, ("ssh", "device-key"), args, "pakem host allow-device")
     device = device_label()
-    key = " ".join(device_key.public_path().read_text(encoding="utf-8").split()[:2])
-    arguments = [
-        "sudo", "python3", INSTALLED_RECEIVER, "authorize", "--device", device, "--key", key,
-        "--project", project.name, "--deploy-root", record.deploy_root,
-    ]
-    for environment in project.environments:
-        arguments += ["--environment", environment]
-    for name in project.placement:
-        arguments += ["--placement", name]
-    for name in project.secrets:
-        arguments += ["--secret", name]
-    if record.proxy:
-        arguments.append("--proxy")
-    if args.switch_from_registry:
-        arguments.append("--switch-from-registry")
+    arguments = authorize_arguments(project, record.deploy_root, record.proxy, args.switch_from_registry)
     print(f"pakem host allow-device {record.name}: device {device} may release {project.name}")
     print(f"  sign in to {record.target} with your own login")
     print(

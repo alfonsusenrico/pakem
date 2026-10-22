@@ -109,7 +109,13 @@ Stage: `experimental` (built 2026-10-22).
   never connects. `--plan` works anywhere. The device key is never used for
   administration: it may only deploy, through a forced command (area 5).
 - **`pakem setup host <ssh-target> [--name] [--port] [--trigger pull|push]
-  [--deploy-root] [--no-proxy] [--runner] [--plan] [--yes]`:**
+  [--deploy-root] [--no-proxy] [--runner] [--project-dir DIR ...] [--no-passphrase]
+  [--plan] [--yes]`:** the one owner step before releasing (owner request 2026-10-22: one
+  command, not three):
+  - with projects (each `--project-dir`, or the current directory when it is a service
+    project), first makes this device's key if it has none (`setup key`'s prompt), and
+    after the install lets the key release each project (`host allow-device`, switching an
+    environment that deploys from a registry to direct delivery);
   - one SSH connection (ControlMaster), so a password is asked at most once;
   - uploads `VERSION` and the deploy assets, in the checkout's layout, to a temporary
     directory, runs `af_bootstrap.sh install` with sudo (Docker, cosign, Caddy unless
@@ -250,8 +256,11 @@ Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` ar
   - `artifact`: builds each declared OS and CPU target, signs, and publishes a forge
     release; `rollback` marks a version withdrawn.
   - `none`: tag only.
+- **`pakem setup host <target> --project-dir DIR`** is how a device is allowed (area 2);
+  agents that need it get that one line as their owner action.
 - **`pakem host allow-device <host> [--project-dir] [--switch-from-registry]`** (owner's
-  admin login, terminal only, like `setup host`): runs `af_receive.py authorize` as root,
+  admin login, terminal only) does only the last part, for one more project later: it runs
+  `af_receive.py authorize` as root,
   which writes a direct host config and deploy base for every environment the project's
   `deploy/release.toml` declares, the device key's forced-command line listing the
   projects it may release, and its `allowed_signers` line listing the projects it may
@@ -260,7 +269,7 @@ Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` ar
   from a registry moves only with `--switch-from-registry`.
 - **`pakem host revoke-device <host> [--device NAME] [--project P]`:** removes a device's
   lines, or one project from them; a lost device is revoked from another device by name.
-- **Owner actions:** `allow-device` and `revoke-device` on a terminal; placement values
+- **Owner actions:** `setup host --project-dir` (or `allow-device`) and `revoke-device` on a terminal; placement values
   and secrets on the host until `pakem secret` exists (area 4); pushing the tag if the
   push fails.
 - **Gaps:** none at release time; all are settled at init. A release refuses a project

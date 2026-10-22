@@ -57,6 +57,7 @@ from .gaps import (
 )
 from .githooks import HOOKS_DIR_NAME
 from .host import load_hosts
+from .release import owner_setup_action
 from .requirements import ensure
 
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -446,10 +447,7 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
         )
     allowed = any(facts.name in record.projects for record in load_hosts().values())
     if facts.releases_here and not allowed:
-        actions.append(
-            f"OWNER ACTION REQUIRED: run `pakem host allow-device <host> --project-dir {shlex.quote(str(repo))}` "
-            "in your terminal before the first release"
-        )
+        actions.append(f"{owner_setup_action(repo)}; needed once before the first release")
     return actions
 
 
@@ -641,8 +639,7 @@ def registry_findings(repo: Path) -> list[str]:
         if any(marker in read_text(path) for marker in REGISTRY_MARKERS):
             findings.append(
                 f".github/workflows/{path.name} publishes releases to a registry (ADR 0009); direct delivery "
-                "(`pakem release`) replaces it: remove it, and switch the host with "
-                "`pakem host allow-device <host> --switch-from-registry`"
+                "(`pakem release`) replaces it: remove it; `pakem setup host` with this project switches the host"
             )
     # deploy/af/contracts.py stays useful: a project's own checks may validate its deploy files with it.
     for relative in ("deploy/af/af_publish.py", "deploy/release-signing.pub"):
