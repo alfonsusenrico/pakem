@@ -94,11 +94,15 @@ adopts the project, asks only what it cannot find out itself, and writes the pro
 
 ## Commands
 
-`pk` is the short form of `pakem`; every command previews by default and changes nothing
-until you add `--apply`.
+`pk` is the short form of `pakem`. The framework commands preview by default and change
+nothing until you add `--apply`; the workflow commands (`update` and those to come) ask
+before acting, and take `--plan` to preview and `--yes` to skip the question.
 
 | Command | What it does |
 |---|---|
+| `pakem status` | Whether this device runs the latest merged Pakem, and whether this project's pins match |
+| `pakem update` | Install the latest merged Pakem and list the files agents must re-read |
+| `pakem config` | Device settings, such as whether agents may run `pakem update` themselves |
 | `pakem install` | Install the kernel and skills into every supported agent on this device |
 | `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |
 | `pakem doctor` | Compare what is installed with this version of Pakem |
@@ -144,7 +148,8 @@ flowchart LR
 ## Roadmap
 
 Pakem is moving from "a standard your agents read" to "a standard your agents run". These
-are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-and-no-billed-services.md)):
+are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-and-no-billed-services.md),
+[ADR 0011](docs/adr/0011-pakem-standard-core-adaptive-edges.md)):
 
 - `pakem setup device` and `pakem setup host`: install the tools, keys, and runtimes a
   device or server needs, and tell you the few steps only you can do.
@@ -154,7 +159,6 @@ are designed and being built ([ADR 0010](docs/adr/0010-project-chosen-builders-a
   from signed source, deploy with health checks, roll back by one step.
 - `pakem decide`: record decisions that wait on someone else, and get reminded when they
   are due.
-- `pakem status` and `pakem update`: every session knows when Pakem changed.
 
 ## Contributing
 

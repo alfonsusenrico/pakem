@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .changelog import run_changelog
 from .common import Framework, PakemError, eprint
+from .device_config import SETTINGS, run_config
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
 from .enforce import run_enforce
@@ -18,12 +19,28 @@ from .legacy_install import migrate
 from .lint import run_lint
 from .project import run_check, run_sync
 from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, default_context, run_schedule
+from .status import HOOK_PROMPT, HOOK_SESSION_START, run_status
+from .update import run_update
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent
 ENFORCE_HOSTS = ("claude", "codex", "antigravity")
 # Commands that write installed state migrate it from the former name first;
 # install does so itself, after its source checks.
 MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
+# Maturity per area (ADR 0011, decision 10); the kernel rule "use pakem" applies to stable ones.
+AREAS = (
+    ("status and updates", "experimental", "status, update, config"),
+    ("device", "draft", "setup device"),
+    ("host", "draft", "setup host, host"),
+    ("project", "draft", "project init, project adopt, decide"),
+    ("secrets", "draft", "secret"),
+    ("release", "draft", "release"),
+    (
+        "framework and agents",
+        "stable",
+        "install, uninstall, doctor, lint, changelog, project sync|check, report, schedule, hooks, enforce, eval",
+    ),
+)
 
 
 def _add_apply(parser: argparse.ArgumentParser, verb: str = "write") -> None:
@@ -43,14 +60,57 @@ def _bounded_int(low: int, high: int):
     return parse
 
 
+def areas_text() -> str:
+    width = max(len(name) for name, _, _ in AREAS)
+    lines = ["areas (stage: commands; see docs/pakem-command-map.md):"]
+    lines += [f"  {name.ljust(width)}  {stage}: {commands}" for name, stage, commands in AREAS]
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="pakem", description="Pakem: kernel, skills, and project checks for coding agents.")
+    parser = argparse.ArgumentParser(
+        prog="pakem",
+        description="Pakem: kernel, skills, and project checks for coding agents.",
+        epilog=areas_text(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--root",
         default=str(DEFAULT_ROOT),
         help="framework repository root (default: the checkout containing this tool)",
     )
     commands = parser.add_subparsers(dest="command", required=True)
+
+    commands.add_parser("help", help="show commands and each area's maturity stage")
+
+    status = commands.add_parser(
+        "status", help="compare the installed framework with merged main, and this project's pins"
+    )
+    status.add_argument("--brief", action="store_true", help="only the summary and problems")
+    status.add_argument("--json", action="store_true", help="machine-readable result")
+    network = status.add_mutually_exclusive_group()
+    network.add_argument(
+        "--refresh", action="store_true", help="fetch origin now (default: at most every 4 hours)"
+    )
+    network.add_argument("--offline", action="store_true", help="never fetch; use the last check")
+    status.add_argument("--hook", choices=(HOOK_SESSION_START, HOOK_PROMPT), help=argparse.SUPPRESS)
+    status.add_argument("--host", default="claude", help=argparse.SUPPRESS)
+
+    update = commands.add_parser(
+        "update", help="install the framework from merged main, then list the files that changed"
+    )
+    update.add_argument("--plan", action="store_true", help="print the steps without doing them")
+    update.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    update.add_argument("--json", action="store_true", help="machine-readable result")
+
+    config = commands.add_parser("config", help="device settings in ~/.config/pakem/config.toml")
+    config_commands = config.add_subparsers(dest="config_command", required=True)
+    config_get = config_commands.add_parser("get", help="print one setting")
+    config_get.add_argument("key", choices=sorted(SETTINGS))
+    config_set = config_commands.add_parser("set", help="change one setting")
+    config_set.add_argument("key", choices=sorted(SETTINGS))
+    config_set.add_argument("value")
+    config_commands.add_parser("list", help="print every setting with its allowed values")
 
     install = commands.add_parser("install", help="install the kernel and skills into host locations")
     install.add_argument("--hosts", help="comma-separated host ids from hosts/targets.toml (default: all)")
@@ -237,6 +297,15 @@ def migrate_before(args: argparse.Namespace) -> None:
 
 def dispatch(args: argparse.Namespace) -> int:
     migrate_before(args)
+    if args.command == "help":
+        build_parser().print_help()
+        return 0
+    if args.command == "status":
+        return run_status(args)
+    if args.command == "update":
+        return run_update(args)
+    if args.command == "config":
+        return run_config(args)
     if args.command == "install":
         return run_install(args)
     if args.command == "uninstall":
@@ -270,4 +339,4 @@ def main(argv: list[str] | None = None) -> int:
         return dispatch(args)
     except PakemError as exc:
         eprint(f"pakem: error: {exc}")
-        return 2
+        return exc.exit_code

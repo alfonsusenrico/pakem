@@ -86,7 +86,8 @@ class LegacyDeviceTestCase(IsolatedTestCase):
         return root
 
     def fragment(self, relative: str) -> dict:
-        return json.loads((self.framework / "enforcement" / relative).read_text())
+        raw = json.loads((self.framework / "enforcement" / relative).read_text())
+        return enforce.render_fragment(raw, enforce.pakem_command(Framework(self.framework)))
 
     def make_legacy_device(self, with_schedule: bool = True) -> None:
         """State as the former version left it after install, enforce, and schedule."""

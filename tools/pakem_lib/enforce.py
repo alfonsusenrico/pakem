@@ -9,8 +9,10 @@ from __future__ import annotations
 import copy
 import difflib
 import json
+import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from .common import (
@@ -35,6 +37,40 @@ JSON_HOSTS = {
 CODEX_RULES_SOURCE = "codex/pakem.rules"
 CODEX_RULES_DESTINATION = ".codex/rules/pakem.rules"
 CODEX_PROBE_COMMAND = ["git", "push", "--force", "origin", "main"]
+# Fragments name the pakem command this way; hooks need the tool itself, not a copy.
+PAKEM_PLACEHOLDER = "{{pakem}}"
+
+
+WRAPPER_MARKER = "# pakem-managed"
+
+
+def pakem_command(framework: Framework) -> str:
+    """How a host hook runs this checkout's tool.
+
+    The install.sh wrapper on PATH is preferred when it runs this checkout: its path
+    survives interpreter upgrades, while sys.executable may name a versioned interpreter.
+    Otherwise the interpreter running now is used, since it is known to be 3.11+.
+    """
+    tool = framework.root.resolve() / "tools" / "pakem"
+    wrapper = shutil.which("pakem")
+    if wrapper is not None:
+        try:
+            text = Path(wrapper).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        if WRAPPER_MARKER in text.splitlines() and str(tool) in text:
+            return shlex.quote(wrapper)
+    return f"{shlex.quote(sys.executable)} {shlex.quote(str(tool))}"
+
+
+def render_fragment(value: object, command: str) -> object:
+    if isinstance(value, str):
+        return value.replace(PAKEM_PLACEHOLDER, command)
+    if isinstance(value, list):
+        return [render_fragment(item, command) for item in value]
+    if isinstance(value, dict):
+        return {key: render_fragment(item, command) for key, item in value.items()}
+    return value
 
 
 def merge_fragment(target: dict, fragment: dict, path: tuple = ()) -> list[dict]:
@@ -198,7 +234,8 @@ def _release_guard(manifest: dict, host: str, apply: bool) -> None:
 
 def install_json_host(framework: Framework, host: str, apply: bool) -> int:
     fragment_relative, target_relative = JSON_HOSTS[host]
-    fragment = json.loads(read_text(framework.enforcement_dir / fragment_relative))
+    raw_fragment = json.loads(read_text(framework.enforcement_dir / fragment_relative))
+    fragment = render_fragment(raw_fragment, pakem_command(framework))
     target_path = home_dir() / target_relative
     manifest = load_manifest()
     existed = target_path.exists()
