@@ -103,9 +103,9 @@ before acting, and take `--plan` to preview and `--yes` to skip the question.
 | `pakem status` | Whether this device runs the latest merged Pakem, and whether this project's pins match |
 | `pakem update` | Install the latest merged Pakem and list the files agents must re-read |
 | `pakem setup device` | Prepare a fresh machine in one go; other commands prepare what they need when they run (`setup key` makes the device key, `setup check` only lists) |
-| `pakem setup host` | Install the release engine (and optionally a CI runner) on a server over SSH, from your terminal |
+| `pakem setup host` | Prepare a server over SSH from your terminal: the release engine (and optionally a CI runner), plus, with `--project-dir`, this device's key and permission to release those projects |
 | `pakem host runner` | Register a private repository with a server's CI runner |
-| `pakem host allow-device` | Let this device's key release a project on a server (and `revoke-device`), from your terminal |
+| `pakem host allow-device` | Let this device release one more project on a server later (and `revoke-device`), from your terminal |
 | `pakem release` | Publish to staging, promote to production, roll back, and read history: signed source goes to the server, which builds and deploys it |
 | `pakem project init` | Start a project: standard files, CI, deploy files, hooks, and a private GitHub repository |
 | `pakem project adopt` | Bring an existing repository to the standard: adds what is missing, lists the rest |
