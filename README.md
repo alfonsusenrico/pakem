@@ -95,8 +95,9 @@ adopts the project, asks only what it cannot find out itself, and writes the pro
 ## Commands
 
 `pk` is the short form of `pakem`. The framework commands preview by default and change
-nothing until you add `--apply`; the workflow commands (`update` and those to come) ask
-before acting, and take `--plan` to preview and `--yes` to skip the question.
+nothing until you add `--apply`; the workflow commands that change a device, a server, or a
+repository (`update`, `setup`, `release`, `project init` and `adopt`, `propose`) ask before
+acting, and take `--plan` to preview and `--yes` to skip the question.
 
 | Command | What it does |
 |---|---|

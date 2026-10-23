@@ -53,8 +53,8 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
      registry; the host's pull agent or a push trigger deploys them. Only with a free
      registry (public packages, or a registry on a host we run).
    - **direct:** the release command sends the signed source archive of the exact commit
-     (`git archive`) and its signed record over SSH to the host, through a per-project
-     key restricted by a forced command to a receiver. The receiver verifies the
+     (`git archive`) and its signed record over SSH to the host, through the device's key
+     (decision 8) restricted by a forced command to a receiver. The receiver verifies the
      signature against the device keys the project trusts, builds the images natively
      once per commit, stores the release under `releases/<commit>/`, and runs the engine.
      No registry and no image transfer are involved; promotion reuses the built images,

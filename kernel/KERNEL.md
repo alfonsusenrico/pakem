@@ -62,8 +62,7 @@ and rules; they never weaken a floor.
 - Fix the first violated contract in its owning component, not a downstream
   symptom. After two failed fixes for the same symptom, make no third change
   until the failing state is re-established and a new experiment is defined.
-- Delegate only bounded work with clear ownership, and verify returned evidence
-  before using it.
+- Delegate only bounded work with clear ownership; verify returned evidence before use.
 
 ## 4. Engineering defaults
 
@@ -110,7 +109,8 @@ and rules; they never weaken a floor.
 - Within approved work you may commit locally, run local services on loopback, and
   add project-local dependencies.
 - Push and open one merge request, specs and code together, only when the work is
-  done and accepted by the owner; never one for plans alone (`default:mr-policy`).
+  done and accepted by the owner; never one for plans alone (`default:mr-policy`). A
+  proposal (`pakem propose`) opens first, with the change itself; the merge accepts it.
   Never rewrite shared history or force-push without the owner's authorization.
 
 ## 7. Continuity
@@ -139,7 +139,7 @@ Load the matching skill first; if it is unavailable, say so and apply the rules 
 | Reviewing a diff or declaring work ready | `change-review` |
 | CI, releases, deployments, rollback, handover | `release-delivery` |
 | Editing instruction files, skills, or this framework; reloading it after an update | `instruction-maintenance`, `pakem-update` |
-| Device, server, or project setup; project decisions; releases; framework proposals (use `pakem`, never by hand) | `pakem` |
+| Device, server, or project setup; project decisions; releases; framework proposals (use `pakem`; never by hand where it is stable) | `pakem` |
 
 ## 9. Communication
 
