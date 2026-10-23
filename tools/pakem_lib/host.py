@@ -42,6 +42,8 @@ from .common import (
     PakemError,
     confirm_steps,
     display_path,
+    toml_string,
+    toml_value,
     utc_now_iso,
     write_text_atomically,
 )
@@ -142,23 +144,23 @@ def save_host(record: HostRecord, set_up: bool = True) -> None:
     lines = ["# Written by `pakem host add`, `pakem setup host`, and `pakem host allow-device`; device-local."]
     for name in sorted(hosts):
         host = hosts[name]
-        lines += ["", f"[hosts.{json.dumps(name)}]", f"target = {json.dumps(host.target)}"]
+        lines += ["", f"[hosts.{toml_string(name)}]", f"target = {toml_value(host.target)}"]
         if host.port is not None:
             lines.append(f"port = {host.port}")
         lines += [
-            f"deploy_root = {json.dumps(host.deploy_root)}",
-            f"trigger = {json.dumps(host.trigger)}",
-            f"proxy = {json.dumps(host.proxy)}",
-            f"runner = {json.dumps(host.runner)}",
+            f"deploy_root = {toml_value(host.deploy_root)}",
+            f"trigger = {toml_value(host.trigger)}",
+            f"proxy = {toml_value(host.proxy)}",
+            f"runner = {toml_value(host.runner)}",
         ]
         if host.release_port is not None:
             lines.append(f"release_port = {host.release_port}")
         if host.projects:
-            lines.append(f"projects = {json.dumps(sorted(host.projects))}")
+            lines.append(f"projects = {toml_value(sorted(host.projects))}")
         if host.project_dirs:
-            lines.append(f"project_dirs = {json.dumps(host.project_dirs)}")
+            lines.append(f"project_dirs = {toml_value(host.project_dirs)}")
         if host.set_up_at:
-            lines.append(f"set_up_at = {json.dumps(host.set_up_at)}")
+            lines.append(f"set_up_at = {toml_value(host.set_up_at)}")
     write_text_atomically(hosts_path(), "\n".join(lines) + "\n")
 
 

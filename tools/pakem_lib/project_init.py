@@ -40,9 +40,13 @@ from .common import (
     is_git_work_tree,
     read_text,
     run_git,
+    toml_string,
     write_text_atomically,
 )
 from .gaps import (
+    ANSWERED,
+    CI_OWNER,
+    CLIENT_CI,
     DELIVERIES,
     KINDS,
     STUB_MARKER,
@@ -51,8 +55,12 @@ from .gaps import (
     decisions_text,
     evaluate,
     facts_path,
+    extra_facts,
     facts_text,
     load_facts,
+    record_decision,
+    require_decision_markers,
+    uses_client_ci,
     write_open_decisions,
 )
 from .githooks import HOOKS_DIR_NAME
@@ -337,8 +345,8 @@ def stack_files(framework: Framework, facts: Facts, description: str, files: Fil
         package = facts.name.replace("-", "_")
         fragment = _template(framework, f"{tooling}/python/pyproject.fragment.toml")
         files.add("pyproject.toml", "\n".join([
-            "[project]", f"name = {json.dumps(facts.name)}", 'version = "0.1.0"',
-            f"description = {json.dumps(description)}", 'requires-python = ">=3.12"', "dependencies = []", "",
+            "[project]", f"name = {toml_string(facts.name)}", 'version = "0.1.0"',
+            f"description = {toml_string(description)}", 'requires-python = ">=3.12"', "dependencies = []", "",
             "[build-system]", 'requires = ["hatchling"]', 'build-backend = "hatchling.build"', "",
         ]) + "\n" + fragment)
         files.add(f"src/{package}/__init__.py", f'"""{description}"""\n', starter=True)
@@ -372,7 +380,7 @@ def stack_files(framework: Framework, facts: Facts, description: str, files: Fil
         files.add("test/smoke.test.mjs", 'import test from "node:test";\n\ntest("runs", () => {});\n', starter=True)
 
 
-def standard_files(framework: Framework, facts: Facts, description: str) -> Files:
+def standard_files(framework: Framework, facts: Facts, description: str, client_ci: bool = False) -> Files:
     files = Files()
     files.add("AGENTS.md", agents_text(framework, facts, description))
     files.add(".gitignore", _template(framework, "skills/project-bootstrap/assets/project/gitignore.snippet"))
@@ -387,7 +395,7 @@ def standard_files(framework: Framework, facts: Facts, description: str) -> File
         files.add(f"{directory}/.gitkeep", "")
     if facts.kind != "none":
         files.add("CHANGELOG.md", _template(framework, "skills/project-bootstrap/assets/project/CHANGELOG.md.tmpl"))
-    if facts.delivery != "others":
+    if not client_ci:
         files.add(".github/workflows/ci.yml", ci_text(facts))
         if facts.visibility == "private":
             # The security job's actionlint must know the self-hosted runner's label.
@@ -475,20 +483,36 @@ def runner_registered(repository: str) -> bool:
 
 
 def tag_protection(repository: str) -> str:
-    """protected, unprotected, or unavailable (rulesets need a paid plan on private repositories)."""
+    """protected, unprotected, unavailable (rulesets need a paid plan on private repositories),
+    or unknown when GitHub could not be asked."""
     ok, data = _gh_api(f"repos/{repository}/rulesets")
     if not ok:
-        return "unavailable" if "Upgrade to GitHub Pro" in str(data) else "unprotected"
+        # Any other error (no network, no login) says nothing about the repository.
+        return "unavailable" if "Upgrade to GitHub Pro" in str(data) else "unknown"
     if isinstance(data, list) and any(ruleset.get("target") == "tag" for ruleset in data):
         return "protected"
     return "unprotected"
+
+
+def client_ci(args, facts: Facts, repo: Path) -> bool:
+    """Whether the client runs its own CI: `--client-ci WHERE` now, or recorded before."""
+    if args.client_ci and facts.delivery != "others":
+        raise PakemError("--client-ci is for --delivery others, when the client runs its own CI")
+    return bool(args.client_ci) or uses_client_ci(repo)
+
+
+def record_client_ci(args, repo: Path, done: list[str]) -> None:
+    if args.client_ci:
+        record_decision(repo, CI_OWNER, {"state": ANSWERED, "answer": f"{CLIENT_CI}: {args.client_ci}",
+                                         "reason": "chosen with --client-ci; Pakem writes no CI"})
+        done.append(f"recorded {CI_OWNER}: {CLIENT_CI}, no Pakem CI written")
 
 
 def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
     """Owner-only steps still missing; what GitHub or this device already shows is skipped."""
     actions = []
     runner_hosts = [record.name for record in load_hosts().values() if record.runner]
-    needs_runner = facts.delivery != "others" and facts.visibility == "private"
+    needs_runner = facts.visibility == "private" and not uses_client_ci(repo)
     if needs_runner and not runner_registered(facts.repository):
         if runner_hosts:
             actions.append(
@@ -503,7 +527,8 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
             )
     # Rulesets on a private repository need a paid plan (default:no-billed): then only the
     # owner's own pushes create tags, and nothing is asked.
-    if facts.kind != "none" and tag_protection(facts.repository) == "unprotected":
+    # Only releases we tag need protected tags; others' and unreleased projects are not asked.
+    if facts.kind != "none" and facts.delivery == "us" and tag_protection(facts.repository) == "unprotected":
         actions.append(
             f"OWNER ACTION REQUIRED: protect release tags `v*` on {facts.repository} (Settings > Rules > Rulesets)"
         )
@@ -580,7 +605,7 @@ def run_project_init(args) -> int:
     if not args.plan and not REPOSITORY.match(repository):
         raise PakemError(f"--repository must look like owner/{name}")
     facts = build_facts(name, repository, answers, capability_names)
-    files = standard_files(framework, facts, answers["description"])
+    files = standard_files(framework, facts, answers["description"], client_ci(args, facts, repo))
     steps = [
         f"create {display_path(repo)} and `git init -b main`",
         f"write {len(files.texts)} files: AGENTS.md, .pakem/, CI, "
@@ -600,6 +625,7 @@ def run_project_init(args) -> int:
     done = [f"git repository {display_path(repo)}"]
     write_files(repo, files, only_missing=False)
     done.append(f"wrote {len(files.texts)} files")
+    record_client_ci(args, repo, done)
     exclude_private_files(repo)
     write_state_file(framework, repo, facts)
     install_hooks(framework, repo)
@@ -778,7 +804,7 @@ def run_project_adopt(args) -> int:
                          "deploy/release.toml or rename the directory")
     answers = gather_answers(args, known, capability_names)
     facts = build_facts(name, repository, answers, capability_names)
-    files = standard_files(framework, facts, answers["description"])
+    files = standard_files(framework, facts, answers["description"], client_ci(args, facts, repo))
     for starter in files.starters:
         files.texts.pop(starter, None)
     if (repo / ".github" / "workflows" / "ci.yml").exists():
@@ -798,6 +824,9 @@ def run_project_adopt(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.", file=sys.stderr if args.json else sys.stdout)
         return EXIT_DONE
+    require_decision_markers(repo)
+    # Built before anything is written: a key Pakem cannot write back refuses the run.
+    new_facts = facts_text(facts, extra_facts(repo)) if existing != facts else None
     confirm_steps(args.yes, "pakem project adopt")
     done = []
     if branch in ("main", "master"):
@@ -808,8 +837,11 @@ def run_project_adopt(args) -> int:
     if decisions_path(repo).exists():
         files.texts.pop(str(decisions_path(Path())), None)
     written = write_files(repo, files, only_missing=True)
-    write_text_atomically(facts_path(repo), facts_text(facts))
-    done.append(f"wrote {len(written)} missing files and {display_path(facts_path(repo))}")
+    done.append(f"wrote {len(written)} missing files")
+    record_client_ci(args, repo, done)
+    if new_facts is not None:
+        write_text_atomically(facts_path(repo), new_facts)
+        done.append(f"wrote {display_path(facts_path(repo))}")
     exclude_private_files(repo)
     findings = adopt_findings(framework, repo, files)
     return finish(args, repo, facts, done, follow_up_actions(facts, repo), findings)

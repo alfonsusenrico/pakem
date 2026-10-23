@@ -176,10 +176,12 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   - writes the standard files: `AGENTS.md` (purpose, `Capabilities:`, `Delivery:`,
     commands, the generated Open decisions list), `.pakem/`, `.gitignore`,
     `.editorconfig`, OpenSpec `config.yaml`, `research/`, `CHANGELOG.md` (kind not
-    `none`), CI unless `Delivery: others` (`ci.yml` on push, pull request, and `v*` tags,
+    `none`), CI for every delivery (`ci.yml` on push, pull request, and `v*` tags,
     superseded runs cancelled, plus the verify, security, and database templates the
     capabilities switch on; private repositories run on the self-hosted runner, public ones
-    on GitHub-hosted runners), the deploy files for a service we release (contracts §4,
+    on GitHub-hosted runners; with `--delivery others --client-ci WHERE` the client runs its
+    own CI, so none is written and gap `ci.owner` records it), the deploy files for a
+    service we release (contracts §4,
     starters marked `pakem:stub`: `compose.yaml`, `Dockerfile`, `deploy/hooks/backup`,
     `docs/deployment.md`), and the stack's tooling (uv with ruff, pyright, pytest; or npm
     with prettier, eslint, TypeScript), with the dev tools added through the stack's
@@ -199,30 +201,33 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   `ci.yml` (the reusable templates come only with a Pakem `ci.yml`), installs nothing,
   and only reads the forge.
 - **Owner actions** (skipped when GitHub or this device already shows them done): a
-  self-hosted runner registration for a private repository (`pakem host runner add`);
-  protecting `v*` tags (not asked where rulesets need a paid plan, as on free private
-  repositories); `pakem host allow-device` before a service's first release; creating the
+  self-hosted runner registration for a private repository with Pakem CI (`pakem host
+  runner add`); protecting `v*` tags for a project we release (not asked where rulesets
+  need a paid plan, as on free private repositories, nor when GitHub cannot be asked); `pakem host allow-device` before a service's first release; creating the
   repository when `gh` cannot.
 - **Gaps** (`pakem project check --gaps [--json]`, exit `4` while a required gap is
   open), from the facts:
 
   | Gap | Required | Blocks | Proven by |
   |---|---|---|---|
-  | `language.text` | yes | - | a filled `Language:` line in `AGENTS.md` |
-  | `health.proof` | service | release | `deploy/release.toml [health]` |
-  | `settings.sources` | service | deploy setup, release | `deploy/settings.toml` names its settings |
+  | `language.text` | yes | - | a filled `Language:` line in `AGENTS.md` (a bullet too) |
+  | `ci.owner` | `Delivery: others` | ci | the Pakem `ci.yml`, or the answer `client CI: <where>` |
+  | `health.proof` | service | release | `deploy/release.toml [health]`, its path served by the project's own code (not a stub), and a real `docs/deployment.md` |
+  | `settings.sources` | service | deploy setup, release | `deploy/settings.toml` names its settings and is not the template |
   | `network.shared` | no (none) | deploy setup | - |
   | `single-instance` | no (no constraint) | release | - |
   | `backup.restore` | database | release | `deploy/hooks/backup` is the project's own, executable |
-  | `migrations.rule` | database | release | - |
+  | `migrations.rule` | database | release | `AGENTS.md` (the project's own text) states the migration rule |
   | `data.moves` | no (none), database | release | - |
-  | `gateway.profile` | llm | release | - |
+  | `gateway.profile` | llm | release | `AGENTS.md` names the gateway, and `## Overrides` has the `default:no-billed` approval |
 
 - **Decisions:** `pakem decide <gap> <answer> [--reason]`,
   `--provisional <assumption> --revisit <trigger>`, or
   `--pending <what> --from <who> --ask-again <date>`; `--question` and `--blocks` record a
   blocker no gap covers. Written to the committed `.pakem/decisions.toml`; the Open
-  decisions list in `AGENTS.md` is regenerated. An answer whose target does not prove it
+  decisions list in `AGENTS.md` is regenerated (refused, with nothing changed, unless its
+  markers appear once each, start before end, on their own lines; any text is stored, emoji
+  included). An answer whose target does not prove it
   stays open with the reason. `pakem status` counts open, pending, and provisional
   decisions and raises due ones (also at session start); `pakem release` refuses while a
   required gap that blocks release is open or pending (exit `4`).
