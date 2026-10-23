@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-10-08
+Last reviewed: 2026-10-23
 Review by: 2027-04-07
 Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard Profile section 10
 
@@ -44,5 +44,16 @@ deviations: `assets/ci/DEPLOY_DESIGN.md`).
 hosted runners (`runs-on: ubuntu-latest`), which are free. Private repositories use a
 self-hosted runner on a host we control (`runs-on: [self-hosted, linux, x64, pakem]`;
 setup in the deployment contracts §11 step 8), never metered hosted minutes unless the
-project approves the cost. Keep jobs cheap either way: one architecture, cancel superseded
-runs, and skip heavy jobs for documentation-only changes.
+project approves the cost. Keep jobs cheap either way: one architecture, and cancel
+superseded runs.
+
+**Documentation-only pull requests** (top-level `*.md`, `docs/`, `openspec/` and nothing
+else) skip the heavy jobs inside the workflow: a small `changes` job decides, the heavy jobs
+carry `if:` on its output, and a `docs` job runs the documentation checks (`openspec
+validate`). Never filter with `paths-ignore`: a required check would then never report and
+stay pending. Pushes to `main` and tags always run every check, because a release needs
+them on the exact commit it deploys. Anything else, or an unclear change, runs everything.
+
+**Caches on self-hosted runners** stay on the runner's disk: leave the GitHub Actions cache
+off (`setup-uv`'s default there; no `enable-cache: true`), since restoring and saving through
+GitHub cost minutes per run for files the runner already keeps.

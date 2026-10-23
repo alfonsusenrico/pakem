@@ -114,6 +114,28 @@ class InitTests(ProjectTestCase):
         self.assertIn("Open gaps (5): language.text, health.proof, settings.sources, backup.restore, migrations.rule",
                       completed.stdout)
 
+    def test_ci_runs_everything_on_main_and_only_docs_checks_for_docs_pull_requests(self) -> None:
+        self.init()
+        ci = (self.repo / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertNotIn("paths-ignore", ci)
+        self.assertIn("runs-on: pakem", ci)
+        self.assertIn("labels: [pakem]", (self.repo / ".github" / "actionlint.yaml").read_text())
+        for job in ("verify-python", "security", "database"):
+            block = ci.split(f"\n  {job}:")[1].split("\n\n")[0]
+            self.assertIn("if: needs.changes.outputs.code == 'true'", block)
+        self.assertIn("if: needs.changes.outputs.code == 'false'", ci.split("\n  docs:")[1].split("\n\n")[0])
+        rule = "(^[^/]+\\.md$|^docs/|^openspec/)"
+        self.assertIn(f"grep -qvE '{rule}'", ci)
+        for files, expected in (
+            (["README.md", "docs/a.md", "openspec/specs/x/spec.md"], "docs"),
+            (["README.md", "src/app.py"], "code"),
+            (["src/prompts/system.md"], "code"),
+            (["uv.lock"], "code"),
+        ):
+            completed = subprocess.run(["grep", "-qvE", rule], input="\n".join(files) + "\n", text=True)
+            with self.subTest(files=files):
+                self.assertEqual("code" if completed.returncode == 0 else "docs", expected)
+
     def test_without_a_terminal_every_fact_is_a_flag(self) -> None:
         completed = self.run_pakem("project", "init", str(self.repo), "--stack", "python", "--yes")
         self.assert_fails(completed, code=2)

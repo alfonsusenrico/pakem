@@ -203,6 +203,13 @@ def agents_text(framework: Framework, facts: Facts, description: str) -> str:
                         "\n".join(commands))
 
 
+CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
+SETUP_NODE = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0"
+OPENSPEC = "@fission-ai/openspec@1.14.1"
+# Pull requests that change only these paths get the documentation check (references/ci.md).
+DOCS_ONLY_PATTERN = "(^[^/]+\\.md$|^docs/|^openspec/)"
+
+
 def ci_text(facts: Facts) -> str:
     runner = SELF_HOSTED if facts.visibility == "private" else HOSTED
     directory = {"python": "python_dir", "node": "node_dir"}[facts.stack]
@@ -225,23 +232,69 @@ def ci_text(facts: Facts) -> str:
         "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
         "",
         "jobs:",
-        f"  verify-{facts.stack}:",
-        f"    uses: ./.github/workflows/verify-{facts.stack}.yml",
-        "    with:",
-        f'      {directory}: "."',
-        f"      runner: {json.dumps(runner)}",
+        "  # Pushes to main and tags always run every check: `pakem release` requires them on the",
+        "  # exact commit it deploys. A pull request that changes only documentation (top-level",
+        "  # *.md, docs/, openspec/) gets the documentation check; GitHub counts skipped jobs as passed.",
+        "  changes:",
+        f"    runs-on: {runner}",
+        "    timeout-minutes: 5",
+        "    outputs:",
+        "      code: ${{ steps.files.outputs.code }}",
+        "    steps:",
+        f"      - uses: {CHECKOUT}",
+        "        with:",
+        "          persist-credentials: false",
+        "          fetch-depth: 0",
+        "      - id: files",
+        "        env:",
+        "          BASE: ${{ github.event.pull_request.base.sha }}",
+        "        run: |",
+        '          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then',
+        '            echo "code=true" >> "$GITHUB_OUTPUT"',
+        f"          elif git diff --name-only \"$BASE\" HEAD | grep -qvE '{DOCS_ONLY_PATTERN}'; then",
+        '            echo "code=true" >> "$GITHUB_OUTPUT"',
+        "          else",
+        '            echo "code=false" >> "$GITHUB_OUTPUT"',
+        '            echo "Documentation only: every check runs on main after the merge."',
+        "          fi",
+        "",
+        "  docs:",
+        "    needs: changes",
+        "    if: needs.changes.outputs.code == 'false'",
+        f"    runs-on: {runner}",
+        "    timeout-minutes: 10",
+        "    steps:",
+        f"      - uses: {CHECKOUT}",
+        "        with:",
+        "          persist-credentials: false",
+        f"      - uses: {SETUP_NODE}",
+        "        with:",
+        '          node-version: "24"',
+        f"      - run: npm install --global --ignore-scripts {OPENSPEC}",
+        "      - run: openspec validate --all --no-interactive",
     ]
+    jobs = [(f"verify-{facts.stack}", f"verify-{facts.stack}.yml", [f'{directory}: "."'])]
     if "deployed" in facts.capabilities:
-        lines += ["", "  security:", "    uses: ./.github/workflows/security.yml", "    with:",
-                  f'      {directory}: "."', f"      runner: {json.dumps(runner)}"]
+        jobs.append(("security", "security.yml", [f'{directory}: "."']))
     if "database" in facts.capabilities:
         test = {"python": "uv run pytest", "node": "npm test"}[facts.stack]
-        lines += ["", "  database:", "    uses: ./.github/workflows/database.yml", "    with:",
-                  f"      stack: {facts.stack}",
-                  "      # pakem:stub - the project's migration command (gap migrations.rule); fails until set.",
-                  "      migrate_cmd: echo 'set migrate_cmd in .github/workflows/ci.yml' >&2; exit 1",
-                  f"      test_cmd: {test}",
-                  f"      runner: {json.dumps(runner)}"]
+        jobs.append(("database", "database.yml", [
+            f"stack: {facts.stack}",
+            "# pakem:stub - the project's migration command (gap migrations.rule); fails until set.",
+            "migrate_cmd: echo 'set migrate_cmd in .github/workflows/ci.yml' >&2; exit 1",
+            f"test_cmd: {test}",
+        ]))
+    for name, workflow, inputs in jobs:
+        lines += [
+            "",
+            f"  {name}:",
+            "    needs: changes",
+            "    if: needs.changes.outputs.code == 'true'",
+            f"    uses: ./.github/workflows/{workflow}",
+            "    with:",
+            *[f"      {line}" for line in inputs],
+            f"      runner: {json.dumps(runner)}",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -336,6 +389,9 @@ def standard_files(framework: Framework, facts: Facts, description: str) -> File
         files.add("CHANGELOG.md", _template(framework, "skills/project-bootstrap/assets/project/CHANGELOG.md.tmpl"))
     if facts.delivery != "others":
         files.add(".github/workflows/ci.yml", ci_text(facts))
+        if facts.visibility == "private":
+            # The security job's actionlint must know the self-hosted runner's label.
+            files.add(".github/actionlint.yaml", f"self-hosted-runner:\n  labels: [{SELF_HOSTED}]\n")
         for name in ci_workflows(facts):
             files.add(f".github/workflows/{name}",
                       _template(framework, f"skills/release-delivery/assets/ci/github/workflows/{name}"))

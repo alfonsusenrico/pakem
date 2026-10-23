@@ -15,6 +15,7 @@ through the GitHub commits API; the Tailscale SHA by fetching it and `git cat-fi
 | `actions/checkout` | `v7.0.1` | `3d3c42e5aac5ba805825da76410c181273ba90b1` | node24 runtime; self-hosted runners need Actions Runner v2.327.1 or later. v7 refuses fork checkouts under `pull_request_target`/`workflow_run`. |
 | `astral-sh/setup-uv` | `v10.2.0` | `c18668ad3cf93ea998bef934396af7bb5c839dc7` | v10 disables `enable-cache: auto` for `pull_request_target`, `workflow_run`, and `release` events. |
 | `actions/setup-node` | `v7.0.0` | `820762786026740c76f36085b0efc47a31fe5020` | v7 is an ESM migration only; npm caching is explicit in the templates. |
+| `@fission-ai/openspec` (npm) | `1.14.1` | npm version pin | `openspec validate` in the generated `docs` job (`pakem project init`). |
 | `tailscale/github-action` | `v4.2.0` | `d1b6cd204f8dceda5b3eaad7f1f767be390056cd` | deploy.yml, push-trigger.yml; node24 runtime; inputs `oauth-client-id`, `oauth-secret`, `tags` (OAuth client needs the `auth_keys` scope); installs Tailscale 1.94.2 by default. |
 
 Not used: `gitleaks/gitleaks-action` (v3.0.0 latest) requires a paid `GITLEAKS_LICENSE` for
