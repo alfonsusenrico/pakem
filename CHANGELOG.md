@@ -5,6 +5,241 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-23
+
+### Added
+
+- `pakem host add <name>` records a server's options on this device only, so an agent can
+  interview the owner and record the answers; the owner's step becomes `pakem setup host
+  <name>`, which reuses everything recorded (flags only change it). `pakem setup host` with
+  no host asks the questions on a terminal; run by an agent, it records what it was given
+  and names the short command. Owner actions from `release`, `project init`, and
+  `project adopt` use that form. Fixed: a re-run without flags no longer resets recorded
+  options to defaults, and `--name` always picks the host it names.
+- ADR 0011 (Accepted): `pakem` is a standard core with adaptive edges; agents use it for
+  covered operations once an area is stable and fill project-specific gaps with the
+  developer through a gap protocol with a firm finish (answered, provisional, or pending
+  decisions); framework update awareness; the `pakem` tool's release pace.
+- `docs/pakem-command-map.md`: the commands (status and updates, device, host, project,
+  secrets, release, decisions), their conventions, gaps, owner actions and checks.
+- `pakem propose new | revise | list | show | reject`: the agent that discussed a case
+  with the owner writes a proposal, with the exact change drafted against the framework's
+  `main`, as a pull request labelled `proposal` (lint and unit tests pass on its branch
+  first); the owner's merge accepts it, `revise` answers a change request with a new
+  commit, and `reject` records the reason and closes it. ADR 0007 is amended: each
+  accepted proposal applies when merged and devices run `pakem update`.
+- The `pakem` skill tells every agent how to use the commands: conventions and exit codes,
+  each area's stage, the interview-then-short-command flow for servers, projects and the
+  gap protocol, releases, and proposals. The areas Proof 1 proved (status and updates,
+  device, host, release for services) are `stable`, so agents use `pakem` for them and
+  never hand-run the steps (ADR 0011, decisions 4 and 10); project and proposals stay
+  `experimental`. The kernel's skills table gains the `pakem` row (its intro line is one
+  line shorter, so the kernel stays at 150 lines).
+- Client and other private names live in a device-local list,
+  `~/.config/pakem/private-names.txt`, never in the public tree. `pakem lint` fails on
+  them in the framework, `pakem propose` refuses them, and `pakem project check` warns,
+  in a public repository, about each tracked line that names one or a host recorded in
+  `hosts.toml` (values never printed). The personal workspace map uses generic wording
+  for client folders. The `pakem` skill tells agents to write "the server" and "the
+  release port" in public repositories.
+- `pakem project init` starts a GitHub project from its fixed facts (visibility, release
+  kind, delivery, environments, stack, capabilities): `AGENTS.md`, `.pakem/project.toml`,
+  CI for the forge and runner, deploy files and starters for a service we release,
+  OpenSpec, `research/`, the stack's tooling and dev tools, the git hooks, the bootstrap
+  commit, and a private (or `--public`) GitHub repository with `main` pushed.
+- `pakem project adopt` brings an existing repository to the standard on
+  `chore/adopt-pakem`: it writes only missing files and lists every difference as a
+  finding.
+- `pakem decide` records a gap as answered, provisional, or pending in
+  `.pakem/decisions.toml` and regenerates the Open decisions list in `AGENTS.md`;
+  `pakem project check --gaps` lists each gap with its state and whether its target files
+  prove it; `pakem status` raises due decisions; `pakem release` waits for decisions that
+  block a release. `pakem project check` warns about starter stubs.
+- `pakem release publish | promote | rollback | history | status` release a service by
+  direct delivery (ADR 0010): the device signs a request for the exact commit with its
+  device key and sends it, with the commit's `git archive` when the host keeps no build
+  of it, to the host's new receiver (`af_receive.py`, the device key's forced command).
+  The host verifies the signature, builds the images once per commit in a resource-capped
+  BuildKit container, and the engine deploys them; promotion and rollback reuse kept
+  builds. Publishing refuses a commit whose GitHub checks did not pass, production needs
+  `--production`, and `promote` tags the commit after it deploys.
+- `pakem host allow-device | revoke-device` let a device's key release a project on a
+  host, from the owner's terminal: the receiver writes the project's direct host configs
+  and deploy bases from its own deploy files, a forced-command line, and an
+  `allowed_signers` line, and names missing placement and secret settings.
+- The engine takes direct environments (`delivery = "direct"`) beside registry ones; the
+  pull agent skips them, and the bootstrap installs the receiver and checks buildx.
+- `pakem setup host --release-port PORT` gives releases their own OpenSSH port, only for the
+  deploy user and keys, for hosts whose port 22 is answered by Tailscale SSH (which never
+  reads `authorized_keys`, so the device key's forced command did not apply and the key got
+  a shell). `setup host` now checks with the device key that the receiver answers and names
+  the fix when a shell does; status and history errors keep the host's message (found on
+  the owner's server, Proof 1).
+- `af_runner.sh` (installed in `/opt/af` by the bootstrap): a free, isolated self-hosted
+  GitHub Actions runner for private repositories. `install` creates `ci-runner` with its
+  own rootless Docker (from the host Docker's own source), caps its slice, and pins the
+  runner by checksum; `add-repo` and `remove-repo` take tokens on standard input only;
+  `check` proves the isolation. Opt-in sandbox test: `AF_SANDBOX_RUNNER=1`.
+- The GitHub release template takes `multi_architecture` (default true): false skips the
+  arm64 emulation and BuildKit container, so host-architecture releases build on a rootless
+  self-hosted runner.
+- Job containers on the runner reach the host's loopback at `10.0.2.2`, so a job can test a
+  container against a server it started; nothing beyond what the job's own steps reach.
+- Pakem commands prepare what they need on this device (`git`, `gh` or `glab`, uv, a
+  container runtime, the device key, forge logins, the framework) as part of their own
+  plan, approved by the owner's instruction in the session; owner-only steps (browser
+  logins, sudo without a terminal, the key's passphrase) are reported with the exact
+  instruction (exit `3`). Homebrew on macOS, apt on Debian, Ubuntu, and WSL; native
+  Windows is refused with a pointer to WSL.
+- `pakem setup device`: prepares everything at once for a fresh machine. `pakem setup
+  check`: lists every need without changing anything.
+- `pakem setup key [--no-passphrase]`: creates the device key `~/.ssh/pakem_device_ed25519`
+  with a passphrase (asked by ssh-keygen on the owner's terminal) and adds it to
+  ssh-agent, with the macOS Keychain where Apple's `ssh-add` is used.
+- `pakem setup host <ssh-target>`: uploads the deploy assets (merged `main` or a release
+  only) over one SSH connection, runs the bootstrap with sudo, optionally the CI runner
+  (`--runner`), removes the upload, and records the host in `~/.config/pakem/hosts.toml`.
+  It signs in with the owner's own login and runs only on the owner's terminal;
+  without one it reports the exact command as an owner action.
+- `pakem setup check --host <name>`: the bootstrap's check (and the runner's) with the
+  recorded options.
+- `pakem host runner add|remove <host> <owner/repo>`: registers a repository with the
+  host's runner, with a token from the owner's `gh` login that is never printed or
+  passed as an argument.
+- `pakem enforce install --host codex` also merges `~/.codex/hooks.json`: `SessionStart`
+  prints the brief status and `UserPromptSubmit` names the files to re-read after a
+  mid-session install. Codex runs them once the owner trusts them in `/hooks`.
+- `pakem enforce install --host antigravity` adds the `pakem-status` hook (`SessionStart`
+  and `PreInvocation`), answering with `injectSteps`.
+- `pakem update` refreshes Codex's rules and hooks together.
+- `pakem status`: whether this device runs the latest merged Pakem (a `main` checkout
+  follows `origin/main`, a release checkout the newest release on `main`; network at
+  most every 4 hours), and whether the project's profile pins match the installed ones.
+- `pakem update`: moves the framework checkout to merged `main` or the newest release,
+  re-runs the recorded `pakem install --apply` and `pakem enforce install`, and lists the
+  files agents must re-read. Refuses unmerged or dirty checkouts.
+- `pakem config set update notify|apply`: whether agents may run `pakem update`
+  themselves (default `notify`).
+- `pakem enforce install --host claude` adds a session-start hook (brief status) and a
+  per-message hook (files to re-read after a mid-session install).
+- `pakem install` records the installed commit and its options in the manifest, for
+  `pakem status` and `pakem update`. Exit codes follow the command map (`3` owner action,
+  `6` refused, `75` busy).
+- `pakem help` lists each area's maturity stage.
+
+### Changed
+
+- The pre-push hook lets a new repository's first push create `main` with its single root
+  commit `chore: bootstrap project`; every other push to `main` keeps the
+  documentation-only rule. The kernel's branching line and the project-bootstrap skill say
+  so (owner decision 2026-10-22).
+- Kernel: every fix or feature branches from `main` and its merge request targets `main`,
+  never another topic branch (no stacked merge requests) unless the project's
+  `default:branching` override says otherwise.
+- CI: a fast path for docs-only pull requests (a job-level `if:`, never `paths-ignore`),
+  and caches kept local on self-hosted runners (proposal #65).
+- `pakem project init` and `adopt` write CI for `Delivery: others` too, as for any
+  project (owner decision, 2026-10-23). A client that runs its own CI opts out with
+  `--client-ci WHERE`, which writes no CI and records gap `ci.owner`; the gap stays open
+  until the Pakem `ci.yml` exists or the decision names the client's CI. Tag protection is
+  asked only for projects we release, and no longer when GitHub could not be asked.
+- Kernel section 6: a framework proposal (`pakem propose`) opens its pull request before
+  acceptance, carrying the change itself; the owner's merge accepts it (owner decision,
+  2026-10-23). Section 8: `pakem` is mandatory, never by hand, only where an area is
+  stable, as ADR 0011 decision 4 says.
+- Release policy (owner decision, 2026-10-23): the `pakem` tool releases whenever an
+  area is proven; kernel and skill text never triggers a release alone and waits for the
+  next one, batched at most once a month. ADR 0007, ADR 0011 decision 9, `AGENTS.md`, and
+  `instruction-maintenance` now say the same.
+- `pakem setup host <target> --project-dir DIR` is the one owner step before releasing: it
+  makes the device key if missing, installs or updates the engine, and lets the key release
+  each project (switching registry environments to direct delivery), over one connection.
+  The owner actions of `pakem release`, `project init`, and `project adopt` name that one
+  command; `pakem setup key` and `pakem host allow-device` stay for single steps later.
+
+### Fixed
+
+- `pakem project adopt` no longer adds starter code (`src/`, smoke tests) or unused CI
+  templates to an existing project with its own `ci.yml`, and reports what the registry
+  mode left behind when the project moves to direct delivery. Its owner actions skip a
+  runner GitHub already lists, a device already allowed, and tag protection where it
+  needs a paid plan (found adopting llm-gateway and personal-agent, Proof 1).
+- `pakem project adopt` asks to remove only the registry publisher
+  (`deploy/af/af_publish.py`) and signing key, not `deploy/af/contracts.py`, which a
+  project's own checks may still run (found adopting personal-agent, Proof 1).
+- `pakem decide` and `pakem project adopt` refuse, changing nothing, unless the Open
+  decisions markers in `AGENTS.md` appear once each, start before end, on their own lines.
+  A marker quoted in prose, or a missing end marker, used to delete the owner's text.
+- Pakem writes TOML strings with a real escaper: an emoji or other non-BMP character in
+  an answer, a reason, a delivery note, a host path, or a project description no longer
+  breaks `.pakem/decisions.toml` (and with it `decide`, `check --gaps`, `status`, and
+  `release`). Adopt keeps `.pakem/project.toml` when its facts are unchanged, and keeps
+  keys it does not know.
+- Gap checks no longer pass on the starter files alone. `health.proof` needs its
+  `[health] path` served by the project's own code (not a starter stub) and a real
+  `docs/deployment.md`. `settings.sources` fails while `deploy/settings.toml` is still the
+  template. `migrations.rule` and `gateway.profile` gain checks (`AGENTS.md` states the
+  rule, or names the gateway with a `default:no-billed` approval). A bulleted
+  `- Language:` line now counts. The gap protocol tells agents to read the code an answer
+  depends on, such as the health handler.
+- CI written by `pakem project init` for a private repository now runs: it passed the
+  self-hosted runner as the one string `[self-hosted, linux, x64, pakem]`, which no runner
+  matches, so jobs waited forever; it passes the single label `pakem` now. The generated
+  `database` job passes the template's required `test_cmd` and a `migrate_cmd` stub that
+  fails until the project sets it (found linting generated CI with actionlint).
+- `pakem setup host --release-port` refuses a port another program already listens on
+  (naming it), requires that only sshd listens on the release port on every address,
+  drops an earlier release port when the port changes, and puts the old sshd settings back
+  when sshd cannot take the port. On the owner's server a Git service held 2222 on IPv4,
+  so releases reached it instead of sshd.
+- A release port can no longer lock the owner out: `pakem setup host` and `pakem host add`
+  refuse a release port equal to the port the owner logs in on (`--port`, or what
+  `ssh -G` gives the target), and `af_bootstrap.sh --release-port` refuses any port sshd
+  already serves, other than the earlier release port. With `AllowUsers af` on such a
+  port, only the deploy user could log in there, and recovery needed the console.
+- The release port must be held by this host's own ssh service (its main process, or
+  systemd when sshd is socket-activated): a second sshd on that port, such as a Git
+  server's or a container's, is refused by pid, because it has its own settings and never
+  the deploy user's forced command (found on the owner's server, where another sshd held
+  2222 on the Tailscale address).
+- `pakem release rollback previous` returns the last release that was live and working
+  before the running one, and never one a rollback left: after A, B, a rollback to A, and
+  C, it returns A, not B. A host's receiver now records rollbacks with trigger `rollback`.
+- The receiver refuses a publish to production and a promotion to any other environment,
+  whatever the client checked.
+- An image's `context` and `dockerfile` in `deploy/release.toml` must be relative paths
+  inside the repository; the receiver also refuses either when it resolves outside the
+  commit's tree. An absolute context could bake another project's secrets into an image.
+- `pakem release status | history | rollback` see the release an environment runs however it
+  was delivered: a registry release from before the move to direct delivery showed as
+  "running nothing", and `rollback previous` could not step back from it. The host reports
+  it from its `current` release (after `pakem setup host` updates the receiver); until
+  then the device reads it from the deployment record.
+- `pakem status` shows the short installed and target commits beside the versions, so
+  an update between releases no longer reads "2.0.1 -> 2.0.1".
+- After a proposal is merged, agents tell the owner `pakem update` is due and run it only
+  on the owner's instruction or with `update = "apply"`, as ADR 0011 decision 7 says; the
+  `pakem` skill, the command map, and lessons intake had said to run it.
+
+### Security
+
+- `pakem propose new` and `revise` refuse (exit 6) a proposal whose text or added lines hold
+  a private name, a host, address, or port from `hosts.toml`, a non-documentation IP
+  address, or a home directory path, naming each place but never the value. They print the
+  text and ask before pushing (`--yes` skips the question, after the owner saw it). The
+  project is "a project" unless `--project` names it. Subjects are `docs:` (`feat:` for
+  tooling, or `--type`), cut at a word within 72 characters.
+- The release receiver no longer writes an archive entry through a symlink extracted
+  earlier, refuses an entry given twice, and refuses any symlink that resolves outside the
+  source tree once all are in place. Chained links (`p/q -> ..`, `r -> p/q/..`) could
+  write anywhere the deploy user can. Run `pakem setup host <name>` to update each host.
+- The self-hosted CI runner serves private repositories only, as GitHub reports them:
+  `pakem host runner add` and `af_runner.sh add-repo` refuse a public repository, whose
+  pull requests could run any fork's code on the server, and `af_runner.sh check` fails
+  for a runner registered for one. `pakem project adopt` reads the visibility from GitHub
+  instead of a flag or a prompt, and `pakem project check` exits 6 when a public
+  repository has self-hosted jobs.
+
 ## [2.0.1] - 2026-10-21
 
 ### Added
