@@ -334,6 +334,7 @@ def deploy_files(framework: Framework, facts: Facts, files: Files) -> None:
         files.add(f"deploy/env/{environment}.env", f"LOG_LEVEL={level}\n")
     files.add("compose.yaml", service("compose.yaml.tmpl"))
     files.add("Dockerfile", service(f"Dockerfile.{facts.stack}.tmpl"))
+    files.add(".dockerignore", service("dockerignore.tmpl"))
     files.add("docs/deployment.md", service("deployment.md.tmpl").replace("{{environments}}", ", ".join(facts.environments)))
     if "database" in facts.capabilities:
         files.add("deploy/hooks/backup", service("backup.tmpl"), executable=True)
@@ -406,9 +407,17 @@ def standard_files(framework: Framework, facts: Facts, description: str, client_
                       _template(framework, f"skills/release-delivery/assets/ci/github/workflows/{name}"))
     if facts.releases_here:
         deploy_files(framework, facts, files)
-        files.add(".env.example", _template(framework, "skills/project-bootstrap/assets/project/env.example.tmpl"))
+        files.add(".env.example", env_example(framework, facts))
     stack_files(framework, facts, description, files)
     return files
+
+
+def env_example(framework: Framework, facts: Facts) -> str:
+    """The settings template; a project without the database capability reads no database URL."""
+    lines = _template(framework, "skills/project-bootstrap/assets/project/env.example.tmpl").splitlines(keepends=True)
+    if "database" not in facts.capabilities:
+        lines = [line for line in lines if not line.startswith("DATABASE_URL=")]
+    return "".join(lines)
 
 
 def write_files(repo: Path, files: Files, only_missing: bool) -> list[str]:

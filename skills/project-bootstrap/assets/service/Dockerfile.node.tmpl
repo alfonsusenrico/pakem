@@ -1,11 +1,19 @@
 # pakem:stub - replace the command with the service's own entry point, then remove this line.
-FROM node:24-slim
-ARG AF_REVISION
-ENV AF_REVISION=${AF_REVISION}
+# Base pinned by digest (skills/release-delivery/assets/ci/PINS.md); refresh tag and digest together.
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
+
+# The image keeps production dependencies and the build output only.
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
+ARG AF_REVISION
+ENV AF_REVISION=${AF_REVISION} NODE_ENV=production
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
 USER node
 CMD ["sh", "-c", "echo 'replace the CMD in Dockerfile with the service entry point' >&2; exit 1"]

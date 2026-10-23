@@ -78,8 +78,8 @@ by digest, and refresh both together.
 
 | Image | Used by | Digest |
 | --- | --- | --- |
-| `ghcr.io/astral-sh/uv:0.12.23-python3.13-trixie-slim` | GitLab verify-python, python-audit, database | `sha256:a6aeb5c166af9f765f9c68e585b5a5148c28f3b8a362f90151cecea88b21a3e2` |
-| `node:24.21.0-trixie-slim` | GitLab verify-node, node-audit | `sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66` |
+| `ghcr.io/astral-sh/uv:0.12.23-python3.13-trixie-slim` | GitLab verify-python, python-audit, database; service `Dockerfile.python.tmpl` (by digest) | `sha256:a6aeb5c166af9f765f9c68e585b5a5148c28f3b8a362f90151cecea88b21a3e2` |
+| `node:24.21.0-trixie-slim` | GitLab verify-node, node-audit; service `Dockerfile.node.tmpl` (by digest) | `sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66` |
 | `postgres:17.9-trixie` | GitLab database service | `sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545` |
 | `postgres:17` | GitHub database default (floating major tag) | `sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b` |
 | `ghcr.io/gitleaks/gitleaks:v8.30.1` | GitLab secret-scan | `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f` |
