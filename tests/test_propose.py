@@ -1,7 +1,7 @@
-"""pakem propose: proposals as GitHub issues, accepted ones as pull requests.
+"""pakem propose: proposals as pull requests the owner merges (accept) or closes (reject).
 
 The fixture framework is a real git repository with a bare `origin` (reached through a
-github.com URL rewritten by insteadOf); a fake gh keeps issues and pull requests as JSON.
+github.com URL rewritten by insteadOf); a fake gh keeps pull requests as JSON.
 """
 
 from __future__ import annotations
@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 from support import PAKEM, IsolatedTestCase, git, init_repo, isolated_env, write
 
@@ -18,8 +17,8 @@ import json, sys
 from pathlib import Path
 
 state = Path({state!r})
-issues_file = state / "issues.json"
-issues = json.loads(issues_file.read_text()) if issues_file.exists() else {{}}
+store = state / "pulls.json"
+pulls = json.loads(store.read_text()) if store.exists() else {{}}
 args = sys.argv[1:]
 with open(state / "calls.log", "a") as log:
     log.write("gh " + " ".join(args) + "\n")
@@ -28,40 +27,37 @@ def option(name, default=None):
     return args[args.index(name) + 1] if name in args else default
 
 def save():
-    issues_file.write_text(json.dumps(issues))
+    store.write_text(json.dumps(pulls))
 
 if args[:2] == ["auth", "status"] or args[:1] == ["--version"]:
     print("ok"); sys.exit(0)
 if args[:2] == ["label", "create"]:
     sys.exit(0)
-if args[:2] == ["issue", "create"]:
-    number = str(len(issues) + 1)
-    issues[number] = {{"number": int(number), "title": option("--title"), "body": sys.stdin.read(), "state": "OPEN",
-                       "labels": [{{"name": option("--label")}}], "url": f"https://github.com/me/pakem/issues/{{number}}",
-                       "comments": []}}
-    save(); print(issues[number]["url"]); sys.exit(0)
-if args[:2] == ["issue", "list"]:
-    words = (option("--search") or "").split()
-    found = [issue for issue in issues.values() if not words or any(w in issue["title"].lower() for w in words)]
-    print(json.dumps(found)); sys.exit(0)
-if args[:2] == ["issue", "view"]:
-    print(json.dumps(issues[args[2]])); sys.exit(0)
-if args[:2] == ["issue", "edit"]:
-    issue = issues[args[2]]
-    if "--body-file" in args:
-        issue["body"] = sys.stdin.read()
-    if "--title" in args:
-        issue["title"] = option("--title")
-    if "--add-label" in args:
-        issue["labels"].append({{"name": option("--add-label")}})
-    save(); sys.exit(0)
-if args[:2] == ["issue", "comment"]:
-    issues[args[2]]["comments"].append(option("--body")); save(); sys.exit(0)
-if args[:2] == ["issue", "close"]:
-    issues[args[2]]["state"] = "CLOSED"; save(); sys.exit(0)
 if args[:2] == ["pr", "create"]:
-    (state / "pr.json").write_text(json.dumps({{"head": option("--head"), "body": option("--body")}}))
-    print("https://github.com/me/pakem/pull/9"); sys.exit(0)
+    number = str(len(pulls) + 1)
+    pulls[number] = {{"number": int(number), "title": option("--title"), "body": sys.stdin.read(), "state": "OPEN",
+                      "labels": [{{"name": option("--label")}}], "headRefName": option("--head"),
+                      "url": f"https://github.com/me/pakem/pull/{{number}}", "comments": []}}
+    save(); print(pulls[number]["url"]); sys.exit(0)
+if args[:2] == ["pr", "list"]:
+    words = (option("--search") or "").split()
+    found = [pull for pull in pulls.values() if not words or any(w in pull["title"].lower() for w in words)]
+    print(json.dumps(found)); sys.exit(0)
+if args[:2] == ["pr", "view"]:
+    print(json.dumps(pulls[args[2]])); sys.exit(0)
+if args[:2] == ["pr", "edit"]:
+    pull = pulls[args[2]]
+    if "--body-file" in args:
+        pull["body"] = sys.stdin.read()
+    if "--title" in args:
+        pull["title"] = option("--title")
+    if "--add-label" in args:
+        pull["labels"].append({{"name": option("--add-label")}})
+    save(); sys.exit(0)
+if args[:2] == ["pr", "comment"]:
+    pulls[args[2]]["comments"].append(option("--body")); save(); sys.exit(0)
+if args[:2] == ["pr", "close"]:
+    pulls[args[2]]["state"] = "CLOSED"; save(); sys.exit(0)
 print("unexpected gh call", args, file=sys.stderr); sys.exit(1)
 '''
 SKILL = "# Docs\n\nWrite docs.\n"
@@ -76,6 +72,8 @@ DIFF = """diff --git a/skills/docs/SKILL.md b/skills/docs/SKILL.md
 +
 +The README shows the project; details live in docs/ pages.
 """
+REVISED = DIFF.replace("The README shows the project; details live in docs/ pages.", "A short README; docs/ pages hold the depth.")
+BRANCH = "docs/proposal-readme-shows-the-project"
 
 
 class ProposeTestCase(IsolatedTestCase):
@@ -108,104 +106,95 @@ class ProposeTestCase(IsolatedTestCase):
             capture_output=True, text=True, env=self.env, stdin=subprocess.DEVNULL, cwd=str(self.base),
         )
 
-    def new(self, *extra: str, title: str = "README shows the project") -> subprocess.CompletedProcess:
-        return self.propose(
-            "new", "--title", title, "--rule", "The README shows the project; details live in docs/ pages.",
+    def fields(self, title: str = "README shows the project") -> list[str]:
+        return [
+            "--title", title, "--rule", "The README shows the project; details live in docs/ pages.",
             "--case", "headquarter's README explained too much on one page.",
             "--why-general", "Every project has a README that people skim.", "--home", "skill",
             "--change-file", str(self.diff), "--evidence", "headquarter README.md, 2026-10-22",
-            "--project", "headquarter", *extra,
-        )
+            "--project", "headquarter",
+        ]
 
-    def issues(self) -> dict:
-        return json.loads((self.state / "issues.json").read_text())
+    def pulls(self) -> dict:
+        return json.loads((self.state / "pulls.json").read_text())
+
+    def on_origin(self, branch: str, path: str) -> str:
+        return git(self.origin, "show", f"{branch}:{path}", home=self.home).stdout
 
 
 class ProposeTests(ProposeTestCase):
-    def test_new_opens_an_issue_with_the_case_and_the_exact_change(self) -> None:
-        completed = self.new()
+    def test_new_opens_a_pull_request_with_the_case_and_the_checked_change(self) -> None:
+        completed = self.propose("new", *self.fields())
         self.assert_ok(completed)
-        self.assertIn("https://github.com/me/pakem/issues/1", completed.stdout)
-        issue = self.issues()["1"]
-        self.assertEqual(issue["title"], "proposal: README shows the project")
+        self.assertIn("Proposal for the owner's review (merge to accept): https://github.com/me/pakem/pull/1",
+                      completed.stdout)
+        pull = self.pulls()["1"]
+        self.assertEqual((pull["title"], pull["headRefName"]), ("docs: README shows the project", BRANCH))
+        self.assertIn({"name": "proposal"}, pull["labels"])
         for part in ("Proposed from **headquarter**", "## Rule", "## Why it holds beyond this project",
-                     "headquarter README.md, 2026-10-22", "```diff\ndiff --git a/skills/docs/SKILL.md"):
-            self.assertIn(part, issue["body"])
-        self.assertEqual(git(self.framework, "worktree", "list", home=self.home).stdout.count("\n"), 1,
-                         "the check worktree is removed")
+                     "headquarter README.md, 2026-10-22", "Merge to accept"):
+            self.assertIn(part, pull["body"])
+        self.assertIn("details live in docs/ pages", self.on_origin(BRANCH, "skills/docs/SKILL.md"))
+        files = git(self.origin, "show", "--name-only", "--format=", BRANCH, home=self.home).stdout.split()
+        self.assertIn("changes/changed-proposal-readme-shows-the-project.md", files)
+        self.assertEqual(git(self.framework, "branch", "--show-current", home=self.home).stdout.strip(), "main")
+        self.assertEqual(git(self.framework, "status", "--short", home=self.home).stdout, "")
+        self.assertEqual(git(self.framework, "worktree", "list", home=self.home).stdout.count("\n"), 1)
 
     def test_a_change_that_does_not_apply_is_refused(self) -> None:
         self.diff.write_text(DIFF.replace("Write docs.", "Something else."))
-        completed = self.new()
+        completed = self.propose("new", *self.fields())
         self.assert_fails(completed, code=6)
         self.assertIn("does not apply to the framework's main", completed.stderr)
-        self.assertFalse((self.state / "issues.json").exists())
+        self.assertFalse((self.state / "pulls.json").exists())
+        self.assertEqual(git(self.framework, "worktree", "list", home=self.home).stdout.count("\n"), 1)
 
-    def test_an_earlier_proposal_on_the_subject_is_named(self) -> None:
-        self.assert_ok(self.new())
-        completed = self.new(title="README for the project page")
-        self.assert_fails(completed, code=6)
-        self.assertIn("#1 proposal: README shows the project (open)", completed.stderr)
-        self.assert_ok(self.new("--new-subject", title="README for the project page"))
-
-    def test_plan_sends_nothing(self) -> None:
-        completed = self.new("--plan")
-        self.assert_ok(completed)
-        self.assertIn("## Change", completed.stdout)
-        self.assertFalse((self.state / "issues.json").exists())
-
-    def test_accept_turns_it_into_a_pull_request_from_its_own_worktree(self) -> None:
-        self.assert_ok(self.new())
-        completed = self.propose("accept", "1")
-        self.assert_ok(completed)
-        self.assertIn("Pull request for the owner to merge: https://github.com/me/pakem/pull/9", completed.stdout)
-        self.assertIn("run `pakem update`", completed.stdout)
-        pr = json.loads((self.state / "pr.json").read_text())
-        self.assertEqual(pr["head"], "docs/proposal-1-readme-shows-the-project")
-        self.assertIn("Closes #1.", pr["body"])
-        pushed = git(self.origin, "show", f"{pr['head']}:skills/docs/SKILL.md", home=self.home).stdout
-        self.assertIn("details live in docs/ pages", pushed)
-        files = git(self.origin, "show", "--name-only", "--format=", pr["head"], home=self.home).stdout.split()
-        self.assertIn("changes/changed-proposal-1-readme-shows-the-project.md", files)
-        issue = self.issues()["1"]
-        self.assertIn({"name": "proposal:accepted"}, issue["labels"])
-        self.assertEqual(git(self.framework, "branch", "--show-current", home=self.home).stdout.strip(), "main")
-        self.assertEqual(git(self.framework, "status", "--short", home=self.home).stdout, "")
-        self.assertFalse((self.framework.parent / "framework-proposal-1").exists(), "the worktree is removed")
-
-    def test_failing_checks_stop_before_anything_is_pushed(self) -> None:
+    def test_failing_checks_push_nothing(self) -> None:
         write(self.framework / "tests" / "test_ok.py", OK_TEST.replace("self.assertTrue(True)", "self.fail('broken')"))
         git(self.framework, "commit", "-q", "-am", "test: break", home=self.home)
         git(self.framework, "push", "-q", "origin", "main", home=self.home)
-        self.assert_ok(self.new())
-        completed = self.propose("accept", "1")
+        completed = self.propose("new", *self.fields())
         self.assert_fails(completed, code=5)
-        self.assertIn("failed on the proposal branch", completed.stderr)
         self.assertIn("broken", completed.stderr)
-        self.assertFalse((self.state / "pr.json").exists())
-        self.assertTrue((self.framework.parent / "framework-proposal-1").exists(), "kept for a look")
+        self.assertFalse((self.state / "pulls.json").exists())
+        self.assertTrue((self.framework.parent / "framework-proposal-readme-shows-the-project").exists())
+
+    def test_an_earlier_proposal_on_the_subject_is_named(self) -> None:
+        self.assert_ok(self.propose("new", *self.fields()))
+        completed = self.propose("new", *self.fields(title="README for the project page"))
+        self.assert_fails(completed, code=6)
+        self.assertIn("#1 docs: README shows the project (open)", completed.stderr)
+
+    def test_plan_checks_the_change_and_sends_nothing(self) -> None:
+        completed = self.propose("new", *self.fields(), "--plan")
+        self.assert_ok(completed)
+        self.assertIn("## Case", completed.stdout)
+        self.assertIn("the change applies to main", completed.stdout)
+        self.assertFalse((self.state / "pulls.json").exists())
+
+    def test_revise_adds_a_commit_with_the_new_change(self) -> None:
+        self.assert_ok(self.propose("new", *self.fields()))
+        before = git(self.origin, "rev-parse", BRANCH, home=self.home).stdout.strip()
+        self.diff.write_text(REVISED)
+        completed = self.propose("revise", "1", *self.fields())
+        self.assert_ok(completed)
+        skill = self.on_origin(BRANCH, "skills/docs/SKILL.md")
+        self.assertIn("A short README; docs/ pages hold the depth.", skill)
+        self.assertNotIn("details live in docs/ pages", skill)
+        ancestry = git(self.origin, "merge-base", "--is-ancestor", before, BRANCH, home=self.home, check=False)
+        self.assertEqual(ancestry.returncode, 0, "no history is rewritten")
+        self.assertIn("Revised after the owner's review.", self.pulls()["1"]["comments"])
 
     def test_reject_records_the_reason_and_closes(self) -> None:
-        self.assert_ok(self.new())
+        self.assert_ok(self.propose("new", *self.fields()))
         self.assert_ok(self.propose("reject", "1", "--reason", "project-specific after all"))
-        issue = self.issues()["1"]
-        self.assertEqual(issue["state"], "CLOSED")
-        self.assertIn("Rejected by the owner: project-specific after all", issue["comments"])
-        self.assert_fails(self.propose("accept", "1"), code=6)
-
-    def test_revise_replaces_the_text(self) -> None:
-        self.assert_ok(self.new())
-        self.assert_ok(self.propose(
-            "revise", "1", "--title", "README presents the project", "--rule", "Short README; docs/ pages for depth.",
-            "--case", "same", "--why-general", "same", "--home", "template", "--change-file", str(self.diff),
-        ))
-        issue = self.issues()["1"]
-        self.assertEqual(issue["title"], "proposal: README presents the project")
-        self.assertIn("Short README; docs/ pages for depth.", issue["body"])
-        self.assertIn("Revised after the owner's review.", issue["comments"])
+        pull = self.pulls()["1"]
+        self.assertEqual(pull["state"], "CLOSED")
+        self.assertIn("Rejected by the owner: project-specific after all", pull["comments"])
+        self.assertIn({"name": "proposal:rejected"}, pull["labels"])
+        self.assert_fails(self.propose("reject", "1", "--reason", "again"), code=6)
 
     def test_list_and_show(self) -> None:
-        self.assert_ok(self.new())
-        listing = self.propose("list")
-        self.assertIn("#1    open      proposal: README shows the project", listing.stdout)
+        self.assert_ok(self.propose("new", *self.fields()))
+        self.assertIn("#1    open      docs: README shows the project", self.propose("list").stdout)
         self.assertIn("## Case", self.propose("show", "1").stdout)

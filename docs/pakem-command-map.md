@@ -299,25 +299,27 @@ Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` ar
 
 ### 7. Proposals: `pakem propose`
 
-Stage: `experimental` (built 2026-10-22; owner decisions: the agent writes proposals, each
-accepted one is its own pull request and applies when merged).
+Stage: `experimental` (built 2026-10-22; owner decisions: the agent writes proposals; a
+proposal is a pull request, 2026-10-23, so the reasoning and the change are reviewed in one
+place and the owner's merge is the acceptance).
 
 - **Flow:** the agent discusses a case with the owner in the project where it came up,
-  then runs `pakem propose new` there; the owner reviews the issue; on acceptance the
-  agent runs `pakem propose accept <n>`; the owner merges; the agent runs `pakem update`.
+  then runs `pakem propose new` there and gives the owner the link; the owner merges it
+  (accept), asks for changes (the agent runs `revise`), or rejects it (the agent runs
+  `reject` with the reason); after a merge the agent runs `pakem update`.
 - **`pakem propose new --title --rule --case --why-general --home
   kernel|skill|reference|template|tooling|adr --change-file DIFF [--evidence ...]
-  [--replaces] [--enforcement] [--project] [--plan] [--new-subject]`:** checks the diff
-  applies to the framework's `origin/main` (in a temporary worktree), refuses when earlier
-  proposals look like the same subject (unless `--new-subject`), and opens an issue
-  labelled `proposal` on the framework repository with the owner's `gh` login.
-- **`revise <n>`** replaces the text after review; **`list [--state]`** and
-  **`show <n>`** read them; **`reject <n> --reason`** comments, labels, and closes.
-- **`accept <n>`** (only after the owner accepted): a branch
-  `docs/proposal-<n>-<slug>` in a separate worktree beside the framework checkout,
-  the drafted change applied, a change fragment, `pakem lint` and the unit tests, push,
-  and a pull request that closes the issue; the worktree is removed afterwards, or kept
-  for a look when a check failed.
+  [--replaces] [--enforcement] [--project] [--plan] [--new-subject]`:** refuses when
+  earlier proposals look like the same subject (unless `--new-subject`); applies the change
+  on `docs/proposal-<slug>` in a worktree beside the framework checkout (which stays on
+  `main`), adds its change fragment, runs `pakem lint` and the unit tests, pushes, and opens
+  a pull request labelled `proposal` with the owner's `gh` login. A failing check pushes
+  nothing and keeps the worktree for a look; `--plan` checks that the change applies and
+  prints the text.
+- **`revise <n>`** adds a commit to the proposal's branch (main merged in, the old change
+  undone, the new one applied; history is never rewritten) and replaces the text.
+  **`reject <n> --reason`** comments, labels `proposal:rejected`, closes the pull request,
+  and deletes its branch. **`list [--state]`** and **`show <n>`** read them.
 - **Needs:** git, gh, a GitHub login (prepared on demand).
 
 ### 6. Framework and agents (existing commands, regrouped)
