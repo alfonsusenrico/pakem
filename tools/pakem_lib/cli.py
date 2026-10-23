@@ -205,6 +205,8 @@ def build_parser() -> argparse.ArgumentParser:
     allow.add_argument(
         "--switch-from-registry", action="store_true", help="move environments that deploy from a registry to direct"
     )
+    allow.add_argument("--device", help="a shared builder's key name, builder-<project> (with --key)")
+    allow.add_argument("--key", help="a shared builder's public key file (one key per project)")
     revoke = host_commands.add_parser("revoke-device", help="remove a device's key, or one of its projects")
     revoke.add_argument("host", help="host name or target from ~/.config/pakem/hosts.toml")
     revoke.add_argument("--device", help="device name as the host records it (default: this device)")

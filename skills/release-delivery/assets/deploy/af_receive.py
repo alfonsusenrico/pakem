@@ -60,12 +60,15 @@ NAMESPACE = "pakem-release"
 DEPLOY_USER = "af"
 CONFIG_DIR = Path("/etc/af/hosts")
 ALLOWED_SIGNERS = Path("/etc/af/allowed_signers")
+# The deploy user's keys, root's to change: af_bootstrap.sh points sshd at this file for `af`
+# (AuthorizedKeysFile) once sshd reads it; until then the keys stay in ~af/.ssh.
+DEPLOY_KEYS = Path("/etc/af/authorized_keys")
 NOTIFY_FILE = Path("/etc/af/notify.toml")
 CADDY_SITES = "/etc/caddy/sites"
 CADDY_RELOAD = ["caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--address", "unix//run/caddy/admin.sock"]
 RECEIVER = "/opt/af/af_receive.py"
 KEY_COMMENT = "pakem-device"
-# A signed request is accepted for this long after it was made (and as far ahead, for clocks).
+# A signed request is accepted for this long after it was made.
 FRESH_SECONDS = 600
 # A device clock may run a little ahead; a request "from the future" beyond this is refused.
 AHEAD_SECONDS = 120
@@ -816,9 +819,27 @@ def rewrite_device_lines(path: Path, devices: dict[str, DeviceLine], render, mod
 class KeyFiles:
     authorized_keys: Path
     signers: Path
+    # Who owns the keys file: root once sshd reads DEPLOY_KEYS, else the deploy user.
+    keys_owner: str = DEPLOY_USER
+
+    def write_keys(self, devices: dict[str, "DeviceLine"]) -> None:
+        if self.keys_owner == DEPLOY_USER:
+            self.authorized_keys.parent.mkdir(mode=0o700, exist_ok=True)
+            _chown(self.authorized_keys.parent, DEPLOY_USER, DEPLOY_USER)
+            rewrite_device_lines(self.authorized_keys, devices, authorized_line, 0o600, DEPLOY_USER, DEPLOY_USER)
+        else:
+            rewrite_device_lines(self.authorized_keys, devices, authorized_line, 0o644, "root", "root")
+        rewrite_device_lines(self.signers, devices, signer_line, 0o640, "root", DEPLOY_USER)
+
+    def devices(self) -> dict[str, "DeviceLine"]:
+        """The devices allowed here, from the root-owned signers file: the deploy user can
+        write neither it nor (once pinned) the keys file."""
+        return device_lines(self.signers.read_text(encoding="utf-8")) if self.signers.exists() else {}
 
 
 def key_files() -> KeyFiles:
+    if DEPLOY_KEYS.exists():
+        return KeyFiles(DEPLOY_KEYS, ALLOWED_SIGNERS, "root")
     return KeyFiles(_deploy_user_home() / ".ssh" / "authorized_keys", ALLOWED_SIGNERS)
 
 
@@ -832,7 +853,7 @@ def authorize(args, files: KeyFiles, config_dir: Path) -> int:
     deploy_root = Path(args.deploy_root)
     if not deploy_root.is_absolute() or deploy_root == Path("/"):
         raise ReceiveError("--deploy-root must be an absolute path")
-    existing = device_lines(files.authorized_keys.read_text(encoding="utf-8")) if files.authorized_keys.exists() else {}
+    existing = files.devices()
     for name, entry in existing.items():
         if name == args.device and entry.key != args.key:
             raise ReceiveError(f"device {args.device} has another key here; revoke it first")
@@ -873,10 +894,7 @@ def authorize(args, files: KeyFiles, config_dir: Path) -> int:
     if args.project not in entry.projects:
         entry.projects.append(args.project)
     existing[args.device] = entry
-    files.authorized_keys.parent.mkdir(mode=0o700, exist_ok=True)
-    _chown(files.authorized_keys.parent, DEPLOY_USER, DEPLOY_USER)
-    rewrite_device_lines(files.authorized_keys, existing, authorized_line, 0o600, DEPLOY_USER, DEPLOY_USER)
-    rewrite_device_lines(files.signers, existing, signer_line, 0o640, "root", DEPLOY_USER)
+    files.write_keys(existing)
     log(f"device {args.device} may release: {', '.join(entry.projects)}")
     return af_engine.EXIT_OK
 
@@ -893,7 +911,7 @@ def placement_names(path: Path) -> set[str]:
 
 
 def revoke(args, files: KeyFiles) -> int:
-    existing = device_lines(files.authorized_keys.read_text(encoding="utf-8")) if files.authorized_keys.exists() else {}
+    existing = files.devices()
     if args.device not in existing:
         raise ReceiveError(f"device {args.device} has no key here; nothing changed", EXIT_NOTHING_MATCHED)
     entry = existing[args.device]
@@ -904,8 +922,7 @@ def revoke(args, files: KeyFiles) -> int:
     else:
         raise ReceiveError(f"device {args.device} may not release {args.project} here anyway; nothing changed",
                            EXIT_NOTHING_MATCHED)
-    rewrite_device_lines(files.authorized_keys, existing, authorized_line, 0o600, DEPLOY_USER, DEPLOY_USER)
-    rewrite_device_lines(files.signers, existing, signer_line, 0o640, "root", DEPLOY_USER)
+    files.write_keys(existing)
     if entry.projects:
         log(f"device {args.device} may still release: {', '.join(entry.projects)}")
     else:

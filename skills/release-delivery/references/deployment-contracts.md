@@ -258,7 +258,8 @@ channels, authorized keys) stay manual.
      signature) is retried after 15 minutes or when the pointer moves; a failed, restored,
      or stopped release is not retried until the pointer moves again or the owner runs the
      engine.
-   - **Push:** give the project's CI key one line in `~af/.ssh/authorized_keys`:
+   - **Push:** give the project's CI key one line in the deploy user's keys file
+     (`/etc/af/authorized_keys`, root-owned; see Device keys below):
      `restrict,command="/usr/bin/python3 /opt/af/af_trigger.py receive --config-dir /etc/af/hosts --project <project> --environment <environment>" <public key>`.
      The key can then only request `deploy <environment> [<actor>]` or
      `status <environment>`; no shell, forwarding, or release data. In the repository,
@@ -329,12 +330,22 @@ releases arrive only through the receiver). The monitor checks it like any other
 **Device keys.** One per device (ADR 0010, decision 8), written by
 `af_receive.py authorize` (as root, from `pakem host allow-device`):
 
-- `~af/.ssh/authorized_keys`:
+- `/etc/af/authorized_keys` (root:root 0644):
   `restrict,command="/usr/bin/python3 /opt/af/af_receive.py serve --device <name> --project <p> [--project ...]" ssh-ed25519 <key> pakem-device <name>`;
 - `/etc/af/allowed_signers` (root:af 0640): `<p>[,<p>...] namespaces="pakem-release" ssh-ed25519 <key> pakem-device <name>`.
 
-Other lines in either file are kept as they are. A key belongs to one device name, and a
-device to one key; revoking removes the device's lines or one project from them.
+The deploy user owns its home, so anything it runs could rewrite `~af/.ssh/authorized_keys`
+or add `authorized_keys2`. The bootstrap therefore moves the keys to the root-owned file
+once and adds `/etc/ssh/sshd_config.d/pakem-user.conf` (`Match User af`,
+`AuthorizedKeysFile /etc/af/authorized_keys`). It keeps the change only when `sshd -t`
+passes and `sshd -T` shows the new file; otherwise (sshd reads no drop-ins) the keys stay
+in `~af/.ssh`, and `check` fails "deploy user keys". The receiver writes whichever file
+exists. Which devices exist comes from `allowed_signers`; a device line in the keys file
+that is not there is dropped on the next change. Other lines in either file are kept as
+they are. A key belongs to one device name, and a device to one key; a shared builder (a
+CI runner, a client platform) gets one key per project, named `builder-<project>`
+(`pakem host allow-device --device builder-<project> --key FILE`). Revoking removes the
+device's lines or one project from them.
 
 The forced command is OpenSSH's; an SSH server that does not read `authorized_keys`
 (Tailscale SSH answers port 22 of a tailnet address and logs in by tailnet identity) gives
@@ -342,7 +353,10 @@ the key a shell instead. Such a host gets a release port: `af_bootstrap.sh
 --release-port PORT` adds `/etc/ssh/sshd_config.d/pakem-release.conf`, where OpenSSH also
 listens on PORT with `AllowUsers af` and public keys only, keeping every port it listened
 on before; devices connect there. A port sshd already serves is refused (other than the
-earlier release port), since only `af` could log in on it afterwards.
+earlier release port), since only `af` could log in on it afterwards. The release port has
+no `ListenAddress` of its own, so it listens wherever sshd does (every interface by
+default): on a host with a public or LAN address, firewall it to the private network the
+devices use.
 
 **Request.** One JSON object, signed with `ssh-keygen -Y sign -n pakem-release` by the
 device key:

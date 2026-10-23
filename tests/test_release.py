@@ -389,6 +389,21 @@ class AllowDeviceTests(ReleaseTestCase):
             self.assertIn(part, authorize)
         self.assertEqual(self.hosts()["prod"]["projects"], ["example"])
 
+    def test_a_shared_builder_gets_its_own_key_per_project(self) -> None:
+        write(self.home / ".config" / "pakem" / "hosts.toml", HOSTS_TOML.replace('projects = ["example"]', ""))
+        builder = write(self.base / "builder.pub", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBuilderKeyForTests ci\n")
+        refused = self.run_tty("host", "allow-device", "prod", "--project-dir", str(self.project), "--device", "ci",
+                               "--key", str(builder), "--yes")
+        self.assertEqual(refused[0], 2, refused[1])
+        self.assertIn("is named builder-example", refused[1])
+        code, output = self.run_tty("host", "allow-device", "prod", "--project-dir", str(self.project),
+                                    "--device", "builder-example", "--key", str(builder), "--yes")
+        self.assertEqual(code, 0, output)
+        authorize = next(call for call in self.calls() if "af_receive.py authorize" in call)
+        self.assertIn("--device builder-example --key 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBuilderKeyForTests'", authorize)
+        self.assertNotIn(self.public_key.split()[1], authorize, "this device's own key is not sent")
+        self.assertNotIn("projects", self.hosts()["prod"], "only this device's own permissions are recorded")
+
     def test_an_old_engine_is_reported(self) -> None:
         (self.state / "no-receiver").touch()
         code, output = self.run_tty("host", "allow-device", "prod", "--project-dir", str(self.project), "--yes")

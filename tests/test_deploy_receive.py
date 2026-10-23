@@ -533,6 +533,19 @@ class AuthorizeTests(DirectHost):
         self.authorize(DEVICE, self.key, "second", ["production"])
         self.assertEqual(self.files.authorized_keys.read_text().count("--project second"), 1, "re-runs change nothing")
 
+    def test_the_signers_file_decides_which_devices_exist(self) -> None:
+        forged = self.public(self.make_key("forged"))
+        self.files.authorized_keys.write_text(
+            self.files.authorized_keys.read_text()
+            + f'restrict,command="/bin/sh" {forged} pakem-device intruder\n'
+        )
+        self.authorize(DEVICE, self.key, "second", ["production"])
+        authorized = self.files.authorized_keys.read_text()
+        self.assertNotIn("intruder", authorized, "a device line that is not in allowed_signers is dropped")
+        self.assertNotIn("intruder", self.files.signers.read_text())
+        with self.assertRaisesRegex(af_receive.ReceiveError, "intruder has no key here"):
+            af_receive.revoke(argparse.Namespace(device="intruder", project=None), self.files)
+
     def test_a_key_belongs_to_one_device(self) -> None:
         with self.assertRaisesRegex(af_receive.ReceiveError, "already authorized as device laptop"):
             self.authorize("desktop", self.key, "example", ["staging"])
