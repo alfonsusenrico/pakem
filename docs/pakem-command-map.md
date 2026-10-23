@@ -132,7 +132,9 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
   - `--release-port PORT` (hosts like that only; a normal OpenSSH host needs none): the
     bootstrap adds an sshd drop-in, checked with `sshd -t` and undone on any problem,
     where OpenSSH also listens on PORT for the `af` user with keys only; every port sshd
-    listened on before stays; releases use that port, recorded in `hosts.toml`;
+    listened on before stays; releases use that port, recorded in `hosts.toml`. A port
+    sshd already serves, or the one the owner logs in on (`--port`, or what `ssh -G` gives
+    the target), is refused: with `AllowUsers af` only the deploy user could log in there;
   - one SSH connection (ControlMaster), so a password is asked at most once;
   - uploads `VERSION` and the deploy assets, in the checkout's layout, to a temporary
     directory, runs `af_bootstrap.sh install` with sudo (Docker, cosign, Caddy unless
