@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import sys
 from pathlib import Path
 
 from .changelog import run_changelog
@@ -157,6 +160,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="no passphrase, only for a device nobody can unlock (recorded in device.toml)",
     )
+    setup_key.add_argument("--plan", action="store_true", help="print the steps without doing them")
+    setup_key.add_argument("--json", action="store_true", help="machine-readable result")
     setup_host = setup_commands.add_parser(
         "host", help="install the release engine on a server over SSH (your own login, from your terminal)"
     )
@@ -176,6 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     setup_host.add_argument("--plan", action="store_true", help="print the steps without doing them")
     setup_host.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    setup_host.add_argument("--json", action="store_true", help="machine-readable result")
     setup_check = setup_commands.add_parser("check", help="list tools, versions, the key, and forge logins")
     setup_check.add_argument("--host", metavar="NAME", help="check a recorded host instead of this device")
     setup_check.add_argument("--json", action="store_true", help="machine-readable result")
@@ -188,6 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
     host_add.add_argument("name", help="name for the server on this device")
     host_add.add_argument("--target", help="its SSH target (alias or user@address); needed for a new host")
     _add_host_options(host_add)
+    host_add.add_argument("--plan", action="store_true", help="show what would be recorded; record nothing")
+    host_add.add_argument("--json", action="store_true", help="machine-readable result")
     runner = host_commands.add_parser("runner", help="register a private repository with the host's CI runner")
     runner_commands = runner.add_subparsers(dest="runner_command", required=True)
     for verb, text in (("add", "register"), ("remove", "unregister")):
@@ -196,7 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
         runner_parser.add_argument("repository", help="owner/name on GitHub")
         runner_parser.add_argument("--plan", action="store_true", help="print the steps without doing them")
         runner_parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
-        runner_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+        runner_parser.add_argument("--json", action="store_true", help="machine-readable result")
     allow = host_commands.add_parser(
         "allow-device", help="let this device's key release a project there (your own login, from your terminal)"
     )
@@ -214,7 +222,7 @@ def build_parser() -> argparse.ArgumentParser:
     for device_parser in (allow, revoke):
         device_parser.add_argument("--plan", action="store_true", help="print the steps without doing them")
         device_parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
-        device_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+        device_parser.add_argument("--json", action="store_true", help="machine-readable result")
 
     release = commands.add_parser("release", help="release a service: signed source to its host, built there")
     release_commands = release.add_subparsers(dest="release_command", required=True)
@@ -550,8 +558,66 @@ def dispatch(args: argparse.Namespace) -> int:
     raise PakemError(f"unknown command: {args.command}")
 
 
+RESULT_STATUS = {0: "done", 2: "usage", 3: "owner-action", 4: "gaps", 5: "check-failed", 6: "refused", 75: "busy"}
+
+
+def is_dialogue(args) -> bool:
+    """Commands that talk to the owner's terminal (ssh, sudo, ssh-keygen) and print as they
+    go; with --json their lines go to stderr and stdout carries one result document."""
+    if args.command == "host":
+        return True
+    return args.command == "setup" and (args.setup_command in ("key", "host")
+                                        or (args.setup_command == "check" and bool(args.host)))
+
+
+class _Recorder:
+    """Writes through to stderr and keeps the owner actions it saw."""
+
+    def __init__(self) -> None:
+        self.owner_actions: list[str] = []
+
+    def write(self, text: str) -> int:
+        for line in text.splitlines():
+            if line.startswith("OWNER ACTION REQUIRED"):
+                self.owner_actions.append(line)
+        return sys.stderr.write(text)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
+
+
+def run_dialogue_as_json(args) -> int:
+    recorder = _Recorder()
+    sys.stdout.flush()
+    saved = os.dup(1)
+    # Child processes (ssh, sudo, installers) write to file descriptor 1 directly.
+    os.dup2(2, 1)
+    real_stdout, sys.stdout = sys.stdout, recorder
+    error = None
+    try:
+        code = dispatch(args)
+    except PakemError as exc:
+        error, code = str(exc), exc.exit_code
+        recorder.write(f"pakem: error: {exc}\n")
+    finally:
+        sys.stdout = real_stdout
+        os.dup2(saved, 1)
+        os.close(saved)
+    status = "planned" if code == 0 and getattr(args, "plan", False) else RESULT_STATUS.get(code, "failed")
+    owner_actions = list(recorder.owner_actions)
+    if error and code == 3:
+        owner_actions += [line for line in error.splitlines() if line.startswith("OWNER ACTION REQUIRED")]
+    result = {"status": status, "done": [], "owner_actions": list(dict.fromkeys(owner_actions)), "gaps": [], "checks": []}
+    if error:
+        result["error"] = error
+    print(json.dumps(result, indent=2))
+    return code
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if getattr(args, "json", False) and is_dialogue(args):
+        return run_dialogue_as_json(args)
     try:
         return dispatch(args)
     except PakemError as exc:

@@ -126,6 +126,8 @@ class SetupDeviceMacTests(SetupTestCase):
         planned = self.run_setup("device", "--plan")
         self.assert_ok(planned)
         self.assertIn("brew install gh glab uv docker colima", planned.stdout)
+        self.assertFalse([call for call in self.calls() if not call.endswith(("--version", "version"))],
+                         "--plan installs and starts nothing")
         self.assertIn("OWNER ACTION REQUIRED: run `pakem setup key` in your terminal", planned.stdout)
 
         done = self.run_setup("device", "--yes")
@@ -202,6 +204,18 @@ class SetupKeyTests(SetupTestCase):
         self.assert_fails(completed, code=3)
         self.assertIn("a device key without a passphrase is your choice", completed.stderr)
         self.assertFalse(self.key().exists())
+
+    def test_key_plan_and_json(self) -> None:
+        planned = self.run_setup("key", "--plan")
+        self.assert_ok(planned)
+        self.assertIn("ssh-keygen asks for its passphrase", planned.stdout)
+        self.assertFalse(self.key().exists())
+        self.assertEqual(self.calls(), [])
+        result = self.run_setup("key", "--json")
+        self.assert_fails(result, code=3)
+        parsed = json.loads(result.stdout)
+        self.assertEqual(parsed["status"], "owner-action")
+        self.assertTrue(parsed["owner_actions"][0].startswith("OWNER ACTION REQUIRED: run `pakem setup key`"))
 
     def test_a_passphrase_needs_the_owner_terminal(self) -> None:
         completed = self.run_setup("key")

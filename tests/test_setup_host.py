@@ -7,6 +7,7 @@ These commands require a terminal, so they run under a pseudo-terminal.
 
 from __future__ import annotations
 
+import json
 import os
 import pty
 import re
@@ -192,6 +193,34 @@ class SetupHostTests(IsolatedTestCase):
         self.assertEqual(code, 6, output)
         self.assertIn("me/app is public", output)
         self.assertFalse(any("registration-token" in call or "add-repo" in call for call in self.calls()))
+
+    def test_json_results_keep_stdout_one_document(self) -> None:
+        added = self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--json")
+        self.assert_ok(added)
+        result = json.loads(added.stdout)
+        self.assertEqual(result["status"], "done")
+        self.assertEqual(result["owner_actions"],
+                         ["OWNER ACTION REQUIRED: run `pakem setup host prod` in your terminal (your own login)"])
+        self.assertIn("Recorded host prod", added.stderr)
+
+        planned = self.pakem("setup", "host", "prod", "--plan", "--json")
+        self.assert_ok(planned)
+        self.assertEqual(json.loads(planned.stdout)["status"], "planned")
+        self.assertIn("af_bootstrap.sh install", planned.stderr)
+
+        self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
+        waiting = self.pakem("host", "runner", "add", "prod", "me/app", "--json")
+        self.assert_fails(waiting, code=3)
+        result = json.loads(waiting.stdout)
+        self.assertEqual(result["status"], "owner-action")
+        self.assertEqual(result["owner_actions"], ["OWNER ACTION REQUIRED: run `gh auth login` in your terminal"])
+
+    def test_host_add_plan_records_nothing(self) -> None:
+        planned = self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--no-proxy", "--plan")
+        self.assert_ok(planned)
+        self.assertIn("would record host prod (admin@203.0.113.7)", planned.stdout)
+        self.assertIn("--no-proxy", planned.stdout)
+        self.assertFalse((self.home / ".config" / "pakem" / "hosts.toml").exists())
 
     def test_invalid_input_is_refused_before_connecting(self) -> None:
         self.assert_fails(self.pakem("setup", "host", "admin@host", "--deploy-root", "/", "--plan"), code=2)
