@@ -300,8 +300,10 @@ add_repo() {
     as_runner tar -xzf "$RUNNER_HOME/dist/actions-runner-linux-$(architecture)-$RUNNER_VERSION.tar.gz" -C "$directory"
   fi
   say "registering $repo"
-  printf '%s' "$token" | as_runner sh -c 'cd "$1" && ./config.sh --unattended --replace \
-      --url "https://github.com/$2" --token "$(cat)" --name "$3" --labels "$4" --work _work >/dev/null' \
+  # The runner reads ACTIONS_RUNNER_INPUT_TOKEN when --token is absent: an environment is
+  # private to its user, while an argument shows in everyone's process list.
+  printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh --unattended \
+      --replace --url "https://github.com/$2" --name "$3" --labels "$4" --work _work >/dev/null' \
     _ "$directory" "$repo" "$(hostname -s)-${repo#*/}" "$RUNNER_LABEL"
   cat > "$directory/.env" <<ENV
 DOCKER_HOST=unix:///run/user/$uid/docker.sock
@@ -321,7 +323,8 @@ remove_repo() {
   directory="$RUNNER_HOME/runners/$slug"
   [[ -d "$directory" ]] || die "no runner for $repo"
   as_runner systemctl --user disable --now "actions-runner@$slug" >/dev/null 2>&1 || true
-  printf '%s' "$token" | as_runner sh -c 'cd "$1" && ./config.sh remove --token "$(cat)" >/dev/null' _ "$directory"
+  printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh remove >/dev/null' \
+    _ "$directory"
   rm -rf -- "$directory"
   say "removed the runner for $repo"
 }

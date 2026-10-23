@@ -18,6 +18,7 @@ when none does.
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import shutil
@@ -40,6 +41,7 @@ from .common import (
     PakemError,
     confirm_steps,
     display_path,
+    toml_value,
     write_text_atomically,
 )
 from .device_config import config_dir
@@ -88,6 +90,8 @@ TOOLS = {
     "docker": Tool("docker", ("docker", "--version"), "docker", "docker.io", "https://docs.docker.com/engine/install/"),
     "npm": Tool("npm", ("npm", "--version"), "node", "npm", "https://nodejs.org/en/download"),
 }
+# Desktop apps that provide Docker on macOS; when one is installed, the owner starts it.
+MACOS_DOCKER_APPS = ("Docker.app", "OrbStack.app")
 COLIMA = Tool("colima", ("colima", "version"), "colima", None, "https://github.com/abiosoft/colima")
 LOGINS = {"github-login": ("gh", "GitHub"), "gitlab-login": ("glab", "GitLab")}
 NEED_ORDER = (
@@ -225,9 +229,13 @@ def _can_sudo(assessment: Assessment) -> bool:
     return probe is not None and probe.returncode == 0
 
 
+# Where installers print: the terminal, or stderr while stdout carries --json.
+_child_stdout = None
+
+
 def _run(command: list[str]) -> None:
     # Installers ask for passwords and print progress, so they share this terminal.
-    completed = subprocess.run(command)
+    completed = subprocess.run(command, stdout=_child_stdout)
     if completed.returncode != 0:
         raise PakemError(f"`{' '.join(command)}` failed with exit {completed.returncode}")
 
@@ -265,6 +273,13 @@ def _need_runtime(assessment: Assessment) -> None:
             "OWNER ACTION REQUIRED: start Docker Engine and allow your user to use it "
             "(`sudo systemctl enable --now docker` and `sudo usermod -aG docker $USER`, then log in again)"
         )
+        return
+    applications = Path(os.environ.get("PAKEM_APPLICATIONS_DIR", "/Applications"))
+    desktop = next((applications / app for app in MACOS_DOCKER_APPS if (applications / app).is_dir()), None)
+    if desktop is not None:
+        # Installing Colima here would switch the docker context away from the owner's app.
+        assessment.checks.append(Check("container runtime", False, f"{Path(desktop).stem} is installed but not running"))
+        assessment.owner_actions.append(f"OWNER ACTION REQUIRED: start {Path(desktop).stem}, then run the command again")
         return
     if _version(COLIMA) is None:
         if shutil.which("brew") is None:
@@ -367,7 +382,7 @@ def device_settings_text(device: Device) -> str:
         "key_passphrase": device_key.has_passphrase(device_key.private_path()) if present else True,
     }
     lines = ["# Written by pakem; device-local, never committed."]
-    lines += [f"{key} = {json.dumps(value)}" for key, value in values.items()]
+    lines += [f"{key} = {toml_value(value)}" for key, value in values.items()]
     return "\n".join(lines) + "\n"
 
 
@@ -452,9 +467,14 @@ def prepare(
         return assessment, []
     confirm_steps(args.yes, command)
     done = []
-    for step in assessment.steps:
-        step.run()
-        done.append(step.description)
+    global _child_stdout
+    _child_stdout = sys.stderr if args.json else None
+    try:
+        for step in assessment.steps:
+            step.run()
+            done.append(step.description)
+    finally:
+        _child_stdout = None
     return assess(framework, needs, interactive), done
 
 
@@ -463,7 +483,7 @@ def ensure(framework: Framework, needs: tuple[str, ...], args, command: str) -> 
     assessment, _ = prepare(framework, needs, args, command, announce=False)
     if args.plan:
         for action in assessment.owner_actions:
-            print(action)
+            print(action, file=sys.stderr if args.json else sys.stdout)
         return
     if assessment.owner_actions:
         raise OwnerActionRequired("\n".join(assessment.owner_actions))

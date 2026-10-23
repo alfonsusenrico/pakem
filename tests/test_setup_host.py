@@ -144,6 +144,15 @@ class SetupHostTests(IsolatedTestCase):
         code, output = self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--yes")
         self.assertEqual(code, 5, output)
         self.assertIn("prod", self.hosts())
+        self.assertNotIn("set_up_at", self.hosts()["prod"], "a host whose check failed is not marked as set up")
+
+    def test_a_target_is_never_read_as_an_ssh_option(self) -> None:
+        for target in ("-oProxyCommand=touch pwned", "admin@host name"):
+            with self.subTest(target=target):
+                refused = self.pakem("host", "add", "prod", "--target", target)
+                self.assert_fails(refused, code=2)
+                self.assertIn("invalid SSH target", refused.stderr)
+        self.assertEqual(self.calls(), [])
 
     def test_host_check_uses_the_recorded_flags(self) -> None:
         code, output = self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--no-proxy", "--yes")
