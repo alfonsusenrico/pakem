@@ -23,6 +23,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -o|-p|-i) shift 2 ;;
     -O) exit 0 ;;
+    -G) echo "port $(cat "{state}/ssh-port" 2>/dev/null || echo 22)"; exit 0 ;;
     -t) shift ;;
     *) break ;;
   esac
@@ -224,6 +225,25 @@ class SetupHostTests(IsolatedTestCase):
         status = next(call for call in self.calls() if call.startswith("ssh") and "af@203.0.113.7" in call)
         self.assertIn("-p 2222", status)
         self.assertEqual(self.hosts()["prod"]["release_port"], 2222)
+
+    def test_the_release_port_is_never_the_login_port(self) -> None:
+        cases = (
+            (("admin@203.0.113.7", "--release-port", "22"), None),
+            (("admin@203.0.113.7", "--port", "2200", "--release-port", "2200"), None),
+            (("box", "--release-port", "2223"), "2223"),
+        )
+        for arguments, configured in cases:
+            with self.subTest(arguments=arguments):
+                if configured:
+                    (self.state / "ssh-port").write_text(configured)
+                self.log.write_text("")
+                code, output = self.run_tty("setup", "host", *arguments, "--name", "prod", "--yes")
+                self.assertEqual(code, 2, output)
+                self.assertIn("is the port you log in on", output)
+                self.assertEqual([call for call in self.calls() if not call.startswith("ssh -G")], [])
+                self.assertFalse((self.home / ".config" / "pakem" / "hosts.toml").exists())
+        refused = self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--release-port", "22")
+        self.assert_fails(refused, code=2)
 
     def run_answering(self, answers: list[str], *args: str) -> tuple[int, str]:
         """Run pakem on a terminal and answer each prompt (a line ending in ': ') in turn."""

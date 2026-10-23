@@ -341,7 +341,8 @@ The forced command is OpenSSH's; an SSH server that does not read `authorized_ke
 the key a shell instead. Such a host gets a release port: `af_bootstrap.sh
 --release-port PORT` adds `/etc/ssh/sshd_config.d/pakem-release.conf`, where OpenSSH also
 listens on PORT with `AllowUsers af` and public keys only, keeping every port it listened
-on before; devices connect there.
+on before; devices connect there. A port sshd already serves is refused (other than the
+earlier release port), since only `af` could log in on it afterwards.
 
 **Request.** One JSON object, signed with `ssh-keygen -Y sign -n pakem-release` by the
 device key:

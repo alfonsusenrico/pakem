@@ -286,9 +286,36 @@ def record_from_args(args) -> HostRecord:
             record.project_dirs.append(resolved)
     if not DEPLOY_ROOT.match(record.deploy_root) or record.deploy_root == "/":
         raise PakemError("--deploy-root must be an absolute path other than /")
+    if record.release_port is not None:
+        check_release_port(record)
     if not HOST_NAME.match(record.name):
         raise PakemError(f"invalid host name {record.name!r}: lowercase letters, digits, dots, and hyphens")
     return record
+
+
+def login_port(record: HostRecord) -> int:
+    """The port the owner logs in on: the recorded one, or what ~/.ssh/config gives the
+    target (`ssh -G` reads the configuration only; it never connects)."""
+    if record.port is not None:
+        return record.port
+    completed = subprocess.run(["ssh", "-G", record.target], capture_output=True, text=True)
+    for line in completed.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "port" and value.isdigit():
+            return int(value)
+    return 22
+
+
+def check_release_port(record: HostRecord) -> None:
+    """The release port admits only the deploy user, so it must never be the login port."""
+    port = record.release_port
+    if not 0 < port < 65536:
+        raise PakemError(f"--release-port must be a TCP port, not {port}")
+    if port == login_port(record):
+        raise PakemError(
+            f"--release-port {port} is the port you log in on ({record.target}); only the deploy user could log "
+            "in there afterwards. Choose a free port, such as 2223"
+        )
 
 
 def setup_flags(record: HostRecord) -> list[str]:
@@ -346,7 +373,10 @@ def interview(args) -> None:
     args.proxy = not yes("Is it private (no public web traffic, no Caddy)?", False)
     args.runner = yes("Does it run (or should it run) the CI runner for private repositories?", False)
     if yes("Is its port 22 answered by Tailscale SSH (or anything that skips authorized_keys)?", False):
-        args.release_port = int(ask("Free port for releases", "2223"))
+        answer = ask("Free port for releases (not the one you log in on)", "2223")
+        if not answer.isdigit():
+            raise PakemError(f"a release port is a number, not {answer!r}")
+        args.release_port = int(answer)
     args.deploy_root = ask("Deploy root on the server", "/srv/deploy")
     here = [str(Path.cwd())] if is_service_project(Path.cwd()) else []
     answer = ask("Service projects on this device to release there (comma-separated paths)", ",".join(here))
