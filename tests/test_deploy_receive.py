@@ -347,6 +347,54 @@ class RefusalTests(DirectHost):
             archive.addfile(info)
         self.assert_refused(self.request("publish", "staging", A, archive=buffer.getvalue()), "points outside")
 
+    def extract(self, *entries: tuple[str, str, str]) -> Path:
+        """Extract (kind, name, link target or content) entries; returns the tree."""
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            for kind, name, value in entries:
+                info = tarfile.TarInfo(name)
+                if kind == "link":
+                    info.type, info.linkname = tarfile.SYMTYPE, value
+                    archive.addfile(info)
+                elif kind == "dir":
+                    info.type = tarfile.DIRTYPE
+                    archive.addfile(info)
+                else:
+                    info.size = len(value)
+                    archive.addfile(info, io.BytesIO(value.encode()))
+        work = Path(tempfile.mkdtemp(dir=self.root))
+        (work / "source.tar").write_bytes(buffer.getvalue())
+        af_receive.extract_source(work / "source.tar", work / "tree")
+        return work / "tree"
+
+    def assert_contained(self, message: str, *entries: tuple[str, str, str]) -> None:
+        with self.assertRaisesRegex(af_receive.ReceiveError, message):
+            self.extract(*entries)
+        self.assertEqual(list(self.root.rglob("escaped*")), [])
+
+    def test_chained_links_that_leave_the_tree_are_refused(self) -> None:
+        self.assert_contained("points outside", ("link", "p/q", ".."), ("link", "r", "p/q/.."))
+
+    def test_nothing_is_written_through_a_link(self) -> None:
+        cases = {
+            "a file through a link": (("link", "p/q", ".."), ("link", "r", "p/q/.."), ("file", "r/escaped.txt", "x")),
+            "a file through an inside link": (("dir", "d", ""), ("link", "l", "d"), ("file", "l/escaped.txt", "x")),
+            "a directory through a link": (("link", "p/q", ".."), ("link", "r", "p/q/.."), ("dir", "r/escaped", "")),
+            "a link through a link": (("link", "p/q", ".."), ("link", "r", "p/q/.."), ("link", "r/escaped", "x")),
+        }
+        for name, entries in cases.items():
+            with self.subTest(name):
+                self.assert_contained("passes through a symlink", *entries)
+
+    def test_an_entry_given_twice_is_refused(self) -> None:
+        self.assert_contained("entry twice", ("file", "a", "x"), ("link", "a", "b"))
+
+    def test_links_that_stay_inside_are_kept(self) -> None:
+        tree = self.extract(("file", "docs/guide.md", "guide"), ("link", "README.md", "docs/guide.md"),
+                            ("link", "docs/self", "."), ("link", "dangling", "missing"))
+        self.assertEqual((tree / "README.md").read_text(), "guide")
+        self.assertEqual(os.readlink(tree / "dangling"), "missing")
+
     def test_commands_outside_the_protocol_are_refused(self) -> None:
         for command in ("", "sh", "history", "history other", "deploy staging"):
             with self.subTest(command=command):
