@@ -132,7 +132,9 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
   - `--release-port PORT` (hosts like that only; a normal OpenSSH host needs none): the
     bootstrap adds an sshd drop-in, checked with `sshd -t` and undone on any problem,
     where OpenSSH also listens on PORT for the `af` user with keys only; every port sshd
-    listened on before stays; releases use that port, recorded in `hosts.toml`;
+    listened on before stays; releases use that port, recorded in `hosts.toml`. A port
+    sshd already serves, or the one the owner logs in on (`--port`, or what `ssh -G` gives
+    the target), is refused: with `AllowUsers af` only the deploy user could log in there;
   - one SSH connection (ControlMaster), so a password is asked at most once;
   - uploads `VERSION` and the deploy assets, in the checkout's layout, to a temporary
     directory, runs `af_bootstrap.sh install` with sudo (Docker, cosign, Caddy unless
@@ -150,7 +152,9 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
   (prepared on demand); takes a registration or removal token from the owner's `gh`
   login, keeps it in memory, and hands it to `/opt/af/af_runner.sh` on standard input
   through a file only the login user can read, removed right after. Refused when the
-  host has no runner.
+  host has no runner, and refused (exit `6`) for a repository GitHub reports as public: its
+  pull requests could run any fork's code on the server. The runner script checks the
+  same before registering, and its `check` fails for a runner that serves a public one.
 - **Owner actions:** running these commands on a terminal; the server's first password
   if SSH asks for one; a GitHub login for runner tokens.
 - **Gaps (per host), answered by flags:** public route or private (`--no-proxy`), runner
@@ -232,7 +236,9 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   decisions and raises due ones (also at session start); `pakem release` refuses while a
   required gap that blocks release is open or pending (exit `4`).
 - **Check:** `pakem project check` (contracts, CI file, deploy files, `AGENTS.md` blocks,
-  starter stubs), and `pakem project check --gaps`.
+  starter stubs; exit `6` when a public GitHub repository has self-hosted jobs), and
+  `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
+  from a flag or a prompt.
 
 ### 4. Secrets: `pakem secret`
 
@@ -257,8 +263,9 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
     the version must be newer than every release tag. After it deploys, the commit is
     tagged and the tag pushed to `origin`; a failed deployment is never tagged.
   - `pakem release rollback previous|<tag or commit> [--environment E] [--production]
-    [--allow-schema]`: "previous" is the release first deployed before the running one,
-    so each run steps one further back; failed and restored attempts never count. The
+    [--allow-schema]`: "previous" is the last release that was live and working before
+    the running one. Each run steps one further back through the releases that were live,
+    never onto one a rollback left; failed and restored attempts never count. The
     host refuses a target never deployed there, and one with another schema version
     unless `--allow-schema` (after restoring the database from its backup).
   - `pakem release history [env]`, `pakem release status [env]`: read from the host.

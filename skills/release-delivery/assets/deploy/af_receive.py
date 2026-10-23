@@ -295,13 +295,29 @@ def _stays_inside(path: PurePosixPath) -> bool:
     return True
 
 
+def _passes_a_link(destination: Path, parts: tuple[str, ...]) -> bool:
+    """Whether any part of the entry's path is a symlink already extracted.
+
+    `mkdir(parents=True)` and `open` follow such links, and `O_NOFOLLOW` covers only the
+    last part, so an entry written through one could land outside the tree."""
+    current = destination
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def extract_source(archive: Path, destination: Path) -> None:
     """Unpack a `git archive` tar: files, directories, and symlinks that stay inside.
 
+    No entry is written through a symlink, and every symlink must resolve inside the tree
+    once all are in place: link text alone can chain links (`p/q -> ..`, `r -> p/q/..`).
     The tree keeps git's modes (0644, 0755): Docker copies them into the images, whose
     users are often not root. It lives inside the private build directory, so nobody else
     on the host can read it."""
     destination.mkdir(mode=0o755)
+    links: list[Path] = []
     total = 0
     try:
         source = tarfile.open(archive, mode="r:")
@@ -316,6 +332,10 @@ def extract_source(archive: Path, destination: Path) -> None:
             if path.is_absolute() or ".." in path.parts or not path.parts or "\x00" in member.name:
                 raise ReceiveError("an archive entry escapes the source tree")
             target = destination.joinpath(*path.parts)
+            if _passes_a_link(destination, path.parts):
+                raise ReceiveError("an archive entry passes through a symlink")
+            if not member.isdir() and os.path.lexists(target):
+                raise ReceiveError("the archive holds an entry twice")
             if member.isdir():
                 target.mkdir(mode=0o755, parents=True, exist_ok=True)
             elif member.isreg():
@@ -336,8 +356,13 @@ def extract_source(archive: Path, destination: Path) -> None:
                     raise ReceiveError("an archive symlink points outside the source tree")
                 target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
                 os.symlink(member.linkname, target)
+                links.append(target)
             else:
                 raise ReceiveError("the archive may hold only files, directories, and symlinks")
+    root = destination.resolve()
+    for link in links:
+        if not Path(os.path.realpath(link)).is_relative_to(root):
+            raise ReceiveError("an archive symlink points outside the source tree")
 
 
 def load_project(source: Path, project: str, environment: str) -> dict:
@@ -386,18 +411,29 @@ class Builder:
         finally:
             os.close(descriptor)
 
+    @staticmethod
+    def _inside(source: Path, name: str, relative: str) -> Path:
+        """A build path that resolves inside the commit's tree: a link out of it could bake
+        another project's secrets into an image, or echo one through the build output."""
+        path = (source / relative).resolve()
+        if not path.is_relative_to(source.resolve()):
+            raise ReceiveError(f"image {name}: {relative} resolves outside the source tree")
+        return path
+
     def _build_one(self, source: Path, image: dict, project: str, commit: str) -> str:
         name = image["name"]
         tag = image_tag(project, name, commit)
+        dockerfile = self._inside(source, name, image.get("dockerfile", "Dockerfile"))
+        context = self._inside(source, name, image.get("context", "."))
         log(f"building {name}")
         arguments = [
             "buildx", "build", "--builder", BUILDER, "--load", "--progress", "plain",
             "--build-arg", f"AF_REVISION={commit}", "--label", f"org.opencontainers.image.revision={commit}",
-            "--file", str(source / image.get("dockerfile", "Dockerfile")), "--tag", tag,
+            "--file", str(dockerfile), "--tag", tag,
         ]
         if image.get("target"):
             arguments += ["--target", image["target"]]
-        built = self._docker(*arguments, str(source / image.get("context", ".")))
+        built = self._docker(*arguments, str(context))
         if built.returncode != 0:
             for line in (built.stdout + built.stderr).strip().splitlines()[-20:]:
                 print(f"  {line}", flush=True)
@@ -501,7 +537,8 @@ class Receiver:
         try:
             prepared = self.prepare(request, digest, hosts, host, stream, work)
             source = DirectSource(prepared, environment, hosts)
-            engine = self.engine(host, source=source, trigger="direct", actor=f"{ACTOR_PREFIX}{self.device}")
+            trigger = "rollback" if prepared.record["rollback"] else "direct"
+            engine = self.engine(host, source=source, trigger=trigger, actor=f"{ACTOR_PREFIX}{self.device}")
             record = engine.deploy()
         finally:
             shutil.rmtree(work, ignore_errors=True)

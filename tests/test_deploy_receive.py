@@ -225,7 +225,7 @@ class ReleaseTests(DirectHost):
         code, output = self.serve("release", self.request("rollback", "staging", A))
         self.assertEqual(code, 0, output)
         deployment = self.last("staging")
-        self.assertEqual((deployment["result"], deployment["commit"]), ("deployed", A))
+        self.assertEqual((deployment["result"], deployment["commit"], deployment["trigger"]), ("deployed", A, "rollback"))
         record = json.loads((self.base("staging") / "releases" / A / "record.json").read_text())
         self.assertTrue(record["rollback"])
         self.assertEqual(self.builder.built, [A, B])
@@ -290,6 +290,21 @@ class ReleaseTests(DirectHost):
         self.assertIn(af_receive.image_tag("example", "web", commits[0]), removed)
 
 
+class BuilderTests(unittest.TestCase):
+    def test_a_build_path_that_resolves_outside_the_tree_is_refused(self) -> None:
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        source = root / "source"
+        (source / "docker").mkdir(parents=True)
+        (root / "secrets").mkdir()
+        (source / "secrets").symlink_to("../secrets")
+        calls = []
+        builder = af_receive.Builder(root / "build.lock", run=lambda argv, **options: calls.append(argv))
+        for image in ({"name": "web", "context": "secrets"}, {"name": "web", "dockerfile": "secrets/token"}):
+            with self.subTest(image=image), self.assertRaisesRegex(af_receive.ReceiveError, "outside the source tree"):
+                builder._build_one(source, image, "example", A)
+        self.assertEqual(calls, [])
+
+
 class RefusalTests(DirectHost):
     def assert_refused(self, stdin: bytes, message: str, command: str = "release", **options) -> None:
         code, output = self.serve(command, stdin, **options)
@@ -309,6 +324,13 @@ class RefusalTests(DirectHost):
         self.assert_refused(self.request("publish", "staging", A, archive=source_archive(A), project="other"),
                             "may not release other")
 
+    def test_production_takes_only_a_promotion(self) -> None:
+        self.assert_refused(self.request("publish", "production", A, archive=source_archive(A)),
+                            "production takes a promotion, never a publish")
+        self.assertFalse((self.base("production") / "deployment.json").exists())
+        self.assert_refused(self.request("promote", "staging", A, version="v1.0.0", archive=source_archive(A)),
+                            "a promotion goes only to production")
+
     def test_a_stale_request_is_refused(self) -> None:
         old = datetime.now(UTC) - timedelta(hours=1)
         self.assert_refused(self.request("publish", "staging", A, archive=source_archive(A), created=old), "not fresh")
@@ -320,7 +342,7 @@ class RefusalTests(DirectHost):
 
     def test_a_tampered_request_is_refused(self) -> None:
         signed = self.request("publish", "staging", A, archive=source_archive(A))
-        self.assert_refused(signed.replace(b'"staging"', b'"production"', 1), "not signed by device laptop's key")
+        self.assert_refused(signed.replace(b'"allow_schema":false', b'"allow_schema":true', 1), "not signed by device laptop's key")
 
     def test_the_source_keeps_git_modes_for_the_images_users(self) -> None:
         archive = self.root / "source.tar"
@@ -346,6 +368,54 @@ class RefusalTests(DirectHost):
             info.linkname = "../../outside"
             archive.addfile(info)
         self.assert_refused(self.request("publish", "staging", A, archive=buffer.getvalue()), "points outside")
+
+    def extract(self, *entries: tuple[str, str, str]) -> Path:
+        """Extract (kind, name, link target or content) entries; returns the tree."""
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            for kind, name, value in entries:
+                info = tarfile.TarInfo(name)
+                if kind == "link":
+                    info.type, info.linkname = tarfile.SYMTYPE, value
+                    archive.addfile(info)
+                elif kind == "dir":
+                    info.type = tarfile.DIRTYPE
+                    archive.addfile(info)
+                else:
+                    info.size = len(value)
+                    archive.addfile(info, io.BytesIO(value.encode()))
+        work = Path(tempfile.mkdtemp(dir=self.root))
+        (work / "source.tar").write_bytes(buffer.getvalue())
+        af_receive.extract_source(work / "source.tar", work / "tree")
+        return work / "tree"
+
+    def assert_contained(self, message: str, *entries: tuple[str, str, str]) -> None:
+        with self.assertRaisesRegex(af_receive.ReceiveError, message):
+            self.extract(*entries)
+        self.assertEqual(list(self.root.rglob("escaped*")), [])
+
+    def test_chained_links_that_leave_the_tree_are_refused(self) -> None:
+        self.assert_contained("points outside", ("link", "p/q", ".."), ("link", "r", "p/q/.."))
+
+    def test_nothing_is_written_through_a_link(self) -> None:
+        cases = {
+            "a file through a link": (("link", "p/q", ".."), ("link", "r", "p/q/.."), ("file", "r/escaped.txt", "x")),
+            "a file through an inside link": (("dir", "d", ""), ("link", "l", "d"), ("file", "l/escaped.txt", "x")),
+            "a directory through a link": (("link", "p/q", ".."), ("link", "r", "p/q/.."), ("dir", "r/escaped", "")),
+            "a link through a link": (("link", "p/q", ".."), ("link", "r", "p/q/.."), ("link", "r/escaped", "x")),
+        }
+        for name, entries in cases.items():
+            with self.subTest(name):
+                self.assert_contained("passes through a symlink", *entries)
+
+    def test_an_entry_given_twice_is_refused(self) -> None:
+        self.assert_contained("entry twice", ("file", "a", "x"), ("link", "a", "b"))
+
+    def test_links_that_stay_inside_are_kept(self) -> None:
+        tree = self.extract(("file", "docs/guide.md", "guide"), ("link", "README.md", "docs/guide.md"),
+                            ("link", "docs/self", "."), ("link", "dangling", "missing"))
+        self.assertEqual((tree / "README.md").read_text(), "guide")
+        self.assertEqual(os.readlink(tree / "dangling"), "missing")
 
     def test_commands_outside_the_protocol_are_refused(self) -> None:
         for command in ("", "sh", "history", "history other", "deploy staging"):

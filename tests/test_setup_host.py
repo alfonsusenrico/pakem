@@ -23,6 +23,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -o|-p|-i) shift 2 ;;
     -O) exit 0 ;;
+    -G) echo "port $(cat "{state}/ssh-port" 2>/dev/null || echo 22)"; exit 0 ;;
     -t) shift ;;
     *) break ;;
   esac
@@ -53,8 +54,9 @@ exit 0
 """
 FAKE_GH = """#!/bin/sh
 echo "gh $*" >> "{log}"
-case "$1" in
-  api) printf 'TOKEN-SECRET-123\\n' ;;
+case "$1 $2 $3" in
+  "api -X POST") printf 'TOKEN-SECRET-123\\n' ;;
+  "api repos/"*) cat "{state}/private" 2>/dev/null || echo true ;;
   *) echo "gh version 1.0" ;;
 esac
 """
@@ -173,6 +175,15 @@ class SetupHostTests(IsolatedTestCase):
         staged = remote_add.rsplit("< ", 1)[1].split()[0]
         self.assertFalse(os.path.exists(staged), "the staged token file is removed")
 
+    def test_a_public_repository_never_gets_the_runner(self) -> None:
+        self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
+        (self.state / "private").write_text("false\n")
+        self.log.write_text("")
+        code, output = self.run_tty("host", "runner", "add", "prod", "me/app", "--yes")
+        self.assertEqual(code, 6, output)
+        self.assertIn("me/app is public", output)
+        self.assertFalse(any("registration-token" in call or "add-repo" in call for call in self.calls()))
+
     def test_invalid_input_is_refused_before_connecting(self) -> None:
         self.assert_fails(self.pakem("setup", "host", "admin@host", "--deploy-root", "/", "--plan"), code=2)
         self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
@@ -224,6 +235,25 @@ class SetupHostTests(IsolatedTestCase):
         status = next(call for call in self.calls() if call.startswith("ssh") and "af@203.0.113.7" in call)
         self.assertIn("-p 2222", status)
         self.assertEqual(self.hosts()["prod"]["release_port"], 2222)
+
+    def test_the_release_port_is_never_the_login_port(self) -> None:
+        cases = (
+            (("admin@203.0.113.7", "--release-port", "22"), None),
+            (("admin@203.0.113.7", "--port", "2200", "--release-port", "2200"), None),
+            (("box", "--release-port", "2223"), "2223"),
+        )
+        for arguments, configured in cases:
+            with self.subTest(arguments=arguments):
+                if configured:
+                    (self.state / "ssh-port").write_text(configured)
+                self.log.write_text("")
+                code, output = self.run_tty("setup", "host", *arguments, "--name", "prod", "--yes")
+                self.assertEqual(code, 2, output)
+                self.assertIn("is the port you log in on", output)
+                self.assertEqual([call for call in self.calls() if not call.startswith("ssh -G")], [])
+                self.assertFalse((self.home / ".config" / "pakem" / "hosts.toml").exists())
+        refused = self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--release-port", "22")
+        self.assert_fails(refused, code=2)
 
     def run_answering(self, answers: list[str], *args: str) -> tuple[int, str]:
         """Run pakem on a terminal and answer each prompt (a line ending in ': ') in turn."""

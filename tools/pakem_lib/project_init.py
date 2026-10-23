@@ -64,6 +64,7 @@ from .gaps import (
     write_open_decisions,
 )
 from .githooks import HOOKS_DIR_NAME
+from .github import public_runner_refusal, repository_visibility, self_hosted_workflows
 from .host import load_hosts
 from .release import owner_setup_action
 from .requirements import ensure
@@ -779,6 +780,20 @@ def adopt_findings(framework: Framework, repo: Path, files: Files) -> list[str]:
     return findings
 
 
+def github_visibility(args, repository: str, repo: Path) -> str:
+    """The visibility GitHub reports, never a flag or a prompt: the CI runner follows it, and
+    a public repository never gets the self-hosted runner."""
+    visibility = repository_visibility(repository)
+    asked = args.visibility or ("public" if args.public else None)
+    if asked and asked != visibility:
+        raise CommandRefused(f"{repository} is {visibility} on GitHub, not {asked}; nothing changed")
+    workflows = self_hosted_workflows(repo)
+    if visibility == "public" and workflows:
+        refusal = public_runner_refusal(repository)
+        raise CommandRefused(f"{refusal} (self-hosted jobs in {', '.join(workflows)}); nothing changed")
+    return visibility
+
+
 def run_project_adopt(args) -> int:
     framework = Framework(Path(args.root))
     repo = Path(args.directory).resolve()
@@ -798,6 +813,8 @@ def run_project_adopt(args) -> int:
         repository = args.repository
     if repository is None or not REPOSITORY.match(repository):
         raise PakemError("origin is not a GitHub repository; pass --repository owner/name (GitLab comes later)")
+    ensure(framework, ("gh", "github-login"), args, "pakem project adopt")
+    known["visibility"] = github_visibility(args, repository, repo)
     name = project_name(repo, existing)
     if not NAME.match(name):
         raise PakemError(f"project name {name!r} is not lowercase letters, digits, and hyphens; pass it in "
