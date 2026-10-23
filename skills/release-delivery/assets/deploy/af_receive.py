@@ -411,18 +411,29 @@ class Builder:
         finally:
             os.close(descriptor)
 
+    @staticmethod
+    def _inside(source: Path, name: str, relative: str) -> Path:
+        """A build path that resolves inside the commit's tree: a link out of it could bake
+        another project's secrets into an image, or echo one through the build output."""
+        path = (source / relative).resolve()
+        if not path.is_relative_to(source.resolve()):
+            raise ReceiveError(f"image {name}: {relative} resolves outside the source tree")
+        return path
+
     def _build_one(self, source: Path, image: dict, project: str, commit: str) -> str:
         name = image["name"]
         tag = image_tag(project, name, commit)
+        dockerfile = self._inside(source, name, image.get("dockerfile", "Dockerfile"))
+        context = self._inside(source, name, image.get("context", "."))
         log(f"building {name}")
         arguments = [
             "buildx", "build", "--builder", BUILDER, "--load", "--progress", "plain",
             "--build-arg", f"AF_REVISION={commit}", "--label", f"org.opencontainers.image.revision={commit}",
-            "--file", str(source / image.get("dockerfile", "Dockerfile")), "--tag", tag,
+            "--file", str(dockerfile), "--tag", tag,
         ]
         if image.get("target"):
             arguments += ["--target", image["target"]]
-        built = self._docker(*arguments, str(source / image.get("context", ".")))
+        built = self._docker(*arguments, str(context))
         if built.returncode != 0:
             for line in (built.stdout + built.stderr).strip().splitlines()[-20:]:
                 print(f"  {line}", flush=True)
@@ -526,7 +537,8 @@ class Receiver:
         try:
             prepared = self.prepare(request, digest, hosts, host, stream, work)
             source = DirectSource(prepared, environment, hosts)
-            engine = self.engine(host, source=source, trigger="direct", actor=f"{ACTOR_PREFIX}{self.device}")
+            trigger = "rollback" if prepared.record["rollback"] else "direct"
+            engine = self.engine(host, source=source, trigger=trigger, actor=f"{ACTOR_PREFIX}{self.device}")
             record = engine.deploy()
         finally:
             shutil.rmtree(work, ignore_errors=True)

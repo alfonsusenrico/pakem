@@ -129,6 +129,13 @@ def _match(pattern: re.Pattern[str], value: object) -> bool:
     return isinstance(value, str) and pattern.fullmatch(value) is not None
 
 
+def _inside_path(value: object) -> bool:
+    """A relative repository path with no `..`, empty, or `.` parts (`.` alone is the root)."""
+    if not isinstance(value, str) or not value or value.startswith("/") or "\\" in value or "\x00" in value:
+        return False
+    return value == "." or not any(part in ("..", ".", "") for part in value.split("/"))
+
+
 def _exact_fields(document: object, expected: set[str], label: str) -> list[str]:
     if not isinstance(document, dict):
         return [f"{label} must be a JSON object"]
@@ -197,12 +204,15 @@ def validate_release_request(request: object) -> list[str]:
         (request["source"] is None or _match(HTTPS_URL, request["source"]), "source must be null or an https URL"),
         (isinstance(request["allow_schema"], bool), "allow_schema must be true or false"),
     ]
+    # Production takes only a tagged promotion (or a rollback), whatever the client checked.
     if action == "promote":
         checks.append((_match(VERSION, request["version"]), "a promotion needs version vMAJOR.MINOR.PATCH"))
+        checks.append((request["environment"] == "production", "a promotion goes only to production"))
     else:
         checks.append((request["version"] is None, "only a promotion names a version"))
     if action == "publish":
         checks.append((request["archive"] is not None, "a publish sends its source archive"))
+        checks.append((request["environment"] != "production", "production takes a promotion, never a publish"))
     return problems + [f"{label}: {message}" for ok, message in checks if not ok]
 
 
@@ -270,7 +280,7 @@ def validate_deployment_record(record: object) -> list[str]:
         (optional_commit, "previous_commit must be null or a full SHA"),
         (optional_schema, "previous_schema_version is invalid"),
         (record["backup"] is None or isinstance(record["backup"], str), "backup must be null or a path"),
-        (record["trigger"] in {"pull", "push", "direct"}, "trigger must be pull, push, or direct"),
+        (record["trigger"] in {"pull", "push", "direct", "rollback"}, "trigger must be pull, push, direct, or rollback"),
         (isinstance(record["actor"], str) and bool(record["actor"]), "actor is required"),
         (_match(TIME, record["started"]), "started must be UTC"),
         (_match(TIME, record["finished"]), "finished must be UTC"),
@@ -302,6 +312,8 @@ def validate_project_config(config: dict) -> list[str]:
                 problems.append(f"{label}: every image needs a valid name")
             elif "target" in image and not _match(STAGE, image["target"]):
                 problems.append(f"{label}: an image target must be a build stage name")
+            elif not all(_inside_path(image[key]) for key in ("context", "dockerfile") if key in image):
+                problems.append(f"{label}: an image's context and dockerfile must be relative paths without '..'")
     health = config.get("health")
     if not isinstance(health, dict) or not all(isinstance(health.get(k), str) for k in ("service", "path", "revision_key")):
         problems.append(f"{label}: health needs service, path and revision_key")

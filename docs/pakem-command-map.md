@@ -252,8 +252,9 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
     the version must be newer than every release tag. After it deploys, the commit is
     tagged and the tag pushed to `origin`; a failed deployment is never tagged.
   - `pakem release rollback previous|<tag or commit> [--environment E] [--production]
-    [--allow-schema]`: "previous" is the release first deployed before the running one,
-    so each run steps one further back; failed and restored attempts never count. The
+    [--allow-schema]`: "previous" is the last release that was live and working before
+    the running one. Each run steps one further back through the releases that were live,
+    never onto one a rollback left; failed and restored attempts never count. The
     host refuses a target never deployed there, and one with another schema version
     unless `--allow-schema` (after restoring the database from its backup).
   - `pakem release history [env]`, `pakem release status [env]`: read from the host.
