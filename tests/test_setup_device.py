@@ -23,6 +23,8 @@ from support import PAKEM, IsolatedTestCase, git, init_repo, isolated_env, write
 # Fake Homebrew: logs, and "installs" each package as a fake tool.
 FAKE_BREW = """#!/bin/sh
 echo "brew $*" >> "{log}"
+# Real installers print progress on stdout.
+echo "==> brew $*"
 if [ "$1" = install ]; then
   shift
   for package in "$@"; do ln -sf "{bin}/fake-tool" "{bin}/$package"; done
@@ -80,6 +82,29 @@ class SetupTestCase(IsolatedTestCase):
             stdin=subprocess.DEVNULL,
         )
 
+    def run_tty(self, *args: str) -> tuple[int, str]:
+        """Run `pakem setup` on a pseudo-terminal, as the owner would."""
+        env = isolated_env(self.home, {"PATH": self.path})
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execve(sys.executable, [sys.executable, str(PAKEM), "--root", str(self.framework), "setup", *args], env)
+        output, deadline = b"", time.monotonic() + 30
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([fd], [], [], 1)
+            if not ready:
+                continue
+            try:
+                chunk = os.read(fd, 1024)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+        else:
+            os.kill(pid, 9)
+        _, status = os.waitpid(pid, 0)
+        return os.waitstatus_to_exitcode(status), output.decode(errors="replace")
+
     def calls(self) -> list[str]:
         return [line for line in self.log.read_text().splitlines() if line]
 
@@ -112,12 +137,12 @@ class SetupDeviceMacTests(SetupTestCase):
         self.assertFalse(self.key().exists(), "without a terminal nobody can type the passphrase")
         self.assertTrue((self.home / ".claude" / "CLAUDE.md").exists(), "the framework is installed")
 
-        made = self.run_setup("key", "--no-passphrase")
-        self.assert_ok(made)
+        code, made = self.run_tty("key", "--no-passphrase")
+        self.assertEqual(code, 0, made)
         self.assertEqual(stat.S_IMODE(self.key().stat().st_mode), 0o600)
         self.assertIn("key_passphrase = false", self.device_toml())
         self.assertIn('key_fingerprint = "SHA256:', self.device_toml())
-        self.assertNotIn("PRIVATE KEY", made.stdout + made.stderr + self.device_toml())
+        self.assertNotIn("PRIVATE KEY", made + self.device_toml())
 
         for name in ("gh", "glab"):
             (self.state / f"{name}-logged-in").touch()
@@ -136,6 +161,19 @@ class SetupDeviceMacTests(SetupTestCase):
         self.assert_ok(planned)
         self.assertNotIn("colima", planned.stdout)
         self.assertNotIn("brew install", planned.stdout)
+
+    def test_an_installed_docker_app_is_started_by_the_owner_not_replaced(self) -> None:
+        self.install_fake("gh", "glab", "uv", "docker")
+        (self.home / "Applications" / "Docker.app").mkdir(parents=True)
+        planned = self.run_setup("device", "--plan")
+        self.assert_ok(planned)
+        self.assertIn("OWNER ACTION REQUIRED: start Docker, then run the command again", planned.stdout)
+        self.assertNotIn("colima", planned.stdout)
+
+    def test_json_stays_parseable_while_installers_print(self) -> None:
+        completed = self.run_setup("device", "--yes", "--json")
+        self.assertIn(completed.returncode, (0, 3), completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["status"], "owner-action")
 
     def test_without_homebrew_the_owner_installs_it(self) -> None:
         (self.bin / "brew").unlink()
@@ -157,6 +195,12 @@ class SetupKeyTests(SetupTestCase):
         completed = self.run_setup("device", "--yes")
         self.assert_fails(completed, code=6)
         self.assertIn("move it away", completed.stderr)
+        self.assertFalse(self.key().exists())
+
+    def test_no_passphrase_is_the_owners_choice(self) -> None:
+        completed = self.run_setup("key", "--no-passphrase")
+        self.assert_fails(completed, code=3)
+        self.assertIn("a device key without a passphrase is your choice", completed.stderr)
         self.assertFalse(self.key().exists())
 
     def test_a_passphrase_needs_the_owner_terminal(self) -> None:

@@ -139,6 +139,8 @@ def isolated_env(home: Path, extra: dict | None = None) -> dict:
         "GIT_COMMITTER_NAME": "Test",
         "GIT_COMMITTER_EMAIL": "test@example.invalid",
         "TMPDIR": os.environ.get("TMPDIR", "/tmp"),
+        # The device's own desktop apps (Docker.app) never leak into a test.
+        "PAKEM_APPLICATIONS_DIR": str(home / "Applications"),
     }
     if extra:
         env.update(extra)

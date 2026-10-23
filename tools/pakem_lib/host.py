@@ -34,6 +34,7 @@ from pathlib import Path
 
 from .common import (
     EXIT_DONE,
+    EXIT_OWNER_ACTION,
     CheckFailed,
     CommandBusy,
     CommandRefused,
@@ -63,6 +64,8 @@ INSTALLED_RUNNER = "/opt/af/af_runner.sh"
 HOSTS_FILE = "hosts.toml"
 HOST_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]{0,62}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+# An ~/.ssh/config alias or [user@]host; a leading "-" would be read as an ssh option.
+SSH_TARGET = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.@:%\[\]-]*$")
 DEPLOY_ROOT = re.compile(r"^/[A-Za-z0-9._/-]+$")
 # The bootstrap's check exits 1 when a check fails and 2 on a usage or host error.
 BOOTSTRAP_CHECK_FAILED = 1
@@ -240,7 +243,11 @@ def asset_bundle(framework: Framework) -> bytes:
 
 def upload_assets(remote: Remote, framework: Framework) -> str:
     directory = remote.output("mktemp -d /tmp/pakem-host.XXXXXX")
-    remote.output(f"tar -xf - -C {shlex.quote(directory)}", data=asset_bundle(framework))
+    try:
+        remote.output(f"tar -xf - -C {shlex.quote(directory)}", data=asset_bundle(framework))
+    except PakemError:
+        remote.run(f"rm -rf {shlex.quote(directory)}")
+        raise
     return directory
 
 
@@ -287,6 +294,8 @@ def record_from_args(args) -> HostRecord:
         read_project(Path(resolved))
         if resolved not in record.project_dirs:
             record.project_dirs.append(resolved)
+    if not SSH_TARGET.match(record.target):
+        raise PakemError(f"invalid SSH target {record.target!r}: an alias or user@address, never starting with -")
     if not DEPLOY_ROOT.match(record.deploy_root) or record.deploy_root == "/":
         raise PakemError("--deploy-root must be an absolute path other than /")
     if record.release_port is not None:
@@ -448,8 +457,11 @@ def run_setup_host(args) -> int:
         save_host(record, set_up=False)
     require_terminal(f"pakem setup host {record.name}")
     confirm_steps(args.yes, "pakem setup host")
-    if projects:
-        create_device_key(passphrase=not args.no_passphrase)
+    if projects and create_device_key(passphrase=not args.no_passphrase) == EXIT_OWNER_ACTION:
+        raise OwnerActionRequired(
+            f"OWNER ACTION REQUIRED: the device key exists but is not in ssh-agent; add it as shown above, then run "
+            f"`pakem setup host {record.name}` again"
+        )
     allowed = []
     with tempfile.TemporaryDirectory(prefix="pk-", dir=CONTROL_PARENT) as control_dir:
         remote = Remote(record, Path(control_dir))
@@ -470,7 +482,7 @@ def run_setup_host(args) -> int:
             remote.close()
     record.projects = sorted(set(record.projects) | set(allowed))
     if code == BOOTSTRAP_CHECK_FAILED:
-        save_host(record)
+        save_host(record, set_up=False)
         raise CheckFailed(f"{record.target} is installed but its check failed; see the lines above")
     if code != 0:
         raise PakemError(f"host setup failed on {record.target} with exit {code}; see the lines above")
