@@ -25,7 +25,7 @@ owner actions it may report, and what `pakem project check` verifies afterwards.
 
 ### 0. Framework status and updates: `pakem status`, `pakem update`
 
-Stage: `experimental` (built 2026-10-22).
+Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
 
 - `pakem status [--brief] [--json] [--refresh | --offline]`:
   - the installed framework against merged `main`: a `main` checkout follows
@@ -66,7 +66,7 @@ Stage: `experimental` (built 2026-10-22).
 
 ### 1. Device: `pakem setup device`, `pakem setup key`, `pakem setup check`
 
-Stage: `experimental` (built 2026-10-22; on-demand requirements and key passphrase
+Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requirements and key passphrase
 2026-10-22).
 
 - **Requirements on demand** (`tools/pakem_lib/requirements.py`): every command names the
@@ -101,7 +101,7 @@ Stage: `experimental` (built 2026-10-22; on-demand requirements and key passphra
 
 ### 2. Host: `pakem setup host <ssh-target>`
 
-Stage: `experimental` (built 2026-10-22).
+Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
 
 - **Who signs in:** the owner's own admin login with sudo, from the owner's terminal only
   (owner decision 2026-10-22; floor: no personal identity for automation). Without a
@@ -162,7 +162,7 @@ Stage: `experimental` (built 2026-10-22).
 
 ### 3. Project: `pakem project init` / `pakem project adopt`
 
-Stage: `experimental` for GitHub (built 2026-10-22); GitLab and the `artifact` kind are
+Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `init` awaits a real new project); GitLab and the `artifact` kind are
 `draft`.
 
 - **Facts** (asked once on a terminal, or flags; recorded in the committed
@@ -240,7 +240,7 @@ Stage: `experimental` for GitHub (built 2026-10-22); GitLab and the `artifact` k
 
 ### 5. Release: `pakem release`
 
-Stage: `experimental` for `service` (built 2026-10-22); `artifact` and `none` are `draft`.
+Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23); `artifact` and `none` are `draft`.
 
 - **Commands** (run in the project's repository, or with `--project-dir`; `--plan`,
   `--yes`, `--json`):

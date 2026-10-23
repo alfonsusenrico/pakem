@@ -124,8 +124,7 @@ and rules; they never weaken a floor.
 
 ## 8. Skills
 
-Load the matching skill before doing its kind of work; if it is unavailable, say so
-and apply the floors and defaults above:
+Load the matching skill first; if it is unavailable, say so and apply the rules above:
 
 | Situation | Skill |
 | --- | --- |
@@ -140,6 +139,7 @@ and apply the floors and defaults above:
 | Reviewing a diff or declaring work ready | `change-review` |
 | CI, releases, deployments, rollback, handover | `release-delivery` |
 | Editing instruction files, skills, or this framework; reloading it after an update | `instruction-maintenance`, `pakem-update` |
+| Device, server, or project setup; project decisions; releases; framework proposals (use `pakem`, never by hand) | `pakem` |
 
 ## 9. Communication
 

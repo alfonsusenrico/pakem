@@ -42,13 +42,13 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent
 MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
 # Maturity per area (ADR 0011, decision 10); the kernel rule "use pakem" applies to stable ones.
 AREAS = (
-    ("status and updates", "experimental", "status, update, config"),
-    ("device", "experimental", "setup device, setup key, setup check"),
-    ("host", "experimental", "setup host, setup check --host, host runner add|remove"),
+    ("status and updates", "stable", "status, update, config"),
+    ("device", "stable", "setup device, setup key, setup check"),
+    ("host", "stable", "host add, setup host, setup check --host, host runner add|remove"),
     ("project", "experimental", "project init, project adopt, project check --gaps, decide"),
     ("secrets", "draft", "secret"),
-    ("proposals", "experimental", "propose new|revise|list|show|accept|reject"),
-    ("release", "experimental", "release publish|promote|rollback|history|status, host allow-device|revoke-device"),
+    ("proposals", "experimental", "propose new|revise|list|show|reject"),
+    ("release", "stable", "release publish|promote|rollback|history|status, host allow-device|revoke-device"),
     (
         "framework and agents",
         "stable",
