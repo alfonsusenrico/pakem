@@ -398,8 +398,13 @@ def interview(args) -> None:
 def run_host_add(args) -> int:
     """Record a host's options on this device only; no connection is made."""
     record = record_from_args(args)
-    save_host(record, set_up=False)
     projects = ", ".join(Path(directory).name for directory in record.project_dirs) or "none yet"
+    if args.plan:
+        print(f"would record host {record.name} ({record.target}) in {display_path(hosts_path())}: "
+              f"{shlex.join(setup_flags(record))}; projects: {projects}")
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
+    save_host(record, set_up=False)
     print(f"Recorded host {record.name} ({record.target}) in {display_path(hosts_path())}; projects: {projects}.")
     print(f"OWNER ACTION REQUIRED: run `pakem setup host {record.name}` in your terminal (your own login)")
     return EXIT_DONE

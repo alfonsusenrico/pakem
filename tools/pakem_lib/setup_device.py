@@ -52,6 +52,18 @@ def run_setup_check(args) -> int:
 
 
 def run_setup_key(args) -> int:
+    if args.plan:
+        private = device_key.private_path()
+        if private.exists():
+            print(f"{display_path(private)} already exists; nothing to do")
+        else:
+            print(f"create {display_path(private)} " + ("with no passphrase" if args.no_passphrase else
+                                                         "(ssh-keygen asks for its passphrase on your terminal)"))
+            if not args.no_passphrase:
+                print("add it to ssh-agent (asks for the passphrase once)")
+            print(f"write {display_path(device_file())}")
+        print("Plan only: nothing changed.")
+        return EXIT_DONE
     return create_device_key(passphrase=not args.no_passphrase)
 
 

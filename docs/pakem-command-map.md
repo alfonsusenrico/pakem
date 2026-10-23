@@ -10,7 +10,7 @@ owner actions it may report, and what `pakem project check` verifies afterwards.
 
 | Convention | Meaning |
 |---|---|
-| Modes | Interactive by default; `--plan` prints the steps without doing them; `--json` prints machine-readable results; every prompt has a flag, so `--yes` plus flags runs with no prompts |
+| Modes | Interactive by default; `--plan` prints the steps without doing them; `--json` prints one result document on stdout, `{status, done, owner_actions, gaps, checks}` (plus `error`), while what a terminal command prints as it goes (ssh, sudo, installers) moves to stderr; every prompt has a flag, so `--yes` plus flags runs with no prompts |
 | Re-runs | Every command is safe to run again: it detects what is done and continues |
 | Exit codes | `0` done; `2` usage; `3` owner action required (listed in the output); `4` open gaps; `5` check failed; `6` refused (safety rule); `75` busy (lock) |
 | Owner actions | Steps only the owner can do (browser login, first server password, secret values, accounts outside our control) are printed as `OWNER ACTION REQUIRED` with the exact instruction and verified on the next run |
