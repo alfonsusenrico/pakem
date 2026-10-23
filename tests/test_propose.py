@@ -112,7 +112,7 @@ class ProposeTestCase(IsolatedTestCase):
             "--case", "headquarter's README explained too much on one page.",
             "--why-general", "Every project has a README that people skim.", "--home", "skill",
             "--change-file", str(self.diff), "--evidence", "headquarter README.md, 2026-10-22",
-            "--project", "headquarter",
+            "--project", "headquarter", "--yes",
         ]
 
     def pulls(self) -> dict:
@@ -123,6 +123,62 @@ class ProposeTestCase(IsolatedTestCase):
 
 
 class ProposeTests(ProposeTestCase):
+    def without(self, fields: list[str], name: str, takes_value: bool = True) -> list[str]:
+        index = fields.index(name)
+        return fields[:index] + fields[index + (2 if takes_value else 1):]
+
+    def test_nothing_is_pushed_before_the_owner_saw_the_text(self) -> None:
+        completed = self.propose("new", *self.without(self.fields(), "--yes", takes_value=False))
+        self.assert_fails(completed, code=2)
+        self.assertIn("pass --yes", completed.stderr)
+        self.assertIn("## Rule", completed.stdout, "the text is printed first")
+        self.assertFalse((self.state / "pulls.json").exists())
+        self.assertEqual(git(self.origin, "branch", "--list", BRANCH, home=self.home).stdout, "")
+
+    def test_private_text_never_reaches_the_public_repository(self) -> None:
+        write(self.home / ".config" / "pakem" / "private-names.txt", "# clients\nacme-corp\n")
+        write(self.home / ".config" / "pakem" / "hosts.toml",
+              '[hosts.homebox]\ntarget = "admin@198.18.0.7"\nrelease_port = 2223\n')
+        fields = self.fields()
+        cases = {
+            "a private name": ("--case", "acme-corp's README explained too much.", "acme-corp"),
+            "a host": ("--case", "Seen on homebox after a release.", "homebox"),
+            "a release port": ("--case", "The receiver listens on port 2223.", "2223"),
+            "an address": ("--evidence", "logs from 10.20.30.40", "10.20.30.40"),
+            "a home path": ("--rule", "Keep notes in /Users/someone/notes.", "someone"),
+        }
+        for name, (flag, value, token) in cases.items():
+            with self.subTest(name):
+                changed = list(fields)
+                changed[changed.index(flag) + 1] = value
+                completed = self.propose("new", *changed)
+                self.assert_fails(completed, code=6)
+                self.assertIn("would publish private text", completed.stderr)
+                self.assertIn("body line", completed.stderr)
+                self.assertNotIn(token, completed.stderr, "the value is never printed")
+        self.diff.write_text(DIFF.replace("details live in docs/ pages.", "see homebox for an example."))
+        completed = self.propose("new", *fields)
+        self.assert_fails(completed, code=6)
+        self.assertIn("change line 9", completed.stderr)
+        self.assertFalse((self.state / "pulls.json").exists())
+
+    def test_documentation_addresses_and_a_generic_project_pass(self) -> None:
+        fields = self.without(self.fields(), "--project")
+        fields[fields.index("--evidence") + 1] = "a test host at 203.0.113.7, loopback 127.0.0.1"
+        self.assert_ok(self.propose("new", *fields))
+        self.assertIn("Proposed from a project on", self.pulls()["1"]["body"])
+
+    def test_subjects_follow_the_change_and_stop_at_a_word(self) -> None:
+        title = "Tooling for releases that keeps every device on the same page when hosts change often"
+        fields = self.fields(title)
+        fields[fields.index("--home") + 1] = "tooling"
+        self.assert_ok(self.propose("new", *fields, "--new-subject"))
+        subject = self.pulls()["1"]["title"]
+        self.assertLessEqual(len(subject), 72)
+        self.assertTrue(subject.startswith("feat: Tooling for releases"), subject)
+        self.assertTrue(title.startswith(subject.removeprefix("feat: ")), "cut at a word, not inside one")
+        self.assertEqual(title[len(subject) - len("feat: ")], " ")
+
     def test_new_opens_a_pull_request_with_the_case_and_the_checked_change(self) -> None:
         completed = self.propose("new", *self.fields())
         self.assert_ok(completed)

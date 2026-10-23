@@ -72,6 +72,9 @@ an agent never connects as the owner. Instead:
 - Gaps follow [the gap protocol](references/gap-protocol.md): answer what the repository
   proves, ask the rest in one message, record each with `pakem decide`, and stop after two
   rounds.
+- In a public repository, committed text (specs, evidence, docs) says "the server" and
+  "the release port", never a host name, address, or port; `pakem project check` warns
+  when tracked files name a host from `hosts.toml` or a private name.
 
 ## 6. Releases (services)
 
@@ -90,8 +93,10 @@ an agent never connects as the owner. Instead:
 When a case looks like it holds beyond this project, discuss it with the owner until the
 rule is clear, then propose it from this session: draft the exact change in a framework
 worktree from `main` (`git worktree add <dir> origin/main` in the framework checkout,
-never the checkout itself), save `git diff` to a file, and run `pakem propose new`
-(details in `instruction-maintenance`, lessons intake). Give the owner the pull request:
-merge accepts it, `pakem propose revise <n>` answers a change request, `pakem propose
-reject <n> --reason ...` records a rejection. When the owner reports the merge, run
-`pakem update` so every agent loads the change on its next turn.
+never the checkout itself), save `git diff` to a file, and run `pakem propose new --plan`
+(details in `instruction-maintenance`, lessons intake). The framework is public: it refuses
+private names, hosts, addresses, and home paths. Show the owner the text, run it again
+with `--yes` on their go, and give them the pull request: merge accepts it, `pakem propose
+revise <n>` answers a change request, `pakem propose reject <n> --reason ...` records a
+rejection. When the owner reports the merge, tell them `pakem update` is due and run it
+only on their instruction (section 3).

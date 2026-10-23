@@ -437,6 +437,28 @@ class AdoptTests(ProjectTestCase):
         again = self.adopt("--yes")
         self.assertNotIn("setup host", again.stdout, "this device may already release it")
 
+    def test_a_public_repository_never_names_the_owners_servers(self) -> None:
+        (self.state / "private").write_text("false\n")
+        public = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--public", "--yes")
+        self.assertIn(public.returncode, (3, 4), public.stderr)
+        write(self.home / ".config" / "pakem" / "hosts.toml",
+              '[hosts.homebox]\ntarget = "admin@198.18.0.7"\nrelease_port = 2223\n')
+        write(self.home / ".config" / "pakem" / "private-names.txt", "acme-corp\n")
+        write(self.repo / "docs" / "notes.md",
+              "# Notes\n\nReleased on homebox through port 2223.\nA homeboxes word.\nFor acme-corp.\n")
+        write(self.repo / "docs" / "local.md", "homebox, untracked\n")
+        git(self.repo, "add", "docs/notes.md", home=self.home)
+        check = self.run_pakem("project", "check", str(self.repo))
+        warnings = [line for line in check.stdout.splitlines() if "in a public repository" in line]
+        self.assertEqual(len(warnings), 2, check.stdout)
+        self.assertIn("docs/notes.md line 3: names a recorded SSH or release port", warnings[0])
+        self.assertIn("docs/notes.md line 5: names a private name", warnings[1])
+        for value in ("homebox", "2223", "acme-corp", "198.18.0.7"):
+            self.assertNotIn(value, check.stdout, "values are never printed")
+        facts = self.repo / ".pakem" / "project.toml"
+        facts.write_text(facts.read_text().replace('visibility = "public"', 'visibility = "private"'))
+        self.assertNotIn("in a public repository", self.run_pakem("project", "check", str(self.repo)).stdout)
+
     def test_adopt_keeps_the_facts_file_it_does_not_need_to_change(self) -> None:
         self.adopt("--yes")
         facts = self.repo / ".pakem" / "project.toml"

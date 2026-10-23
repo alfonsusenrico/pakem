@@ -12,19 +12,22 @@ Sources: owner Working Standard Profile section 14
    beyond this client. If it only holds for an organization, it belongs in that
    organization's profile.
 3. **Propose** - in the session that has the case, discuss it with the owner until the
-   rule is clear, then run `pakem propose new`: the rule as it should read, the case,
+   rule is clear, then run `pakem propose new --plan`: the rule as it should read, the case,
    why it holds beyond this project, its home (kernel, skill, reference, template,
    tooling, ADR), evidence, the rule it replaces, whether a check could enforce it, and
    the exact change as a unified diff drafted in a framework worktree from `main`
    (`git worktree add <dir> origin/main` in the framework checkout; never edit the
-   checkout itself, which installs and hooks run from). It opens a pull request after lint
-   and tests pass, refuses a change that does not apply, and names earlier proposals on the
-   same subject. Give the owner the link.
+   checkout itself, which installs and hooks run from). The framework repository is
+   public: write "a client project" and "the server", never a client, host, address, or
+   path (the command refuses them). Show the owner the printed text; on their go, run it
+   with `--yes`. It opens a pull request after lint and tests pass, refuses a change that
+   does not apply, and names earlier proposals on the same subject. Give the owner the link.
 4. **Decide** - the owner merges it (accept), asks for changes (`pakem propose revise
    <n>`), or rejects it (`pakem propose reject <n> --reason ...`). Decisions with
    trade-offs get an ADR.
-5. **Release** - after the merge, run `pakem update` so every agent loads the change on its
-   next turn. Version releases batch the CHANGELOG
+5. **Release** - after the merge, tell the owner `pakem update` is due; run it on the
+   owner's instruction (or when `pakem config get update` is `apply`), so every agent
+   loads the change on its next turn. Version releases batch the CHANGELOG
    (`pakem changelog --release X.Y.Z --apply`), at most one a month.
 6. **Prune** - review rules at least quarterly; remove rules that no longer prevent a
    real failure or that tooling now enforces.

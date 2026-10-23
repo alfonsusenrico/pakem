@@ -25,8 +25,9 @@ from .pinned import (
     parse_document,
     render_block,
 )
-from .gaps import STUB_MARKER
+from .gaps import STUB_MARKER, load_facts
 from .github import origin_repository, public_runner_refusal, repository_visibility, self_hosted_workflows
+from .privacy import Scanner
 from .profiles import Profile, load_profiles
 
 AGENTS_FILE = "AGENTS.md"
@@ -453,6 +454,31 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     return report
 
 
+MAX_SCANNED_FILE = 512 * 1024
+
+
+def check_public_text(repo: Path, report: Report) -> None:
+    """A public repository's tracked files must not name the owner's servers or private
+    names; agents write "the server" and "the release port" there. Values are never printed."""
+    facts = load_facts(repo)
+    if facts is None or facts.visibility != "public":
+        return
+    scanner = Scanner.for_kinds(names=True, hosts=True)
+    if not scanner.patterns:
+        return
+    tracked = run_git(repo, "ls-files", "-z", check=False).stdout.split("\0")
+    for name in filter(None, tracked):
+        path = repo / name
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > MAX_SCANNED_FILE:
+            continue
+        data = path.read_bytes()
+        if b"\0" in data:
+            continue
+        for number, kinds in scanner.findings(data.decode("utf-8", errors="replace")):
+            report.warn(f"{name} line {number}: names {' and '.join(kinds)} in a public repository; write "
+                        "\"the server\" or \"the release port\", or generic wording, instead")
+
+
 def check_public_runner(repo: Path, report: Report) -> bool:
     """Whether a public GitHub repository runs jobs on a self-hosted runner (an error). GitHub
     is asked only when a workflow uses one, so other checks stay offline."""
@@ -475,6 +501,7 @@ def run_check(args) -> int:
     framework = Framework(Path(args.root))
     repo = _resolve_repo(args.repo)
     report = check_repo(framework, repo)
+    check_public_text(repo, report)
     refused = check_public_runner(repo, report)
     print(f"pakem project check {repo}")
     report.print()

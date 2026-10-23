@@ -166,6 +166,16 @@ class LintTests(IsolatedTestCase):
         self.assertNotIn("hosts/notes.md", completed.stdout)
         self.assertNotIn("archive/", completed.stdout)
 
+    def test_private_names_come_from_this_device_only(self) -> None:
+        write(self.framework / "docs" / "notes.md", "Work for Acme-Corp lives in its folder.\nacme-corporate is fine.\n")
+        self.assert_ok(self.lint())
+        write(self.home / ".config" / "pakem" / "private-names.txt", "# client folders\nacme-corp\n")
+        completed = self.lint()
+        self.assert_fails(completed)
+        self.assertIn("docs/notes.md:1: [private-name] a name from ~/.config/pakem/private-names.txt", completed.stdout)
+        self.assertNotIn("docs/notes.md:2", completed.stdout)
+        self.assertNotIn("acme", completed.stdout.lower(), "the name itself is never printed")
+
     def test_template_size_warning(self) -> None:
         write(self.framework / "skills" / "project-bootstrap" / "assets" / "project" / "AGENTS.md.tmpl", "# T\n" + "x" * 8_100 + "\n")
         completed = self.lint()
