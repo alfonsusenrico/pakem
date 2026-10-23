@@ -64,8 +64,11 @@ def source_archive(commit: str, *, migration: str = "0001", extra: dict[str, byt
 class FakeBuilder:
     def __init__(self) -> None:
         self.built: list[str] = []
+        self.fails = False
 
     def build(self, source: Path, config: dict, project: str, commit: str) -> dict[str, str]:
+        if self.fails:
+            raise af_receive.ReceiveError("building web failed", af_engine.EXIT_FAILED)
         self.built.append(commit)
         return {image["name"]: f"sha256:{hashlib.sha256(f'{image['name']}-{commit}'.encode()).hexdigest()}"
                 for image in config["images"]}
@@ -152,7 +155,7 @@ class DirectHost(unittest.TestCase):
     def serve(self, command: str, stdin: bytes = b"", projects: tuple[str, ...] = ("example",)) -> tuple[int, str]:
         receiver = af_receive.Receiver(
             DEVICE, list(projects), config_dir=self.config_dir, signers=self.files.signers,
-            builder=self.builder, engine=self.engine,
+            builder=self.builder, engine=self.engine, notifier=lambda host: self.notifier,
         )
         output = io.StringIO()
         with redirect_stdout(output):
@@ -190,7 +193,8 @@ class ReleaseTests(DirectHost):
         self.assertNotIn(SECRET_VALUE, output)
 
     def test_the_same_commit_again_changes_nothing(self) -> None:
-        self.publish(A)
+        earlier = datetime.now(UTC) - timedelta(seconds=5)
+        self.serve("release", self.request("publish", "staging", A, archive=source_archive(A), created=earlier))
         code, output = self.publish(A)
         self.assertEqual(code, 0, output)
         self.assertEqual(self.last("staging")["result"], "unchanged")
@@ -289,6 +293,79 @@ class ReleaseTests(DirectHost):
         removed = [image for step, image in self.docker.calls if step == "image-rm"]
         self.assertIn(af_receive.image_tag("example", "web", commits[0]), removed)
 
+
+class RobustnessTests(DirectHost):
+    def test_a_signed_request_runs_once(self) -> None:
+        signed = self.request("publish", "staging", A, archive=source_archive(A))
+        code, output = self.serve("release", signed)
+        self.assertEqual(code, 0, output)
+        code, output = self.serve("release", signed)
+        self.assertEqual(code, 2)
+        self.assertIn("this signed request already ran here", output)
+
+    def test_a_request_from_the_future_is_refused(self) -> None:
+        ahead = datetime.now(UTC) + timedelta(minutes=5)
+        code, output = self.serve("release", self.request("publish", "staging", A, archive=source_archive(A), created=ahead))
+        self.assertEqual(code, 2)
+        self.assertIn("not fresh", output)
+        slightly = datetime.now(UTC) + timedelta(seconds=60)
+        code, output = self.serve("release", self.request("publish", "staging", A, archive=source_archive(A),
+                                                          created=slightly))
+        self.assertEqual(code, 0, output)
+
+    def test_a_failed_build_is_reported_to_the_owner(self) -> None:
+        self.builder.fails = True
+        code, output = self.serve("release", self.request("publish", "staging", A, archive=source_archive(A)))
+        self.assertEqual(code, 1)
+        self.assertIn("building web failed", output)
+        self.assertEqual(self.notifier.sent, [("failed", f"example staging: failed unversioned ({A[:12]}) via direct "
+                                                         "by device:laptop: building web failed")])
+
+    def test_the_environment_lock_covers_the_build(self) -> None:
+        base = self.base("staging")
+        held = af_engine.acquire_lock(base, 0)
+        try:
+            code, output = self.serve("release", self.request("publish", "staging", A, archive=source_archive(A)))
+        finally:
+            os.close(held)
+        self.assertEqual(code, 75, output)
+        self.assertIn("another deployment holds the lock", output)
+        self.assertEqual(self.builder.built, [], "nothing is built while another release holds the environment")
+
+    def test_a_build_that_times_out_is_a_failure_not_a_traceback(self) -> None:
+        def slow(*arguments, **options):
+            raise subprocess.TimeoutExpired(arguments[0], options["timeout"])
+        builder = af_receive.Builder(self.root / "build.lock", run=slow)
+        with self.assertRaisesRegex(af_receive.ReceiveError, "took longer than 60 s") as caught:
+            builder._ensure_builder()
+        self.assertEqual(caught.exception.exit_code, af_engine.EXIT_FAILED)
+
+    def test_revoking_what_is_not_there_says_so(self) -> None:
+        cases = ((argparse.Namespace(device="ghost", project=None), "has no key here"),
+                 (argparse.Namespace(device=DEVICE, project="other"), "may not release other here anyway"))
+        for args, message in cases:
+            with self.subTest(message), self.assertRaisesRegex(af_receive.ReceiveError, message) as caught:
+                af_receive.revoke(args, self.files)
+            self.assertEqual(caught.exception.exit_code, af_receive.EXIT_NOTHING_MATCHED)
+        self.assertIn("example", self.files.signers.read_text(), "nothing changed")
+
+    def test_the_registry_era_release_is_republished_and_its_images_go(self) -> None:
+        base = self.base("staging")
+        release = base / "releases" / A
+        bundle = release / "bundle"
+        with tarfile.open(fileobj=io.BytesIO(source_archive(A))) as archive:
+            for member in archive.getmembers():
+                if member.name.startswith("deploy/") or member.name == "compose.yaml":
+                    archive.extract(member, bundle, filter="data")
+        pulled = "ghcr.io/owner/example@sha256:" + "e" * 64
+        record = {"schema": "af.release/v1", "project": "example", "commit": A, "version": None, "created": "2026-10-01T00:00:00Z",
+                  "images": {"web": pulled}, "schema_version": "0001", "rollback": False}
+        (release / "record.json").write_text(json.dumps(record))
+        (base / "current").symlink_to(f"releases/{A}")
+        code, output = self.publish(A)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.last("staging")["result"], "deployed")
+        self.assertIn(("image-rm", pulled), self.docker.calls, "the pulled image does not linger")
 
 class BuilderTests(unittest.TestCase):
     def test_a_build_path_that_resolves_outside_the_tree_is_refused(self) -> None:

@@ -544,30 +544,21 @@ class Engine:
 
     # -- the sequence ------------------------------------------------------------------
 
-    def deploy(self) -> dict:
+    def deploy(self, lock_held: bool = False) -> dict:
+        """Deploy under the environment's lock; a caller that took it already (the direct
+        receiver holds it while it builds) passes lock_held."""
         check_private_directory(self.base, "base")
         self.releases.mkdir(mode=0o700, exist_ok=True)
         if not self.secrets.exists():
             self.secrets.mkdir(mode=0o700)
         started = utc_now()
-        lock = self._lock()
+        if lock_held:
+            return self._deploy(started)
+        lock = acquire_lock(self.base, self.host.lock_wait_seconds, self.sleep)
         try:
             return self._deploy(started)
         finally:
             os.close(lock)
-
-    def _lock(self) -> int:
-        descriptor = os.open(self.base / "lock", os.O_CREAT | os.O_RDWR, 0o600)
-        deadline = time.monotonic() + self.host.lock_wait_seconds
-        while True:
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return descriptor
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    os.close(descriptor)
-                    raise EngineError("another deployment holds the lock", EXIT_BUSY) from None
-                self.sleep(1.0)
 
     def _deploy(self, started: str) -> dict:
         previous = self.current()
@@ -794,6 +785,21 @@ class Engine:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
         self.notifier.send(result, af_notify.deployment_text(record, reason), record)
         return record
+
+
+def acquire_lock(base: Path, wait_seconds: int, sleep: Callable[[float], None] = time.sleep) -> int:
+    """The environment's deployment lock, as an open descriptor; busy after wait_seconds."""
+    descriptor = os.open(base / "lock", os.O_CREAT | os.O_RDWR, 0o600)
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return descriptor
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(descriptor)
+                raise EngineError("another deployment holds the lock", EXIT_BUSY) from None
+            sleep(1.0)
 
 
 def read_runtime(path: Path) -> dict[str, str]:

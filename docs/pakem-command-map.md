@@ -300,6 +300,7 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
   from a registry moves only with `--switch-from-registry`.
 - **`pakem host revoke-device <host> [--device NAME] [--project P]`:** removes a device's
   lines, or one project from them; a lost device is revoked from another device by name.
+  When the host has no such line it says so (exit `6`) instead of reporting success.
 - **Owner actions:** `setup host --project-dir` (or `allow-device`) and `revoke-device` on a terminal; placement values
   and secrets on the host until `pakem secret` exists (area 4); pushing the tag if the
   push fails.

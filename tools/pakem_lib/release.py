@@ -63,6 +63,8 @@ VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 DELIVERY_LINE = re.compile(r"\bDelivery:?\**\s*:?\s*\**\s*(us|others|nobody)\b", re.IGNORECASE)
 PASSED_CONCLUSIONS = {"success", "neutral", "skipped"}
+# The receiver's exit when a revocation matches nothing (af_receive.EXIT_NOTHING_MATCHED).
+REVOKE_NOTHING_MATCHED = 6
 # The trigger a host's receiver records for a rollback; it tells "previous" what was abandoned.
 ROLLBACK_TRIGGER = "rollback"
 SERVICE_NEEDS = ("git", "ssh", "device-key", "device-key-unlocked")
@@ -553,10 +555,12 @@ def run_host_revoke_device(args) -> int:
     require_terminal(shlex.join(words))
     confirm_steps(args.yes, "pakem host revoke-device")
     code = _admin(record, arguments)
-    if code != 0:
+    if code not in (0, REVOKE_NOTHING_MATCHED):
         raise PakemError(f"revoking the device failed on {record.target} with exit {code}; see the lines above")
     if device == this_device:
         record.projects = [] if args.project is None else [name for name in record.projects if name != args.project]
         save_host(record)
+    if code == REVOKE_NOTHING_MATCHED:
+        raise CommandRefused(f"{record.target} had no key line for device {device} and {scope}; nothing changed there")
     print(f"Device {device} may no longer release {scope} on {record.name}.")
     return EXIT_DONE

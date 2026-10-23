@@ -51,6 +51,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 import af_engine
+import af_notify
 import af_publish
 import af_release
 import contracts
@@ -66,6 +67,8 @@ RECEIVER = "/opt/af/af_receive.py"
 KEY_COMMENT = "pakem-device"
 # A signed request is accepted for this long after it was made (and as far ahead, for clocks).
 FRESH_SECONDS = 600
+# A device clock may run a little ahead; a request "from the future" beyond this is refused.
+AHEAD_SECONDS = 120
 MAX_LINE = 64 * 1024
 MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 MAX_SOURCE_EXPANDED = 4 * 1024 * 1024 * 1024
@@ -77,6 +80,10 @@ BUILDER_LIMITS = ("memory=4g", "cpu-period=100000", "cpu-quota=200000")
 BUILD_CACHE_FILTER = "until=168h"
 PUBLIC_KEY = re.compile(r"ssh-ed25519 [A-Za-z0-9+/]+={0,2}")
 ACTOR_PREFIX = "device:"
+
+
+# `revoke` found no key line to change: distinct from a refusal, so the device can tell.
+EXIT_NOTHING_MATCHED = 6
 
 
 class ReceiveError(Exception):
@@ -197,6 +204,9 @@ class DirectSource(af_engine.ReleaseSource):
         return tomllib.loads((destination / "deploy/release.toml").read_text(encoding="utf-8"))
 
     def same_files(self, running: dict, record: dict) -> bool:
+        if running.get("schema") != contracts.DIRECT_SCHEMA:
+            # A release from the registry era: its bundle came from the same commit's files.
+            return running.get("commit") == record["commit"]
         return running.get("archive") == record["archive"]
 
     def load_images(self, record: dict, env: dict[str, str], runner: af_engine.Runner, query: af_engine.Query) -> str | None:
@@ -208,12 +218,22 @@ class DirectSource(af_engine.ReleaseSource):
 
     def discard(self, record: dict, in_use: set[str], runner: af_engine.Runner) -> None:
         """Untag the release's images unless another environment keeps the same commit; an
-        image disappears with its last tag, and Docker keeps any a container still uses."""
+        image disappears with its last tag, and Docker keeps any a container still uses. A
+        release from the registry era names its pulled images by reference instead."""
+        if record.get("schema") != contracts.DIRECT_SCHEMA:
+            discard_registry_images(record, in_use, runner)
+            return
         for environment, host in self.siblings.items():
             if environment != self.environment and kept_record(host, record["commit"]) is not None:
                 return
         for name in record["images"]:
             runner(["docker", "image", "rm", image_tag(record["project"], name, record["commit"])], docker_env(), None, 600)
+
+
+def discard_registry_images(record: dict, in_use: set[str], runner: af_engine.Runner) -> None:
+    for reference in (record.get("images") or {}).values():
+        if isinstance(reference, str) and reference not in in_use:
+            runner(["docker", "image", "rm", reference], docker_env(), None, 600)
 
 
 # -- receiving a signed request ----------------------------------------------------------
@@ -261,8 +281,28 @@ def check_request(request: dict, device: str, projects: list[str]) -> None:
         raise ReceiveError("the request names another device")
     if request["project"] not in projects:
         raise ReceiveError(f"device {device} may not release {request['project']} here")
-    if abs(seconds_from_now(request["created"])) > FRESH_SECONDS:
+    age = -seconds_from_now(request["created"])
+    if age > FRESH_SECONDS or age < -AHEAD_SECONDS:
         raise ReceiveError("the request is not fresh; check the device clock and send it again")
+
+
+def refuse_replay(host: af_engine.HostConfig, digest: str) -> None:
+    """Each signed request runs once: its digest is kept while it is fresh. Called under the
+    environment's lock, so two copies of one request cannot both pass."""
+    path = host.base / "requests.seen"
+    now = time.time()
+    seen = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            known, _, stamp = line.partition(" ")
+            if stamp.replace(".", "", 1).isdigit() and now - float(stamp) <= FRESH_SECONDS + AHEAD_SECONDS:
+                seen[known] = stamp
+    if digest in seen:
+        raise ReceiveError("this signed request already ran here; sign a new one")
+    seen[digest] = f"{now:.0f}"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(path, flags, 0o600), "w", encoding="utf-8") as handle:
+        handle.write("".join(f"{known} {stamp}\n" for known, stamp in seen.items()))
 
 
 def receive_archive(stream: io.BufferedReader, destination: Path) -> str:
@@ -385,9 +425,12 @@ class Builder:
         self.run = run
 
     def _docker(self, *arguments: str, timeout: int = BUILD_TIMEOUT) -> subprocess.CompletedProcess:
-        return self.run(
-            ["docker", *arguments], env=docker_env(), capture_output=True, text=True, timeout=timeout, check=False
-        )
+        try:
+            return self.run(
+                ["docker", *arguments], env=docker_env(), capture_output=True, text=True, timeout=timeout, check=False
+            )
+        except subprocess.TimeoutExpired:
+            raise ReceiveError(f"docker {arguments[0]} took longer than {timeout} s", af_engine.EXIT_FAILED) from None
 
     def _ensure_builder(self) -> None:
         if self._docker("buildx", "inspect", BUILDER, timeout=60).returncode == 0:
@@ -471,6 +514,7 @@ class Receiver:
         signers: Path = ALLOWED_SIGNERS,
         builder: Builder | None = None,
         engine=af_engine.Engine,
+        notifier=None,
     ) -> None:
         self.device = device
         self.projects = projects
@@ -478,6 +522,8 @@ class Receiver:
         self.signers = signers
         self.builder = builder or Builder(Path.home() / "build.lock")
         self.engine = engine
+        # The host's notifier for an environment (its channels file), as the engine uses.
+        self.notifier = notifier or (lambda host: af_notify.from_file(host.notify, log))
 
     def serve(self, command: str | None, stream: io.BufferedReader) -> int:
         words = (command or "").split()
@@ -490,6 +536,10 @@ class Receiver:
         except (ReceiveError, af_engine.EngineError) as error:
             log(f"refused: {error}" if error.exit_code == af_engine.EXIT_REFUSED else str(error))
             return error.exit_code
+        except (OSError, ValueError, TypeError) as error:
+            # Never a traceback on the device: name the failure and stop.
+            log(f"failed: {type(error).__name__}: {error}")
+            return af_engine.EXIT_FAILED
 
     def _hosts(self, project: str) -> dict[str, af_engine.HostConfig]:
         if project not in self.projects:
@@ -533,17 +583,42 @@ class Receiver:
         digest = f"sha256:{hashlib.sha256(request_bytes).hexdigest()}"
         builds = host.base / "builds"
         builds.mkdir(mode=0o700, exist_ok=True)
-        work = Path(tempfile.mkdtemp(prefix=f"{request['commit'][:12]}-", dir=builds))
+        # The environment's lock covers the build too: a second release for it is busy at
+        # once instead of building while the first one deploys.
+        lock = af_engine.acquire_lock(host.base, 0)
+        work = None
         try:
-            prepared = self.prepare(request, digest, hosts, host, stream, work)
+            work = Path(tempfile.mkdtemp(prefix=f"{request['commit'][:12]}-", dir=builds))
+            refuse_replay(host, digest)
+            replaced = current_release(host)
+            try:
+                prepared = self.prepare(request, digest, hosts, host, stream, work)
+            except ReceiveError as error:
+                if error.exit_code == af_engine.EXIT_FAILED:
+                    self.notify_failure(host, request, str(error))
+                raise
             source = DirectSource(prepared, environment, hosts)
             trigger = "rollback" if prepared.record["rollback"] else "direct"
             engine = self.engine(host, source=source, trigger=trigger, actor=f"{ACTOR_PREFIX}{self.device}")
-            record = engine.deploy()
+            record = engine.deploy(lock_held=True)
+            if record["result"] == "deployed" and replaced and replaced.get("schema") != contracts.DIRECT_SCHEMA \
+                    and replaced.get("commit") == record["commit"]:
+                # Its record was replaced in place, so retention never sees the pulled images.
+                discard_registry_images(replaced, set(), engine.runner)
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            if work is not None:
+                shutil.rmtree(work, ignore_errors=True)
+            os.close(lock)
         log(f"result {record['result']} {record['commit'][:12]} {record['version'] or ''}".rstrip())
         return int(record["exit_code"])
+
+    def notify_failure(self, host: af_engine.HostConfig, request: dict, reason: str) -> None:
+        """A release that fails before the engine runs (a build) has no deployment record;
+        the owner still hears of it."""
+        version = request["version"] or "unversioned"
+        text = (f"{request['project']} {host.environment}: failed {version} ({request['commit'][:12]}) via direct "
+                f"by {ACTOR_PREFIX}{request['device']}: {reason}")
+        self.notifier(host).send("failed", text)
 
     def prepare(
         self,
@@ -820,13 +895,15 @@ def placement_names(path: Path) -> set[str]:
 def revoke(args, files: KeyFiles) -> int:
     existing = device_lines(files.authorized_keys.read_text(encoding="utf-8")) if files.authorized_keys.exists() else {}
     if args.device not in existing:
-        log(f"device {args.device} has no key here; nothing to do")
-        return af_engine.EXIT_OK
+        raise ReceiveError(f"device {args.device} has no key here; nothing changed", EXIT_NOTHING_MATCHED)
     entry = existing[args.device]
     if args.project is None:
         entry.projects = []
     elif args.project in entry.projects:
         entry.projects.remove(args.project)
+    else:
+        raise ReceiveError(f"device {args.device} may not release {args.project} here anyway; nothing changed",
+                           EXIT_NOTHING_MATCHED)
     rewrite_device_lines(files.authorized_keys, existing, authorized_line, 0o600, DEPLOY_USER, DEPLOY_USER)
     rewrite_device_lines(files.signers, existing, signer_line, 0o640, "root", DEPLOY_USER)
     if entry.projects:
