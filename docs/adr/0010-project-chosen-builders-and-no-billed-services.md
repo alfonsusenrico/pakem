@@ -70,7 +70,8 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
    - `release rollback previous`: the release that was live before the current one in
      that environment's deployment history (the previous tag in production, the previous
      commit in staging), skipping releases that failed and were restored; each run steps
-     one further back. `release rollback <tag or commit>` targets one release. Crossing a
+     one further back through the releases that were live, never onto one a rollback left
+     (owner, 2026-10-23). `release rollback <tag or commit>` targets one release. Crossing a
      schema change still needs explicit confirmation.
    - `release history`: each environment's releases with version, commit, time, and
      result.

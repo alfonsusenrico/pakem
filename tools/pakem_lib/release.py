@@ -63,6 +63,8 @@ VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 DELIVERY_LINE = re.compile(r"\bDelivery:?\**\s*:?\s*\**\s*(us|others|nobody)\b", re.IGNORECASE)
 PASSED_CONCLUSIONS = {"success", "neutral", "skipped"}
+# The trigger a host's receiver records for a rollback; it tells "previous" what was abandoned.
+ROLLBACK_TRIGGER = "rollback"
 SERVICE_NEEDS = ("git", "ssh", "device-key", "device-key-unlocked")
 CHECK_NEEDS = ("gh", "github-login")
 
@@ -194,16 +196,24 @@ def host_for(project: Project) -> HostRecord:
 
 
 def previous_commit(deployments: list[dict], running: str | None) -> str | None:
-    """The release first deployed before the running one; failed and restored attempts never
-    count, and after a rollback the next "previous" steps one further back (ADR 0010)."""
-    first: dict[str, int] = {}
-    for index, entry in enumerate(deployments):
-        if entry.get("result") == "deployed" and entry["commit"] not in first:
-            first[entry["commit"]] = index
-    if running is None or running not in first:
+    """The last release that was live and working before the running one (ADR 0010, owner
+    decision 2026-10-23). Failed and restored attempts never count. A rollback drops the
+    releases it rolled back from, so repeated steps walk back through what was live and
+    never land on an abandoned release."""
+    live: list[str] = []
+    for entry in deployments:
+        if entry.get("result") != "deployed":
+            continue
+        commit = entry["commit"]
+        if entry.get("trigger") == ROLLBACK_TRIGGER and commit in live:
+            while live[-1] != commit:
+                live.pop()
+        elif not live or live[-1] != commit:
+            live.append(commit)
+    if running is None or running not in live:
         return None
-    earlier = [commit for commit, index in first.items() if index < first[running]]
-    return max(earlier, key=first.__getitem__) if earlier else None
+    position = len(live) - 1 - live[::-1].index(running)
+    return live[position - 1] if position > 0 else None
 
 
 def running_of(entry: dict) -> str | None:

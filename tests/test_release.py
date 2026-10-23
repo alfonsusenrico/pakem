@@ -81,9 +81,13 @@ projects = ["example"]
 """
 
 
-def deployment(commit: str, result: str = "deployed", version: str | None = None) -> dict:
+def deployment(commit: str, result: str = "deployed", version: str | None = None, trigger: str = "direct") -> dict:
     return {"commit": commit, "result": result, "version": version, "finished": "2026-10-22T00:00:00Z",
-            "actor": "device:laptop"}
+            "actor": "device:laptop", "trigger": trigger}
+
+
+def rolled_back_to(commit: str) -> dict:
+    return deployment(commit, trigger="rollback")
 
 
 class ReleaseTestCase(IsolatedTestCase):
@@ -271,10 +275,30 @@ class RollbackTests(ReleaseTestCase):
         a, b, c, d = "a" * 40, "b" * 40, "c" * 40, "d" * 40
         history = [deployment(a), deployment(b), deployment(d, "restored"), deployment(c)]
         self.assertEqual(previous_commit(history, c), b)
-        history.append(deployment(b))  # rolled back to b
+        history.append(rolled_back_to(b))
         self.assertEqual(previous_commit(history, b), a)
+        history.append(rolled_back_to(a))
         self.assertIsNone(previous_commit(history, a))
         self.assertIsNone(previous_commit(history, d), "a release that never deployed has no previous")
+
+    def test_previous_never_lands_on_a_release_rolled_back_from(self) -> None:
+        a, b, c = "a" * 40, "b" * 40, "c" * 40
+        history = [deployment(a), deployment(b), rolled_back_to(a), deployment(c)]
+        self.assertEqual(previous_commit(history, c), a)
+        history.append(rolled_back_to(a))
+        self.assertIsNone(previous_commit(history, a), "b and c were both left by rollbacks")
+
+    def test_a_commit_promoted_again_is_one_live_release(self) -> None:
+        a, b = "a" * 40, "b" * 40
+        history = [deployment(a, version="v1.0.0"), deployment(b, version="v1.1.0"),
+                   deployment(b, version="v1.1.1")]
+        self.assertEqual(previous_commit(history, b), a)
+
+    def test_an_older_commit_promoted_again_keeps_the_release_it_replaced(self) -> None:
+        a, b = "a" * 40, "b" * 40
+        history = [deployment(a, version="v1.0.0"), deployment(b, version="v1.1.0"),
+                   deployment(a, version="v1.2.0")]
+        self.assertEqual(previous_commit(history, a), b, "a promotion, not a rollback, leaves b a working release")
 
     def test_rollback_previous_sends_the_kept_release(self) -> None:
         older = "a" * 40
@@ -304,6 +328,18 @@ class RollbackTests(ReleaseTestCase):
         completed = self.release("rollback", "previous", "--environment", "production", "--yes")
         self.assert_fails(completed, code=6)
         self.assertIn("pass --production", completed.stderr)
+        self.assertEqual(self.payloads(), [])
+
+        older = self.main
+        git(self.project, "commit", "-q", "--allow-empty", "-m", "feat: newer", home=self.home)
+        newer = git(self.project, "rev-parse", "HEAD", home=self.home).stdout.strip()
+        git(self.project, "tag", "v1.0.0", older, home=self.home)
+        self.history({"production": {"running": newer, "kept": [older, newer],
+                                     "deployments": [deployment(older, version="v1.0.0"),
+                                                     deployment(newer, version="v1.1.0")]}})
+        self.assert_ok(self.release("rollback", "v1.0.0", "--environment", "production", "--production", "--yes"))
+        [(request, archive)] = self.payloads()
+        self.assertEqual((request["action"], request["environment"], request["commit"]), ("rollback", "production", older))
 
 
 class AllowDeviceTests(ReleaseTestCase):

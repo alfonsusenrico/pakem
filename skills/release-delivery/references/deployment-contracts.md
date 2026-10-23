@@ -78,7 +78,7 @@ All in the repository, all part of the bundle.
 | `af_standard` | `1` |
 | `project` | the release record's `project` |
 | `compose_files` | Compose files in order |
-| `[[images]]` | `name`, `dockerfile`, `context`, `target` (a build stage, default the last one; several images can come from one Dockerfile), `platforms` (default amd64 and arm64); Compose uses `image: ${AF_IMAGE_<NAME>}` |
+| `[[images]]` | `name`, `dockerfile` and `context` (relative paths inside the repository, no `..`), `target` (a build stage, default the last one; several images can come from one Dockerfile), `platforms` (default amd64 and arm64); Compose uses `image: ${AF_IMAGE_<NAME>}` |
 | `health` | `service`, `path`, `revision_key`, `port`: the engine asks Docker which `127.0.0.1` port publishes the service's container `port` and requests `http://127.0.0.1:<that port><path>` on every running container of the service; the JSON key `revision_key` must carry the full commit |
 | `preflight` | in-image command checking configuration without printing values; `[]` disables |
 | `migrate` | one-off command and service; `[]` without a database |
@@ -168,7 +168,7 @@ deployment.
 | `commit`, `version`, `images`, `schema_version` | from the record (direct releases: images are local image IDs, `sha256:<64 hex>`) |
 | `previous_commit`, `previous_schema_version` | the release replaced, or null |
 | `backup` | archive path, or null |
-| `trigger` | `pull`, `push`, or `direct` |
+| `trigger` | `pull`, `push`, `direct`, or `rollback` (a direct rollback) |
 | `actor` | the CI actor, `agent`, or `device:<name>` |
 | `started`, `finished` | UTC, as in the release record |
 | `engine` | engine version |
@@ -349,7 +349,7 @@ device key:
 | Field | Rule |
 | --- | --- |
 | `schema` | `pakem.release-request/v1` |
-| `action` | `publish`, `promote`, or `rollback` |
+| `action` | `publish` (never to production), `promote` (only to production), or `rollback` |
 | `project`, `environment`, `commit` | as in section 1 |
 | `version` | `vMAJOR.MINOR.PATCH` for `promote`, else null |
 | `archive` | `sha256:<64 hex>` of the commit's `git archive` tar when it is sent; required for `publish` |
@@ -394,6 +394,8 @@ instead of pulling them; a request for the release that already runs is `unchang
 **Rules.** `promote` to production is refused unless staging on this host deployed the
 commit (when the project has staging), and when its version already named another commit
 in production. `rollback` is refused for a commit never deployed to that environment,
-for the running commit, and across a schema version change without `allow_schema`.
+for the running commit, and across a schema version change without `allow_schema`; its
+deployment record has trigger `rollback`, so "previous" never returns to a release a
+rollback left.
 Retention untags a release's images unless another environment of the project keeps
 the same commit; Docker keeps images a container still uses.
