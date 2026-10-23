@@ -295,13 +295,29 @@ def _stays_inside(path: PurePosixPath) -> bool:
     return True
 
 
+def _passes_a_link(destination: Path, parts: tuple[str, ...]) -> bool:
+    """Whether any part of the entry's path is a symlink already extracted.
+
+    `mkdir(parents=True)` and `open` follow such links, and `O_NOFOLLOW` covers only the
+    last part, so an entry written through one could land outside the tree."""
+    current = destination
+    for part in parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def extract_source(archive: Path, destination: Path) -> None:
     """Unpack a `git archive` tar: files, directories, and symlinks that stay inside.
 
+    No entry is written through a symlink, and every symlink must resolve inside the tree
+    once all are in place: link text alone can chain links (`p/q -> ..`, `r -> p/q/..`).
     The tree keeps git's modes (0644, 0755): Docker copies them into the images, whose
     users are often not root. It lives inside the private build directory, so nobody else
     on the host can read it."""
     destination.mkdir(mode=0o755)
+    links: list[Path] = []
     total = 0
     try:
         source = tarfile.open(archive, mode="r:")
@@ -316,6 +332,10 @@ def extract_source(archive: Path, destination: Path) -> None:
             if path.is_absolute() or ".." in path.parts or not path.parts or "\x00" in member.name:
                 raise ReceiveError("an archive entry escapes the source tree")
             target = destination.joinpath(*path.parts)
+            if _passes_a_link(destination, path.parts):
+                raise ReceiveError("an archive entry passes through a symlink")
+            if not member.isdir() and os.path.lexists(target):
+                raise ReceiveError("the archive holds an entry twice")
             if member.isdir():
                 target.mkdir(mode=0o755, parents=True, exist_ok=True)
             elif member.isreg():
@@ -336,8 +356,13 @@ def extract_source(archive: Path, destination: Path) -> None:
                     raise ReceiveError("an archive symlink points outside the source tree")
                 target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
                 os.symlink(member.linkname, target)
+                links.append(target)
             else:
                 raise ReceiveError("the archive may hold only files, directories, and symlinks")
+    root = destination.resolve()
+    for link in links:
+        if not Path(os.path.realpath(link)).is_relative_to(root):
+            raise ReceiveError("an archive symlink points outside the source tree")
 
 
 def load_project(source: Path, project: str, environment: str) -> dict:
