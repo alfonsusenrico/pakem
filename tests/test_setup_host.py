@@ -53,8 +53,9 @@ exit 0
 """
 FAKE_GH = """#!/bin/sh
 echo "gh $*" >> "{log}"
-case "$1" in
-  api) printf 'TOKEN-SECRET-123\\n' ;;
+case "$1 $2 $3" in
+  "api -X POST") printf 'TOKEN-SECRET-123\\n' ;;
+  "api repos/"*) cat "{state}/private" 2>/dev/null || echo true ;;
   *) echo "gh version 1.0" ;;
 esac
 """
@@ -172,6 +173,15 @@ class SetupHostTests(IsolatedTestCase):
         remote_add = next(call for call in self.calls() if call.startswith("ssh") and "add-repo" in call)
         staged = remote_add.rsplit("< ", 1)[1].split()[0]
         self.assertFalse(os.path.exists(staged), "the staged token file is removed")
+
+    def test_a_public_repository_never_gets_the_runner(self) -> None:
+        self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
+        (self.state / "private").write_text("false\n")
+        self.log.write_text("")
+        code, output = self.run_tty("host", "runner", "add", "prod", "me/app", "--yes")
+        self.assertEqual(code, 6, output)
+        self.assertIn("me/app is public", output)
+        self.assertFalse(any("registration-token" in call or "add-repo" in call for call in self.calls()))
 
     def test_invalid_input_is_refused_before_connecting(self) -> None:
         self.assert_fails(self.pakem("setup", "host", "admin@host", "--deploy-root", "/", "--plan"), code=2)

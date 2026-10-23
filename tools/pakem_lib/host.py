@@ -46,6 +46,7 @@ from .common import (
     write_text_atomically,
 )
 from .device_config import config_dir
+from .github import refuse_public_runner
 from . import device_key
 from .requirements import ensure
 from .service_project import Project, authorize_arguments, is_service_project, read_project, setup_words
@@ -502,6 +503,8 @@ def run_host_runner(args) -> int:
         )
     verb = "add-repo" if args.runner_command == "add" else "remove-repo"
     ensure(framework, ("gh", "github-login"), args, f"pakem host runner {args.runner_command}")
+    if args.runner_command == "add":
+        refuse_public_runner(args.repository)
     print(f"  get a runner token for {args.repository} from your gh login (never printed)")
     print(f"  sudo {INSTALLED_RUNNER} {verb} {args.repository} on {record.target} (token on standard input)")
     if args.plan:

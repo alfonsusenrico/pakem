@@ -83,6 +83,26 @@ repo_slug() {
   echo "${1//\//-}"
 }
 
+# A public repository's pull requests come from anyone's fork, and this runner would run
+# their code on the host, so it serves private repositories only. GitHub's anonymous API
+# answers 200 for a public repository and 404 for a private one.
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+repo_visibility() {
+  local code
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$GITHUB_API/repos/$1" 2>/dev/null) || code=000
+  case "$code" in
+    200) echo public ;;
+    404) echo private ;;
+    *) echo unknown ;;
+  esac
+}
+repo_is_private() { [[ "$(repo_visibility "$1")" == private ]]; }
+# The repository a registered runner serves, from the runner's own settings file.
+runner_repo() {
+  python3 -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8-sig"))["gitHubUrl"].removeprefix("https://github.com/"))' \
+    "$1/.runner"
+}
+
 read_token() {
   local token
   [[ ! -t 0 ]] || die "pipe the token on standard input; never pass it as an argument"
@@ -266,6 +286,11 @@ add_repo() {
   require_root
   local repo=${1:-} slug token directory uid
   slug=$(repo_slug "$repo")
+  case "$(repo_visibility "$repo")" in
+    private) ;;
+    public) die "$repo is public: its pull requests could run any fork's code on this host; use GitHub-hosted runners" ;;
+    *) die "could not confirm with GitHub that $repo is private; nothing changed" ;;
+  esac
   token=$(read_token)
   id "$RUNNER_USER" >/dev/null 2>&1 || die "run af_runner.sh install first"
   uid=$(runner_uid)
@@ -345,6 +370,9 @@ check_command() {
   for directory in "$RUNNER_HOME"/runners/*/; do
     [[ -d "$directory" ]] || continue
     check_item "runner $(basename "$directory") is active" runner_active "$(basename "$directory")"
+    local repo
+    repo=$(runner_repo "$directory" 2>/dev/null) || repo=""
+    check_item "runner $(basename "$directory") serves a private repository (${repo:-unknown})" repo_is_private "$repo"
   done
   if ((FAILURES)); then
     say "$FAILURES check(s) failed"
