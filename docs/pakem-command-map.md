@@ -193,7 +193,11 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   - installs the git hooks, keeps `PROJECT_STATE.md` and `JOURNAL.md` untracked, commits
     `chore: bootstrap project`, creates the GitHub repository with the owner's `gh` login
     (private unless `--public`) and pushes `main`: the pre-push hook allows a new
-    repository's single root bootstrap commit, nothing else.
+    repository's single root bootstrap commit, nothing else;
+  - run again on a directory an earlier init left unfinished (its `.pakem/project.toml`
+    and no commit yet, or only the bootstrap commit and no upstream), it resumes: writes
+    only missing files and commits, or creates the repository and pushes. Any other
+    non-empty directory is refused (adopt it instead).
 - **`pakem project adopt [directory]`** (owner decision 2026-10-22): takes what the
   repository shows (origin, stack, `Delivery:`, `Capabilities:`, deploy files), asks the
   rest, switches from `main` to `chore/adopt-pakem`, writes only missing files (and the

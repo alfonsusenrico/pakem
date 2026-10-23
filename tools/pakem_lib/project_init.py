@@ -588,74 +588,119 @@ def github_login() -> str:
     return login
 
 
+# Where an earlier `pakem project init` stopped.
+UNCOMMITTED, UNPUSHED = "uncommitted", "unpushed"
+
+
+def interrupted_init(repo: Path) -> str | None:
+    """UNCOMMITTED when an earlier init wrote its files but made no commit, UNPUSHED when its
+    bootstrap commit never reached GitHub; None for any other directory (adopt that)."""
+    if not is_git_work_tree(repo) or load_facts(repo) is None:
+        return None
+    if run_git(repo, "rev-parse", "--verify", "-q", "HEAD", check=False).returncode != 0:
+        return UNCOMMITTED
+    if run_git(repo, "log", "--format=%s").stdout.splitlines() != [BOOTSTRAP_SUBJECT]:
+        return None
+    if run_git(repo, "rev-parse", "--verify", "-q", "@{upstream}", check=False).returncode == 0:
+        return None
+    return UNPUSHED
+
+
 def run_project_init(args) -> int:
     framework = Framework(Path(args.root))
     if args.forge != "github":
         raise CommandRefused("GitLab projects come with the GitLab area; not built yet")
     repo = Path(args.directory).resolve()
-    name = args.name or repo.name
+    resume = None
+    known: dict[str, str] = {}
+    if repo.exists() and any(repo.iterdir()):
+        resume = interrupted_init(repo)
+        if resume is None:
+            raise CommandRefused(f"{display_path(repo)} is not empty; use `pakem project adopt` for an existing project")
+        existing = load_facts(repo)
+        known = {
+            "visibility": existing.visibility, "kind": existing.kind, "delivery": existing.delivery,
+            "stack": existing.stack, "environments": ",".join(existing.environments),
+            "capabilities": ",".join(existing.capabilities) or "none", "delivery_note": existing.delivery_note,
+        }
+    name = args.name or (existing.name if resume else repo.name)
     if not NAME.match(name):
         raise PakemError(f"invalid project name {name!r}: lowercase letters, digits, and hyphens, starting with a letter")
-    if repo.exists() and any(repo.iterdir()):
-        raise CommandRefused(f"{display_path(repo)} is not empty; use `pakem project adopt` for an existing project")
     capability_names = _capability_names(framework)
-    answers = gather_answers(args, {}, capability_names)
+    answers = gather_answers(args, known, capability_names)
     stack_tool = "uv" if answers["stack"] == "python" else "npm"
     ensure(framework, ("git", "gh", "github-login", stack_tool), args, "pakem project init")
-    repository = args.repository or ("<your login>/" + name if args.plan else f"{github_login()}/{name}")
+    if resume:
+        repository = args.repository or existing.repository
+    else:
+        repository = args.repository or ("<your login>/" + name if args.plan else f"{github_login()}/{name}")
     if not args.plan and not REPOSITORY.match(repository):
         raise PakemError(f"--repository must look like owner/{name}")
     facts = build_facts(name, repository, answers, capability_names)
     files = standard_files(framework, facts, answers["description"], client_ci(args, facts, repo))
-    steps = [
-        f"create {display_path(repo)} and `git init -b main`",
-        f"write {len(files.texts)} files: AGENTS.md, .pakem/, CI, "
-        + ("deploy files, " if facts.releases_here else "") + f"{facts.stack} tooling, OpenSpec, research/",
-        "install the framework git hooks; keep PROJECT_STATE.md and JOURNAL.md untracked",
-        f"add the {facts.stack} dev tools ({'uv add --dev' if facts.stack == 'python' else 'npm install --save-dev'})",
-        f"commit `{BOOTSTRAP_SUBJECT}`",
-        f"create the {facts.visibility} GitHub repository {repository} with your gh login and push `main`",
-    ]
+    publish = f"create the {facts.visibility} GitHub repository {repository} with your gh login and push `main`"
+    if resume == UNPUSHED:
+        steps = [f"resume the interrupted init: {publish}"]
+    else:
+        steps = [] if resume else [f"create {display_path(repo)} and `git init -b main`"]
+        steps += [
+            ("resume the interrupted init: write the missing files" if resume else f"write {len(files.texts)} files")
+            + ": AGENTS.md, .pakem/, CI, " + ("deploy files, " if facts.releases_here else "")
+            + f"{facts.stack} tooling, OpenSpec, research/",
+            "install the framework git hooks; keep PROJECT_STATE.md and JOURNAL.md untracked",
+            f"add the {facts.stack} dev tools ({'uv add --dev' if facts.stack == 'python' else 'npm install --save-dev'})",
+            f"commit `{BOOTSTRAP_SUBJECT}`",
+            publish,
+        ]
     _plan(args, f"pakem project init {facts.name} ({facts.kind}, delivery {facts.delivery}, {facts.stack})", steps)
     if args.plan:
         print("Plan only: nothing changed.", file=sys.stderr if args.json else sys.stdout)
         return EXIT_DONE
     confirm_steps(args.yes, "pakem project init")
-    repo.mkdir(parents=True, exist_ok=True)
-    run_git(repo, "init", "-q", "-b", "main")
-    done = [f"git repository {display_path(repo)}"]
-    write_files(repo, files, only_missing=False)
-    done.append(f"wrote {len(files.texts)} files")
-    record_client_ci(args, repo, done)
-    exclude_private_files(repo)
-    write_state_file(framework, repo, facts)
-    install_hooks(framework, repo)
-    done.append("git hooks installed")
-    install_dev_tools(repo, facts.stack)
-    done.append(f"{facts.stack} dev tools added")
-    write_open_decisions(repo, evaluate(repo, facts))
-    run_git(repo, "add", "-A")
-    run_git(repo, "commit", "-q", "-m", BOOTSTRAP_SUBJECT)
-    done.append(f"committed `{BOOTSTRAP_SUBJECT}`")
-    created = subprocess.run(
-        ["gh", "repo", "create", repository, f"--{facts.visibility}", "--source", str(repo), "--remote", "origin",
-         "--description", answers["description"]],
-        capture_output=True, text=True,
-    )
-    actions = []
-    if created.returncode != 0:
-        detail = created.stderr.strip().splitlines()
-        actions.append(
-            f"OWNER ACTION REQUIRED: create the {facts.visibility} repository {repository} "
-            f"({detail[-1] if detail else 'gh failed'}), add it as origin, then run "
-            f"`git -C {shlex.quote(str(repo))} push -u origin main`"
-        )
-    else:
-        done.append(f"created {facts.visibility} GitHub repository {repository}")
-        run_git(repo, "push", "-q", "-u", "origin", "main")
-        done.append("pushed main")
+    done = []
+    if resume is None:
+        repo.mkdir(parents=True, exist_ok=True)
+        run_git(repo, "init", "-q", "-b", "main")
+        done.append(f"git repository {display_path(repo)}")
+    if resume != UNPUSHED:
+        written = write_files(repo, files, only_missing=resume is not None)
+        done.append(f"wrote {len(written)} files")
+        record_client_ci(args, repo, done)
+        exclude_private_files(repo)
+        write_state_file(framework, repo, facts)
+        install_hooks(framework, repo)
+        done.append("git hooks installed")
+        install_dev_tools(repo, facts.stack)
+        done.append(f"{facts.stack} dev tools added")
+        write_open_decisions(repo, evaluate(repo, facts))
+        run_git(repo, "add", "-A")
+        run_git(repo, "commit", "-q", "-m", BOOTSTRAP_SUBJECT)
+        done.append(f"committed `{BOOTSTRAP_SUBJECT}`")
+    actions = publish_bootstrap(repo, facts, repository, answers["description"], done)
     actions += follow_up_actions(facts, repo)
     return finish(args, repo, facts, done, actions, [])
+
+
+def publish_bootstrap(repo: Path, facts: Facts, repository: str, description: str, done: list[str]) -> list[str]:
+    """Create the GitHub repository unless origin exists already (an interrupted init made
+    it), then push `main`; what only the owner can finish is returned."""
+    if "origin" not in run_git(repo, "remote").stdout.split():
+        created = subprocess.run(
+            ["gh", "repo", "create", repository, f"--{facts.visibility}", "--source", str(repo), "--remote", "origin",
+             "--description", description],
+            capture_output=True, text=True,
+        )
+        if created.returncode != 0:
+            detail = created.stderr.strip().splitlines()
+            return [
+                f"OWNER ACTION REQUIRED: create the {facts.visibility} repository {repository} "
+                f"({detail[-1] if detail else 'gh failed'}), add it as origin, then run "
+                f"`git -C {shlex.quote(str(repo))} push -u origin main`"
+            ]
+        done.append(f"created {facts.visibility} GitHub repository {repository}")
+    run_git(repo, "push", "-q", "-u", "origin", "main")
+    done.append("pushed main")
+    return []
 
 
 # -- adopt ----------------------------------------------------------------------------------------------

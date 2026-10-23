@@ -35,6 +35,8 @@ esac
 FAKE_TOOL = """#!/bin/sh
 [ "$1" = --version ] && { echo "1.0"; exit 0; }
 echo "$(basename "$0") $*" >> "{log}"
+[ -e "{state}/tool-fails" ] && { echo "network unreachable" >&2; exit 1; }
+exit 0
 """
 SERVICE = ("--description", "Demo service", "--visibility", "private", "--kind", "service", "--delivery", "us",
            "--environments", "staging,production", "--stack", "python", "--capabilities", "database")
@@ -155,6 +157,33 @@ class InitTests(ProjectTestCase):
         self.assertIn("artifact kind comes with its own area", completed.stderr)
         completed = self.init(*SERVICE, "--forge", "gitlab")
         self.assert_fails(completed, code=6)
+
+    def test_an_init_stopped_before_its_commit_resumes(self) -> None:
+        (self.state / "tool-fails").touch()
+        stopped = self.init()
+        self.assert_fails(stopped, code=2)
+        self.assertIn("network unreachable", stopped.stderr)
+        (self.state / "tool-fails").unlink()
+        (self.repo / "AGENTS.md").write_text((self.repo / "AGENTS.md").read_text() + "\nOwner note.\n")
+        resumed = self.run_pakem("project", "init", str(self.repo), "--description", "Demo service", "--yes")
+        self.assertIn(resumed.returncode, (3, 4), resumed.stderr)
+        self.assertIn("pushed main", resumed.stdout)
+        self.assertIn("Owner note.", (self.repo / "AGENTS.md").read_text(), "files already there are kept")
+        subjects = git(self.repo, "log", "--format=%s", home=self.home).stdout.split("\n")
+        self.assertEqual(subjects[0], "chore: bootstrap project")
+
+    def test_an_init_stopped_before_github_resumes_with_the_push(self) -> None:
+        (self.state / "gh-fails").touch()
+        stopped = self.init()
+        self.assertIn("OWNER ACTION REQUIRED: create the private repository octo/demo", stopped.stdout)
+        (self.state / "gh-fails").unlink()
+        resumed = self.run_pakem("project", "init", str(self.repo), "--description", "Demo service", "--yes")
+        self.assertIn(resumed.returncode, (3, 4), resumed.stderr)
+        self.assertIn("created private GitHub repository octo/demo", resumed.stdout)
+        self.assertEqual(git(self.repo, "rev-list", "--count", "HEAD", home=self.home).stdout.strip(), "1")
+        again = self.run_pakem("project", "init", str(self.repo), "--description", "Demo service", "--yes")
+        self.assert_fails(again, code=6)
+        self.assertIn("use `pakem project adopt`", again.stderr)
 
     def test_others_deliver_so_ci_but_no_deploy_files(self) -> None:
         flags = list(SERVICE)
