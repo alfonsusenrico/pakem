@@ -238,8 +238,9 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   stays open with the reason. `pakem status` counts open, pending, and provisional
   decisions and raises due ones (also at session start); `pakem release` refuses while a
   required gap that blocks release is open or pending (exit `4`).
-- **Check:** `pakem project check` (contracts, CI file, deploy files, `AGENTS.md` blocks,
-  starter stubs; exit `6` when a public GitHub repository has self-hosted jobs; in a
+- **Check:** `pakem project check` (`AGENTS.md`: blocks, size, overrides, capabilities,
+  `Delivery:`, billing approvals, home paths; `PROJECT_STATE.md` size, `research/`, the git
+  hooks, starter stubs; exit `6` when a public GitHub repository has self-hosted jobs; in a
   public repository, a warning for each tracked line naming a host or port from
   `hosts.toml` or a private name, values never printed), and
   `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
@@ -315,6 +316,12 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
 - **Check:** the deployment record, the health response reports the commit, and the
   notice was sent.
 
+### 6. Framework and agents (existing commands, regrouped)
+
+`pakem install | uninstall | doctor | lint | changelog | project sync | project check |
+report | schedule | hooks | enforce | eval`. These are unchanged, documented in
+the same skill.
+
 ### 7. Proposals: `pakem propose`
 
 Stage: `experimental` (built 2026-10-22; owner decisions: the agent writes proposals; a
@@ -348,12 +355,6 @@ place and the owner's merge is the acceptance).
   **`reject <n> --reason`** comments, labels `proposal:rejected`, closes the pull request,
   and deletes its branch. **`list [--state]`** and **`show <n>`** read them.
 - **Needs:** git, gh, a GitHub login (prepared on demand).
-
-### 6. Framework and agents (existing commands, regrouped)
-
-`pakem install | uninstall | doctor | lint | changelog | project sync | project check |
-project report | schedule | hooks | enforce | eval`. These are unchanged, documented in
-the same skill.
 
 ## Gap protocol (for coding agents)
 

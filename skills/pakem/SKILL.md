@@ -30,8 +30,8 @@ never work around it. `pakem help` shows each area's stage.
 | --- | --- | --- |
 | Status and updates | stable | `status`, `update`, `config` |
 | Device | stable | `setup device`, `setup key` (owner), `setup check` |
-| Host | stable | `host add`, `setup host` (owner), `setup check --host`, `host runner`, `host allow-device`, `host revoke-device` |
-| Release (services) | stable | `release publish`, `promote`, `rollback`, `history`, `status` |
+| Host | stable | `host add`, `setup host` (owner), `setup check --host`, `host runner` |
+| Release (services) | stable | `release publish`, `promote`, `rollback`, `history`, `status`, `host allow-device`, `host revoke-device` |
 | Project | experimental | `project init`, `project adopt`, `project check --gaps`, `decide` |
 | Proposals | experimental | `propose new`, `revise`, `list`, `show`, `reject` |
 
