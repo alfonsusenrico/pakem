@@ -71,7 +71,7 @@ def framework_line(status: FrameworkStatus) -> str:
     if status.state == NOT_INSTALLED:
         return "Pakem is not installed on this device (pakem install)."
     if status.state == UNTRACKED_SOURCE:
-        return f"Pakem {version} installed; update check off: {status.notes[0]}."
+        return f"Pakem {version} installed; update check off: {'; '.join(status.notes)}."
     if status.state == UP_TO_DATE:
         installed = _labelled(version, status.installed_commit)
         return f"Pakem {installed} is up to date with {status.target.ref} ({_checked(status.fetch)})."
@@ -91,12 +91,20 @@ def _labelled(version: str | None, commit: str | None) -> str:
     return f"{version} ({commit[:7]})" if commit else f"{version}"
 
 
+def _setting(key: str) -> str:
+    """A device setting for display; an unreadable config is reported, never a failure."""
+    try:
+        return setting(key)
+    except PakemError as error:
+        return f"unknown ({error})"
+
+
 def update_advice(status: FrameworkStatus, for_agent: bool) -> str | None:
     if status.state != UPDATE_AVAILABLE:
         return None
     if not for_agent:
         return "Run `pakem update` to install it."
-    if setting("update") == UPDATE_APPLY:
+    if _setting("update") == UPDATE_APPLY:
         return "The owner allows agents to update: run `pakem update --yes`, then re-read the files it lists."
     return (
         "Tell the owner an update is available; do not install it yourself "
@@ -177,7 +185,7 @@ def render_lines(status: FrameworkStatus, project: dict | None, brief: bool, for
             lines += [f"Note: {note}" for note in status.notes]
         if status.state == UP_TO_DATE or status.state == UPDATE_AVAILABLE:
             lines.append(f"Update check: {_checked(status.fetch)}")
-        lines.append(f"Updates by agents: {setting('update')}")
+        lines.append(f"Updates by agents: {_setting('update')}")
     if project is None:
         if not brief:
             lines.append("Project: none here (no git repository with AGENTS.md)")
@@ -323,7 +331,7 @@ def _hook_prompt(host: str, hook_input: dict) -> list[str]:
     if reread or removed:
         lines.append(f"Pakem was installed during this session ({before.get('version')} -> {current['version']}).")
     if reread:
-        lines.append(f"Re-read before continuing: {', '.join(reread)}")
+        lines.append(f"Re-read before continuing (the `pakem-update` skill does this): {', '.join(reread)}")
     if removed:
         lines.append(f"No longer installed, stop using: {', '.join(removed)}")
     return lines
@@ -358,7 +366,12 @@ def run_status(args) -> int:
     framework = Framework(Path(args.root))
     if args.hook:
         return run_hook(framework, args.hook, args.host)
-    status, project = collect(framework, Path.cwd(), network=not args.offline, force=args.refresh)
+    try:
+        status, project = collect(framework, Path.cwd(), network=not args.offline, force=args.refresh)
+    except PakemError as error:
+        # Status is read-only and always exits 0 (command map); it reports what it could not read.
+        print(json.dumps({"status": "unknown", "error": str(error)}) if args.json else f"Pakem status unknown: {error}")
+        return 0
     if args.json:
         print(json.dumps(as_json(status, project), indent=2))
         return 0

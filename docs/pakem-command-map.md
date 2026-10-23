@@ -36,12 +36,15 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
     directory); `--refresh` fetches now, `--offline` never;
   - the project's profile pins in `AGENTS.md` against the installed profiles, and
     `pakem project check`'s error count;
-  - read-only apart from the fetch and its cache; always exit `0`.
+  - read-only apart from the fetch and its cache; always exit `0`, reporting what it could
+    not read (an unreadable config, for example) instead of failing; an install from a
+    commit that is not on `origin/main` gets a note.
 - `pakem update [--plan] [--yes] [--json]`:
   - fast-forwards a `main` checkout to `origin/main`, or checks out the newest release;
   - re-runs the new checkout's `pakem install --apply` with the hosts and profiles the
     last install recorded, then `pakem enforce install` for every host enforced before;
-  - lists the kernel and skill files that changed, to re-read;
+  - shows what changes (kernel, skills, tool, hooks) before it asks, and afterwards lists the
+    kernel and skill files that changed, to re-read; a failed fetch is a failed check (`5`);
   - refuses (`6`) a checkout on another branch, with uncommitted changes, or with commits
     `origin/main` lacks; an install made before options were recorded that used profiles
     needs one `pakem install --apply --profile ...` first (`3`); busy (`75`) while
