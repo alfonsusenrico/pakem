@@ -148,5 +148,37 @@ class SetupHostOverSsh(HostOverSsh):
         self.assertEqual(leftovers.strip(), "0", "every upload is removed")
 
 
+
+@unittest.skipUnless(ENABLED, "set AF_SANDBOX_HOST=1 to set up a container host over SSH")
+class ReleasePortOverSsh(HostOverSsh):
+    """The sshd drop-in on a real sshd: a second port for the deploy user only."""
+
+    def sshd_ports(self) -> list[str]:
+        output = self.in_host("sshd -T -C lport=1,user=af,host=localhost,addr=127.0.0.1 | awk '$1 == \"port\" { print $2 }'")
+        return sorted(output.split())
+
+    def test_the_release_port_never_takes_an_admin_port(self) -> None:
+        waivers = ("--allow-unmerged", "--allow-dirty")
+        setup = ("setup", "host", "pakem-sandbox", "--name", "sandbox", "--yes", *waivers)
+        # The owner logs in on Docker's published port; sshd itself serves 22 in the container.
+        login = docker("port", self.name, "22").stdout.strip().splitlines()[0].rsplit(":", 1)[1]
+        code, output = self.pakem(*setup, "--release-port", login)
+        self.assertEqual(code, 2, output[-3000:])
+        self.assertIn("is the port you log in on", output)
+        self.assertNotIn("af-bootstrap", output, "refused before connecting")
+
+        code, output = self.pakem(*setup, "--release-port", "22")
+        self.assertNotEqual(code, 0)
+        self.assertIn("port 22 is one of sshd's own ports", output)
+        self.assertEqual(self.in_host("ls /etc/ssh/sshd_config.d/"), "", "the bootstrap refuses on its own")
+        self.assertEqual(self.sshd_ports(), ["22"])
+
+        code, output = self.pakem(*setup, "--release-port", "2223")
+        self.assertEqual(code, 0, output[-4000:])
+        self.assertEqual(self.sshd_ports(), ["22", "2223"])
+        self.assertIn("Match LocalPort 2223\n  AllowUsers af", self.in_host("cat /etc/ssh/sshd_config.d/pakem-release.conf"))
+        again = subprocess.run(["ssh", "pakem-sandbox", "true"], env=self.env, capture_output=True, text=True)
+        self.assertEqual(again.returncode, 0, again.stderr)
+
 if __name__ == "__main__":
     unittest.main()

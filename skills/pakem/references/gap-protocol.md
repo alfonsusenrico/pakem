@@ -25,7 +25,11 @@ The agent fills gaps in this order, and stops when the finish condition holds:
 1. Run `pakem project check --gaps --json`. The list is fixed for this session. Do not add
    questions, except a blocker no gap covers; record that as a new gap.
 2. Answer what the repository already proves (code, docs, earlier decisions in
-   `AGENTS.md`) without asking. Say which gaps were answered this way.
+   `AGENTS.md`) without asking. Say which gaps were answered this way. When an answer
+   names a behaviour, read the code that has to deliver it: for `health.proof`, open the
+   handler at the `[health] path` and confirm it checks what the answer claims (a
+   "database answers" health path must query the database). A passing check proves only
+   that the files exist, not that they do what the answer says.
 3. Ask the rest in **one message**, grouped by topic, each with its default. "Use the
    defaults" is a complete answer.
 4. Write each answer to its `target`, with a one-line reason where the target is

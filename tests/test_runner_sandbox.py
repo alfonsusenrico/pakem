@@ -4,9 +4,9 @@ Boots a systemd Debian 13 container with Debian's docker.io as the host (a priva
 namespace, as on a real machine), runs af_runner.sh install twice (the second run must
 change nothing that matters), and proves the isolation and the job path: `check` passes,
 the runner user's rootless Docker reaches the internet and a service container, the
-production Docker socket refuses it, the slice caps apply, and tokens are only accepted on
-standard input. Registering a real repository needs a GitHub token and is not tested here.
-The container is removed afterwards.
+production Docker socket refuses it, the slice caps apply, tokens are only accepted on
+standard input, and a public repository is refused. Registering a real repository needs
+a GitHub token and is not tested here. The container is removed afterwards.
 """
 
 from __future__ import annotations
@@ -133,6 +133,14 @@ class RunnerSandboxTests(unittest.TestCase):
         slice_dir = "/sys/fs/cgroup/user.slice/user-$(id -u ci-runner).slice"
         caps = host(f'cat {slice_dir}/memory.max {slice_dir}/cpu.max {slice_dir}/pids.max').stdout.split()
         self.assertEqual(caps, ["4294967296", "200000", "100000", "4096"])
+
+    def test_a_public_repository_is_refused(self) -> None:
+        completed = host("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo actions/runner 2>&1", check=False)
+        self.assertEqual(completed.returncode, 2, completed.stdout)
+        self.assertIn("actions/runner is public", completed.stdout)
+        unreachable = host("echo AAAAAAAAAAAAAAAAAAAAAAAA | GITHUB_API=http://127.0.0.1:9 "
+                           "/root/af_runner.sh add-repo owner/repo 2>&1", check=False)
+        self.assertIn("could not confirm with GitHub that owner/repo is private", unreachable.stdout)
 
     def test_tokens_only_on_standard_input(self) -> None:
         cases = [

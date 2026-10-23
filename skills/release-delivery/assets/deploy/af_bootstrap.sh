@@ -346,6 +346,11 @@ configure_release_port() {
   [[ -z "$others" ]] || die "port $RELEASE_PORT is already used by $(echo $others), not this host's ssh service; choose another --release-port (nothing changed)"
   before=$(sshd_ports) || die "sshd -T could not read the current configuration; nothing changed"
   [[ -f "$SSHD_DROPIN" ]] && previous=$(sed -n 's/^Match LocalPort \([0-9]*\)$/\1/p' "$SSHD_DROPIN")
+  # On a port sshd already serves, `AllowUsers af` would lock everyone else out of it.
+  for port in $before; do
+    [[ "$port" != "$RELEASE_PORT" || "$port" == "$previous" ]] ||
+      die "port $RELEASE_PORT is one of sshd's own ports (${before//$'\n'/ }); as the release port only the deploy user could log in there; choose another --release-port (nothing changed)"
+  done
   wanted=$(release_port_text "$before" "$previous")
   if [[ -f "$SSHD_DROPIN" && "$(cat "$SSHD_DROPIN")" == "$wanted" ]]; then
     say "sshd release port $RELEASE_PORT present"

@@ -132,7 +132,9 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
   - `--release-port PORT` (hosts like that only; a normal OpenSSH host needs none): the
     bootstrap adds an sshd drop-in, checked with `sshd -t` and undone on any problem,
     where OpenSSH also listens on PORT for the `af` user with keys only; every port sshd
-    listened on before stays; releases use that port, recorded in `hosts.toml`;
+    listened on before stays; releases use that port, recorded in `hosts.toml`. A port
+    sshd already serves, or the one the owner logs in on (`--port`, or what `ssh -G` gives
+    the target), is refused: with `AllowUsers af` only the deploy user could log in there;
   - one SSH connection (ControlMaster), so a password is asked at most once;
   - uploads `VERSION` and the deploy assets, in the checkout's layout, to a temporary
     directory, runs `af_bootstrap.sh install` with sudo (Docker, cosign, Caddy unless
@@ -150,7 +152,9 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
   (prepared on demand); takes a registration or removal token from the owner's `gh`
   login, keeps it in memory, and hands it to `/opt/af/af_runner.sh` on standard input
   through a file only the login user can read, removed right after. Refused when the
-  host has no runner.
+  host has no runner, and refused (exit `6`) for a repository GitHub reports as public: its
+  pull requests could run any fork's code on the server. The runner script checks the
+  same before registering, and its `check` fails for a runner that serves a public one.
 - **Owner actions:** running these commands on a terminal; the server's first password
   if SSH asks for one; a GitHub login for runner tokens.
 - **Gaps (per host), answered by flags:** public route or private (`--no-proxy`), runner
@@ -176,10 +180,12 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   - writes the standard files: `AGENTS.md` (purpose, `Capabilities:`, `Delivery:`,
     commands, the generated Open decisions list), `.pakem/`, `.gitignore`,
     `.editorconfig`, OpenSpec `config.yaml`, `research/`, `CHANGELOG.md` (kind not
-    `none`), CI unless `Delivery: others` (`ci.yml` on push, pull request, and `v*` tags,
+    `none`), CI for every delivery (`ci.yml` on push, pull request, and `v*` tags,
     superseded runs cancelled, plus the verify, security, and database templates the
     capabilities switch on; private repositories run on the self-hosted runner, public ones
-    on GitHub-hosted runners), the deploy files for a service we release (contracts §4,
+    on GitHub-hosted runners; with `--delivery others --client-ci WHERE` the client runs its
+    own CI, so none is written and gap `ci.owner` records it), the deploy files for a
+    service we release (contracts §4,
     starters marked `pakem:stub`: `compose.yaml`, `Dockerfile`, `deploy/hooks/backup`,
     `docs/deployment.md`), and the stack's tooling (uv with ruff, pyright, pytest; or npm
     with prettier, eslint, TypeScript), with the dev tools added through the stack's
@@ -199,35 +205,42 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   `ci.yml` (the reusable templates come only with a Pakem `ci.yml`), installs nothing,
   and only reads the forge.
 - **Owner actions** (skipped when GitHub or this device already shows them done): a
-  self-hosted runner registration for a private repository (`pakem host runner add`);
-  protecting `v*` tags (not asked where rulesets need a paid plan, as on free private
-  repositories); `pakem host allow-device` before a service's first release; creating the
+  self-hosted runner registration for a private repository with Pakem CI (`pakem host
+  runner add`); protecting `v*` tags for a project we release (not asked where rulesets
+  need a paid plan, as on free private repositories, nor when GitHub cannot be asked); `pakem host allow-device` before a service's first release; creating the
   repository when `gh` cannot.
 - **Gaps** (`pakem project check --gaps [--json]`, exit `4` while a required gap is
   open), from the facts:
 
   | Gap | Required | Blocks | Proven by |
   |---|---|---|---|
-  | `language.text` | yes | - | a filled `Language:` line in `AGENTS.md` |
-  | `health.proof` | service | release | `deploy/release.toml [health]` |
-  | `settings.sources` | service | deploy setup, release | `deploy/settings.toml` names its settings |
+  | `language.text` | yes | - | a filled `Language:` line in `AGENTS.md` (a bullet too) |
+  | `ci.owner` | `Delivery: others` | ci | the Pakem `ci.yml`, or the answer `client CI: <where>` |
+  | `health.proof` | service | release | `deploy/release.toml [health]`, its path served by the project's own code (not a stub), and a real `docs/deployment.md` |
+  | `settings.sources` | service | deploy setup, release | `deploy/settings.toml` names its settings and is not the template |
   | `network.shared` | no (none) | deploy setup | - |
   | `single-instance` | no (no constraint) | release | - |
   | `backup.restore` | database | release | `deploy/hooks/backup` is the project's own, executable |
-  | `migrations.rule` | database | release | - |
+  | `migrations.rule` | database | release | `AGENTS.md` (the project's own text) states the migration rule |
   | `data.moves` | no (none), database | release | - |
-  | `gateway.profile` | llm | release | - |
+  | `gateway.profile` | llm | release | `AGENTS.md` names the gateway, and `## Overrides` has the `default:no-billed` approval |
 
 - **Decisions:** `pakem decide <gap> <answer> [--reason]`,
   `--provisional <assumption> --revisit <trigger>`, or
   `--pending <what> --from <who> --ask-again <date>`; `--question` and `--blocks` record a
   blocker no gap covers. Written to the committed `.pakem/decisions.toml`; the Open
-  decisions list in `AGENTS.md` is regenerated. An answer whose target does not prove it
+  decisions list in `AGENTS.md` is regenerated (refused, with nothing changed, unless its
+  markers appear once each, start before end, on their own lines; any text is stored, emoji
+  included). An answer whose target does not prove it
   stays open with the reason. `pakem status` counts open, pending, and provisional
   decisions and raises due ones (also at session start); `pakem release` refuses while a
   required gap that blocks release is open or pending (exit `4`).
 - **Check:** `pakem project check` (contracts, CI file, deploy files, `AGENTS.md` blocks,
-  starter stubs), and `pakem project check --gaps`.
+  starter stubs; exit `6` when a public GitHub repository has self-hosted jobs; in a
+  public repository, a warning for each tracked line naming a host or port from
+  `hosts.toml` or a private name, values never printed), and
+  `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
+  from a flag or a prompt.
 
 ### 4. Secrets: `pakem secret`
 
@@ -252,8 +265,9 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
     the version must be newer than every release tag. After it deploys, the commit is
     tagged and the tag pushed to `origin`; a failed deployment is never tagged.
   - `pakem release rollback previous|<tag or commit> [--environment E] [--production]
-    [--allow-schema]`: "previous" is the release first deployed before the running one,
-    so each run steps one further back; failed and restored attempts never count. The
+    [--allow-schema]`: "previous" is the last release that was live and working before
+    the running one. Each run steps one further back through the releases that were live,
+    never onto one a rollback left; failed and restored attempts never count. The
     host refuses a target never deployed there, and one with another schema version
     unless `--allow-schema` (after restoring the database from its backup).
   - `pakem release history [env]`, `pakem release status [env]`: read from the host.

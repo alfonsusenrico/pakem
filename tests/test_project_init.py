@@ -24,6 +24,7 @@ case "$1 $2" in
   "api repos/"*"/rulesets")
     [ -e "{state}/rulesets-paid" ] && { echo "Upgrade to GitHub Pro or make this repository public" >&2; exit 1; }
     cat "{state}/rulesets.json" 2>/dev/null || echo '[]' ;;
+  "api repos/"*) cat "{state}/private" 2>/dev/null || echo true ;;
   "repo create")
     [ -e "{state}/gh-fails" ] && { echo "HTTP 403" >&2; exit 1; }
     source=""; while [ $# -gt 0 ]; do [ "$1" = --source ] && source="$2"; shift; done
@@ -155,15 +156,33 @@ class InitTests(ProjectTestCase):
         completed = self.init(*SERVICE, "--forge", "gitlab")
         self.assert_fails(completed, code=6)
 
-    def test_others_deliver_so_no_ci_or_deploy_files(self) -> None:
+    def test_others_deliver_so_ci_but_no_deploy_files(self) -> None:
         flags = list(SERVICE)
         flags[flags.index("us")] = "others"
         completed = self.init(*flags, "--delivery-note", "the client's team deploys; we stop at the MR")
         self.assertIn(completed.returncode, (3, 4), completed.stderr)
-        self.assertFalse((self.repo / ".github").exists())
+        self.assertTrue((self.repo / ".github" / "workflows" / "ci.yml").is_file(), "CI as for any project")
         self.assertFalse((self.repo / "deploy").exists())
+        self.assertNotIn("protect release tags", completed.stdout, "the client tags its own releases")
         self.assertIn("Delivery: others (the client's team deploys; we stop at the MR)",
                       (self.repo / "AGENTS.md").read_text())
+        gaps = json.loads(self.run_pakem("project", "check", str(self.repo), "--gaps", "--json").stdout)["gaps"]
+        owner = next(gap for gap in gaps if gap["id"] == "ci.owner")
+        self.assertEqual((owner["state"], owner["problem"]), ("open", None))
+
+    def test_a_client_that_runs_its_own_ci_opts_out_on_record(self) -> None:
+        flags = list(SERVICE)
+        flags[flags.index("us")] = "others"
+        completed = self.init(*flags, "--delivery-note", "the client deploys", "--client-ci", "the client's GitLab")
+        self.assertIn(completed.returncode, (3, 4), completed.stderr)
+        self.assertFalse((self.repo / ".github").exists())
+        self.assertNotIn("self-hosted runner", completed.stdout)
+        decisions = tomllib.loads((self.repo / ".pakem" / "decisions.toml").read_text())["decisions"]
+        self.assertEqual(decisions["ci.owner"]["answer"], "client CI: the client's GitLab")
+        self.repo = self.base / "ours"
+        refused = self.init(*SERVICE, "--client-ci", "somewhere")
+        self.assert_fails(refused, code=2)
+        self.assertIn("--client-ci is for --delivery others", refused.stderr)
 
     def test_a_public_node_library(self) -> None:
         completed = self.init("--description", "A small library", "--public", "--kind", "none", "--delivery",
@@ -247,13 +266,17 @@ class DecideTests(ProjectTestCase):
         self.assertEqual(gaps["health.proof"]["default"], "process up and database answers")
         self.assertFalse(gaps["network.shared"]["required"])
 
-        self.assert_ok(self.decide("health.proof", "process up and database answers", "--reason", "the default"))
+        proving = self.decide("health.proof", "process up and database answers", "--reason", "the default")
+        self.assert_ok(proving)
+        self.assertIn("Not proven yet: no code of the project serves /health/release", proving.stdout,
+                      "the template's [health] block alone proves nothing")
         self.assert_ok(self.decide("settings.sources", "--provisional", "HTTP_PORT placement only",
                                    "--revisit", "the first real setting"))
         later = (date.today() + timedelta(days=7)).isoformat()
         self.assert_ok(self.decide("backup.restore", "--pending", "the database host", "--from", "the owner",
                                    "--ask-again", later))
-        self.assert_ok(self.decide("migrations.rule", "hand-written SQL, expand then contract"))
+        self.assertIn("Not proven yet: AGENTS.md states no migration tool",
+                      self.decide("migrations.rule", "hand-written SQL, expand then contract").stdout)
         agents = (self.repo / "AGENTS.md").read_text()
         self.assertIn("- `settings.sources`: provisional: HTTP_PORT placement only; revisit when the first real setting",
                       agents)
@@ -262,15 +285,55 @@ class DecideTests(ProjectTestCase):
 
         code, gaps = self.gaps()
         self.assertEqual(code, 4, "language.text is still open")
+        self.assertIn("no code of the project serves", gaps["health.proof"]["problem"])
+        write(self.repo / "src" / "demo" / "health.py",
+              '@app.get("/health/release")\ndef health():\n    return {"revision": REVISION, "database": ping()}\n')
+        write(self.repo / "docs" / "deployment.md", "# Deployment\n\n/health/release checks the database.\n")
         agents_path = self.repo / "AGENTS.md"
         agents_path.write_text(agents_path.read_text().replace(
             "Language: <!-- UI text language; generated content language; number and date formats -->",
-            "Language: English; ISO dates"))
+            "Language: English; ISO dates").replace(
+            "## Project rules\n", "## Project rules\n\n- Migrations: hand-written SQL in src/demo/migrations, expand then contract.\n", 1))
         self.assert_ok(self.decide("language.text", "English; ISO dates"))
         code, gaps = self.gaps()
         self.assertEqual(code, 0, gaps)
         decisions = tomllib.loads((self.repo / ".pakem" / "decisions.toml").read_text())["decisions"]
         self.assertEqual(decisions["backup.restore"]["state"], "pending")
+
+    def test_the_generated_block_never_eats_the_owners_text(self) -> None:
+        agents = self.repo / "AGENTS.md"
+        prose = "Notes: the block starts at `<!-- pakem:decisions:start -->` and is generated.\n"
+        agents.write_text(prose + agents.read_text())
+        self.assert_ok(self.decide("health.proof", "process up"))
+        self.assert_ok(self.decide("health.proof", "process up and database answers"))
+        self.assertTrue(agents.read_text().startswith(prose), "a marker inside prose is not a marker")
+        self.assertEqual(agents.read_text().count("\n<!-- pakem:decisions:start -->\n"), 1)
+
+        cases = {
+            "a second start": agents.read_text() + "\n<!-- pakem:decisions:start -->\n",
+            "no end": agents.read_text().replace("<!-- pakem:decisions:end -->", ""),
+            "end before start": "<!-- pakem:decisions:end -->\n" + agents.read_text().replace(
+                "<!-- pakem:decisions:end -->", ""),
+        }
+        decisions = (self.repo / ".pakem" / "decisions.toml").read_text()
+        for name, text in cases.items():
+            with self.subTest(name):
+                agents.write_text(text)
+                refused = self.decide("data.moves", "none")
+                self.assert_fails(refused, code=2)
+                self.assertIn("must hold the Open decisions markers once each", refused.stderr)
+                self.assertEqual(agents.read_text(), text, "nothing changed")
+                self.assertEqual((self.repo / ".pakem" / "decisions.toml").read_text(), decisions)
+
+    def test_any_text_round_trips_through_the_decisions(self) -> None:
+        answer = 'Indonesian 🇮🇩 with "quotes", a back\\slash, a tab\tand DEL\x7f'
+        self.assert_ok(self.decide("language.text", answer, "--reason", "owner 🙂"))
+        decisions = tomllib.loads((self.repo / ".pakem" / "decisions.toml").read_text())["decisions"]
+        self.assertEqual((decisions["language.text"]["answer"], decisions["language.text"]["reason"]),
+                         (answer, "owner 🙂"))
+        self.assert_ok(self.decide("data.moves", "none"))
+        code, _ = self.gaps()
+        self.assertEqual(code, 4, "the decisions file still reads")
 
     def test_an_answer_the_files_do_not_prove_stays_open(self) -> None:
         release = self.repo / "deploy" / "release.toml"
@@ -340,7 +403,8 @@ class AdoptTests(ProjectTestCase):
         self.assertIn("FINDING  AGENTS.md has no `Language:` line", output)
         self.assertIn("FINDING  pyproject.toml lacks the Python tooling defaults", output)
         self.assertIn("FINDING  deploy/release.toml: release.toml: compose_files must list at least one file", output)
-        writes = [call for call in self.calls() if not call.startswith("gh api repos/")]
+        reads = ("gh api repos/", "gh --version", "gh auth status")
+        writes = [call for call in self.calls() if not call.startswith(reads)]
         self.assertEqual(writes, [], "adopt runs no installers and only reads the forge")
         self.assertFalse((self.repo / "tests" / "test_package.py").exists(), "no starter code in an existing project")
         self.assertFalse((self.repo / "src").exists())
@@ -374,6 +438,7 @@ class AdoptTests(ProjectTestCase):
         self.assertNotIn("setup host", again.stdout, "this device may already release it")
 
     def test_a_public_repository_never_names_the_owners_servers(self) -> None:
+        (self.state / "private").write_text("false\n")
         public = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--public", "--yes")
         self.assertIn(public.returncode, (3, 4), public.stderr)
         write(self.home / ".config" / "pakem" / "hosts.toml",
@@ -393,6 +458,45 @@ class AdoptTests(ProjectTestCase):
         facts = self.repo / ".pakem" / "project.toml"
         facts.write_text(facts.read_text().replace('visibility = "public"', 'visibility = "private"'))
         self.assertNotIn("in a public repository", self.run_pakem("project", "check", str(self.repo)).stdout)
+
+    def test_adopt_keeps_the_facts_file_it_does_not_need_to_change(self) -> None:
+        self.adopt("--yes")
+        facts = self.repo / ".pakem" / "project.toml"
+        facts.write_text(facts.read_text() + 'owner_note = "kept 🙂"\n')
+        before = facts.read_text()
+        self.adopt("--yes")
+        self.assertEqual(facts.read_text(), before, "unchanged facts are not rewritten")
+        changed = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--capabilities",
+                                 "database,llm", "--yes")
+        self.assertIn(changed.returncode, (3, 4), changed.stderr)
+        data = tomllib.loads(facts.read_text())
+        self.assertEqual((data["owner_note"], data["capabilities"]), ("kept 🙂", ["database", "deployed", "llm"]))
+
+    def test_visibility_comes_from_github(self) -> None:
+        (self.state / "private").write_text("false\n")
+        refused = self.adopt("--yes")
+        self.assert_fails(refused, code=6)
+        self.assertIn("octo/demo is public on GitHub, not private", refused.stderr)
+        completed = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--yes")
+        self.assertIn(completed.returncode, (3, 4), completed.stderr)
+        facts = tomllib.loads((self.repo / ".pakem" / "project.toml").read_text())
+        self.assertEqual(facts["visibility"], "public")
+        self.assertNotIn("self-hosted runner", completed.stdout)
+
+    def test_a_public_repository_never_keeps_self_hosted_jobs(self) -> None:
+        (self.state / "private").write_text("false\n")
+        write(self.repo / ".github" / "workflows" / "ci.yml", "jobs:\n  check:\n    runs-on: [self-hosted, linux, x64, pakem]\n")
+        refused = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--yes")
+        self.assert_fails(refused, code=6)
+        self.assertIn("a self-hosted runner would run any fork's pull request", refused.stderr)
+        self.assertIn(".github/workflows/ci.yml", refused.stderr)
+        self.assertFalse((self.repo / ".pakem").exists(), "nothing changed")
+
+        check = self.run_pakem("project", "check", str(self.repo))
+        self.assert_fails(check, code=6)
+        self.assertIn("octo/demo is public", check.stdout)
+        (self.state / "private").write_text("true\n")
+        self.assertNotIn("is public", self.run_pakem("project", "check", str(self.repo)).stdout)
 
     def test_plan_writes_nothing(self) -> None:
         completed = self.adopt("--plan")

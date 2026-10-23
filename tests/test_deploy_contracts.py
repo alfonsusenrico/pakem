@@ -138,6 +138,16 @@ class ProjectConfig(unittest.TestCase):
                 config["images"][0]["target"] = target
                 self.assertEqual(contracts.validate_project_config(config) == [], valid)
 
+    def test_build_paths_stay_inside_the_repository(self) -> None:
+        cases = (("docker/Dockerfile", True), (".", True), ("/srv/deploy/other/production/secrets", False),
+                 ("../other", False), ("docker/../../x", False), ("./Dockerfile", False), ("", False), (3, False))
+        for key in ("context", "dockerfile"):
+            for value, valid in cases:
+                with self.subTest(key=key, value=value):
+                    config = copy.deepcopy(self.config)
+                    config["images"][0][key] = value
+                    self.assertEqual(contracts.validate_project_config(config) == [], valid)
+
     def test_standard_version_and_health_are_required(self) -> None:
         self.assertTrue(contracts.validate_project_config(dict(self.config, af_standard=2)))
         self.assertTrue(contracts.validate_project_config(dict(self.config, health={"service": "web"})))
