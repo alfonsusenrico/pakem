@@ -334,6 +334,9 @@ def build_parser() -> argparse.ArgumentParser:
         starting.add_argument("--kind", choices=("service", "artifact", "none"), help="release kind")
         starting.add_argument("--delivery", choices=("us", "others", "nobody"), help="who releases it")
         starting.add_argument("--delivery-note", help="with --delivery others: who, and where our work ends")
+        starting.add_argument("--client-ci", metavar="WHERE",
+                              help="with --delivery others: the client runs its own CI there; Pakem writes none "
+                                   "and records the decision ci.owner")
         starting.add_argument("--environments", choices=("production", "staging,production"))
         starting.add_argument("--stack", choices=("python", "node"))
         starting.add_argument("--capabilities", help="comma-separated capability names, or none")

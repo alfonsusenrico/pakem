@@ -32,6 +32,8 @@ from .common import (
     display_path,
     normalize_newlines,
     read_text,
+    toml_string,
+    toml_value,
     write_text_atomically,
 )
 
@@ -90,10 +92,16 @@ def load_facts(repo: Path) -> Facts | None:
         raise PakemError(f"{display_path(path)} lacks a fact: {exc}") from exc
 
 
-def facts_text(facts: Facts) -> str:
+def extra_facts(repo: Path) -> dict:
+    """Keys of .pakem/project.toml that Pakem does not know, kept when it rewrites the file."""
+    data = _toml(facts_path(repo)) or {}
+    return {key: value for key, value in data.items() if key not in Facts.__dataclass_fields__}
+
+
+def facts_text(facts: Facts, extra: dict | None = None) -> str:
     lines = ["# The project's fixed facts, written by `pakem project init` or `adopt` (ADR 0011)."]
-    for key, value in asdict(facts).items():
-        lines.append(f"{key} = {json.dumps(value)}")
+    for key, value in {**asdict(facts), **(extra or {})}.items():
+        lines.append(f"{key} = {toml_value(value)}")
     return "\n".join(lines) + "\n"
 
 
@@ -133,6 +141,40 @@ def _toml(path: Path) -> dict | None:
         return None
 
 
+# Where a service's own code lives; deploy files, docs, and tests only name a path.
+NOT_CODE = {".git", ".pakem", ".venv", "node_modules", "deploy", "docs", "openspec", "research", "tests", "test",
+            "dist", "build", "__pycache__"}
+CODE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".go", ".rs", ".rb", ".java", ".kt", ".php"}
+MAX_CODE_FILE = 1024 * 1024
+SERVICE_TEMPLATES = Path(__file__).resolve().parents[2] / "skills" / "project-bootstrap" / "assets" / "service"
+
+
+def _code_files(repo: Path):
+    for directory, subdirectories, names in os.walk(repo):
+        subdirectories[:] = [name for name in subdirectories if name not in NOT_CODE and not name.startswith(".")]
+        for name in names:
+            path = Path(directory) / name
+            if path.suffix in CODE_SUFFIXES and not name.startswith("test_") and ".test." not in name:
+                yield path
+
+
+def _route_in_code(repo: Path, route: str) -> bool:
+    """Whether the project's own code serves the path: a quoted literal, or a file route
+    (`app/<path>/route.ts`, `pages/api/...`), in a file that is not a starter stub."""
+    literal = re.compile(r"""["'`]""" + re.escape(route) + r"""/?["'`?]""")
+    segments = tuple(part for part in route.strip("/").split("/") if part)
+    for path in _code_files(repo):
+        if path.stat().st_size > MAX_CODE_FILE:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if STUB_MARKER in text:
+            continue
+        parents = path.relative_to(repo).parent.parts
+        if literal.search(text) or (segments and parents[-len(segments):] == segments):
+            return True
+    return False
+
+
 def _check_health(repo: Path) -> str | None:
     config = _toml(repo / "deploy" / "release.toml")
     if config is None:
@@ -142,6 +184,11 @@ def _check_health(repo: Path) -> str | None:
         return "deploy/release.toml [health] needs service, path, and revision_key"
     if not isinstance(health.get("port"), int):
         return "deploy/release.toml [health] needs the service's container port"
+    if not _route_in_code(repo, health["path"]):
+        return f"no code of the project serves {health['path']} (the [health] path) yet"
+    guide = repo / "docs" / "deployment.md"
+    if not guide.is_file() or STUB_MARKER in guide.read_text(encoding="utf-8", errors="replace"):
+        return "docs/deployment.md is missing or still the starter stub"
     return None
 
 
@@ -153,6 +200,8 @@ def _check_settings(repo: Path) -> str | None:
              for name in manifest.get(key, [])]
     if not named:
         return "deploy/settings.toml names no settings yet"
+    if manifest == _toml(SERVICE_TEMPLATES / "settings.toml.tmpl"):
+        return "deploy/settings.toml is still the template; name the project's own settings"
     return None
 
 
@@ -168,10 +217,52 @@ def _check_backup(repo: Path) -> str | None:
 def _check_language(repo: Path) -> str | None:
     agents = repo / "AGENTS.md"
     text = agents.read_text(encoding="utf-8") if agents.is_file() else ""
-    match = re.search(r"^Language:(.*)$", text, re.MULTILINE)
+    match = re.search(r"^(?:[-*+]\s+)?Language:(.*)$", text, re.MULTILINE)
     if match is None or not match[1].strip() or "<!--" in match[1]:
         return "AGENTS.md has no filled `Language:` line"
     return None
+
+
+def _own_agents_text(repo: Path) -> str:
+    """AGENTS.md without comments and generated or pinned blocks: what the project wrote."""
+    agents = repo / "AGENTS.md"
+    text = normalize_newlines(read_text(agents)) if agents.is_file() else ""
+    text = re.sub(r"<!-- pakem:decisions:start -->.*?<!-- pakem:decisions:end -->", "", text, flags=re.DOTALL)
+    text = re.sub(r"^<!-- (pakem|agent-framework):(digest|profile).*?^<!-- /(pakem|agent-framework):\2 -->$", "",
+                  text, flags=re.DOTALL | re.MULTILINE)
+    return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+
+
+def _check_migrations(repo: Path) -> str | None:
+    if not re.search(r"migrat", _own_agents_text(repo), re.IGNORECASE):
+        return "AGENTS.md states no migration tool or rule"
+    return None
+
+
+def _check_gateway(repo: Path) -> str | None:
+    text = _own_agents_text(repo)
+    if not re.search(r"gateway", text, re.IGNORECASE):
+        return "AGENTS.md names no AI gateway profile"
+    overrides = re.search(r"^## Overrides$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if overrides is None or "default:no-billed" not in overrides[1]:
+        return "AGENTS.md ## Overrides has no `default:no-billed` billing approval"
+    return None
+
+
+CI_OWNER = "ci.owner"
+CLIENT_CI = "client CI"
+
+
+def uses_client_ci(repo: Path) -> bool:
+    """Whether the project recorded that the client runs its own CI (Delivery: others)."""
+    answer = load_decisions(repo).get(CI_OWNER, {}).get("answer", "")
+    return isinstance(answer, str) and answer.lower().startswith(CLIENT_CI.lower())
+
+
+def _check_ci_owner(repo: Path) -> str | None:
+    if uses_client_ci(repo) or (repo / ".github" / "workflows" / "ci.yml").is_file():
+        return None
+    return f".github/workflows/ci.yml is missing; restore it, or answer `{CLIENT_CI}: <where>`"
 
 
 def catalogue(facts: Facts) -> list[Gap]:
@@ -185,6 +276,13 @@ def catalogue(facts: Facts) -> list[Gap]:
             "AGENTS.md Language: line", "AGENTS.md has a filled Language: line", (), _check_language,
         ),
     ]
+    if facts.delivery == "others":
+        gaps.append(Gap(
+            CI_OWNER, True, "Does the project keep Pakem's CI, or does the client run their own?",
+            "Pakem writes CI for every project; a client with its own pipeline opts out, and that is recorded.",
+            ("pakem CI", f"{CLIENT_CI}: <where>"), "pakem CI", ".github/workflows/ci.yml, or this decision",
+            "the Pakem ci.yml exists, or the decision names the client's CI", ("ci",), _check_ci_owner,
+        ))
     if not facts.releases_here:
         return gaps
     database = "database" in facts.capabilities
@@ -230,7 +328,7 @@ def catalogue(facts: Facts) -> list[Gap]:
                 "migrations.rule", True, "Which migration tool and rule (expand, then contract) does it follow?",
                 "Every release must work against the schema the release before it left.",
                 ("hand-written SQL, expand then contract", "custom"), "hand-written SQL, expand then contract",
-                "AGENTS.md project rules", "AGENTS.md states the tool and the rule", ("release",),
+                "AGENTS.md project rules", "AGENTS.md states the tool and the rule", ("release",), _check_migrations,
             ),
             Gap(
                 "data.moves", False, "Does any data need to move or be imported before the first release?",
@@ -244,7 +342,7 @@ def catalogue(facts: Facts) -> list[Gap]:
                 "gateway.profile", True, "Which AI gateway profile and budget does it use?",
                 "Paid model calls are approved only within a gateway's grants (default:no-billed).",
                 ("<profile> within <budget>",), None, "AGENTS.md project rules + ## Overrides",
-                "AGENTS.md names the profile and the billing approval", ("release",),
+                "AGENTS.md names the profile and the billing approval", ("release",), _check_gateway,
             )
         )
     return gaps
@@ -281,11 +379,11 @@ def decisions_text(decisions: dict[str, dict]) -> str:
         "# agent on every device sees them. States: answered, provisional, pending.",
     ]
     for gap_id in sorted(decisions):
-        lines += ["", f"[decisions.{json.dumps(gap_id)}]"]
+        lines += ["", f"[decisions.{toml_string(gap_id)}]"]
         entry = decisions[gap_id]
         for key in DECISION_KEYS:
             if key in entry and entry[key] not in (None, "", []):
-                lines.append(f"{key} = {json.dumps(entry[key])}")
+                lines.append(f"{key} = {toml_value(entry[key])}")
     return "\n".join(lines) + "\n"
 
 
@@ -363,6 +461,29 @@ def open_decisions_lines(statuses: list[GapStatus]) -> list[str]:
     return lines
 
 
+def decisions_span(text: str, path: Path) -> tuple[int, int] | None:
+    """Where the generated block is: one start and one end marker, each on its own line, in
+    that order; None when there is none. Anything else is refused, since replacing between
+    the wrong markers would delete the owner's text."""
+    starts = [match.start() for match in re.finditer(rf"^{re.escape(DECISIONS_START)}[ \t]*$", text, re.MULTILINE)]
+    ends = [match.start() for match in re.finditer(rf"^{re.escape(DECISIONS_END)}[ \t]*$", text, re.MULTILINE)]
+    if not starts and not ends:
+        return None
+    if len(starts) != 1 or len(ends) != 1 or ends[0] < starts[0]:
+        raise PakemError(
+            f"{display_path(path)} must hold the Open decisions markers once each, start before end, on their own "
+            f"lines (found {len(starts)} start and {len(ends)} end); fix it by hand, nothing changed"
+        )
+    return starts[0], ends[0] + len(DECISIONS_END)
+
+
+def require_decision_markers(repo: Path) -> None:
+    """Refuse before anything is written when AGENTS.md's generated block is malformed."""
+    path = repo / "AGENTS.md"
+    if path.is_file():
+        decisions_span(normalize_newlines(read_text(path)), path)
+
+
 def write_open_decisions(repo: Path, statuses: list[GapStatus]) -> bool:
     """Replace the generated block in AGENTS.md (or append it); True when it changed."""
     path = repo / "AGENTS.md"
@@ -371,12 +492,11 @@ def write_open_decisions(repo: Path, statuses: list[GapStatus]) -> bool:
     text = normalize_newlines(read_text(path))
     # Blank lines around the section keep Markdown formatters (Prettier) from changing it.
     block = "\n".join([DECISIONS_START, "", *open_decisions_lines(statuses), "", DECISIONS_END])
-    if DECISIONS_START in text and DECISIONS_END in text:
-        start = text.index(DECISIONS_START)
-        end = text.index(DECISIONS_END) + len(DECISIONS_END)
-        updated = text[:start] + block + text[end:]
-    else:
+    span = decisions_span(text, path)
+    if span is None:
         updated = text.rstrip("\n") + "\n\n" + block + "\n"
+    else:
+        updated = text[:span[0]] + block + text[span[1]:]
     if updated == text:
         return False
     write_text_atomically(path, updated)
@@ -384,6 +504,12 @@ def write_open_decisions(repo: Path, statuses: list[GapStatus]) -> bool:
 
 
 # -- commands ------------------------------------------------------------------------------------------
+
+
+def record_decision(repo: Path, gap_id: str, entry: dict) -> None:
+    decisions = load_decisions(repo)
+    decisions[gap_id] = {"decided": date.today().isoformat(), **entry}
+    write_text_atomically(decisions_path(repo), decisions_text(decisions))
 
 
 def require_facts(repo: Path) -> Facts:
@@ -408,6 +534,7 @@ def run_decide(args) -> int:
             f"{gap_id} is not one of this project's gaps ({', '.join(sorted(known))}); "
             "record a new blocker with --question and --blocks"
         )
+    require_decision_markers(repo)
     modes = [bool(args.answer), bool(args.provisional), bool(args.pending)]
     if sum(modes) != 1:
         raise PakemError("give exactly one of: an answer, --provisional ASSUMPTION, or --pending WHAT")

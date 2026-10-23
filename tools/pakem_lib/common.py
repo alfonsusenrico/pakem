@@ -192,6 +192,39 @@ def is_git_work_tree(path: Path) -> bool:
     return completed.returncode == 0 and completed.stdout.strip() == "true"
 
 
+TOML_ESCAPES = {'"': '\\"', "\\": "\\\\", "\n": "\\n", "\t": "\\t", "\r": "\\r", "\b": "\\b", "\f": "\\f"}
+
+
+def toml_string(text: str) -> str:
+    """A TOML basic string. JSON is not one: it writes characters outside the BMP as
+    surrogate pairs, and leaves DEL unescaped, both of which TOML rejects."""
+    parts = []
+    for character in text:
+        code = ord(character)
+        if character in TOML_ESCAPES:
+            parts.append(TOML_ESCAPES[character])
+        elif 0xD800 <= code <= 0xDFFF:
+            raise PakemError(f"text holds an unpaired surrogate (U+{code:04X}), which TOML cannot store")
+        elif code < 0x20 or code == 0x7F:
+            parts.append(f"\\u{code:04X}")
+        else:
+            parts.append(character)
+    return '"' + "".join(parts) + '"'
+
+
+def toml_value(value: object) -> str:
+    """A TOML value for the plain types Pakem writes: strings, booleans, integers, lists."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        return toml_string(value)
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_value(item) for item in value) + "]"
+    raise PakemError(f"cannot write {type(value).__name__} as a TOML value")
+
+
 def write_text_atomically(path: Path, text: str, mode: int | None = None) -> None:
     """Write via a sibling temp file and os.replace so a symlink at path is replaced, not followed."""
     path.parent.mkdir(parents=True, exist_ok=True)
