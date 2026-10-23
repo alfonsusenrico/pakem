@@ -62,8 +62,12 @@ def create_device_key(passphrase: bool) -> int:
     if private.exists() and public.exists():
         print(f"{display_path(private)} already exists ({device_key.fingerprint(public)}); nothing to do")
         return EXIT_DONE
-    if passphrase and not sys.stdin.isatty():
-        raise OwnerActionRequired(SETUP_KEY_ACTION)
+    if not sys.stdin.isatty():
+        # With a passphrase, ssh-keygen needs the owner to type it; without one, leaving the
+        # key unprotected is the owner's choice, so an agent never makes it.
+        raise OwnerActionRequired(SETUP_KEY_ACTION if passphrase else
+                                  "OWNER ACTION REQUIRED: a device key without a passphrase is your choice; run "
+                                  "`pakem setup key --no-passphrase` in your terminal")
     device_key.create(f"pakem-device {device_name()}", passphrase)
     print(f"Created {display_path(private)} ({device_key.fingerprint(public)})")
     code = EXIT_DONE
