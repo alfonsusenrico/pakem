@@ -354,7 +354,7 @@ device key:
 | `project`, `environment`, `commit` | as in section 1 |
 | `version` | `vMAJOR.MINOR.PATCH` for `promote`, else null |
 | `archive` | `sha256:<64 hex>` of the commit's `git archive` tar when it is sent; required for `publish` |
-| `created` | UTC time; the host refuses a request more than 10 minutes from its clock |
+| `created` | UTC time; the host refuses a request older than 10 minutes or more than 2 minutes ahead of its clock |
 | `device` | the device name, `[a-z0-9][a-z0-9-]{0,62}` |
 | `source` | https URL of the repository, or null |
 | `allow_schema` | true only for a rollback the owner confirmed across a schema change |
@@ -366,7 +366,11 @@ commit, and for history every deployment and the `kept` commits). Anything else 
 refused. The receiver checks, before reading the archive's content: the schema; the
 device and project against its forced command; freshness; the signature against only
 this device's `allowed_signers` lines with the project as principal; and that the
-environment is direct here. Then the archive's digest against the request.
+environment is direct here. Then, under the environment's deployment lock (a second
+release for it is `busy`, exit 75, before anything is built), that this exact request has
+not run here while fresh (each signed request runs once), and the archive's digest
+against the request. A build that fails, or takes longer than its timeout, sends a
+`failed` notice; it writes no deployment record, since nothing was released.
 
 **Build.** A commit no environment of the project keeps is unpacked (files,
 directories, and symlinks that stay inside; size and entry limits), its deploy files
@@ -391,6 +395,8 @@ and bundle; a resent archive must match the one it was built from.
 
 The engine (section 5) then runs as usual, except that it checks the images exist
 instead of pulling them; a request for the release that already runs is `unchanged`.
+An environment switched from the registry may republish the commit it runs; afterwards
+the pulled images are removed, as retention removes those of older registry releases.
 
 **Rules.** `promote` to production is refused unless staging on this host deployed the
 commit (when the project has staging), and when its version already named another commit
