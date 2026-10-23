@@ -24,6 +24,7 @@ case "$1 $2" in
   "api repos/"*"/rulesets")
     [ -e "{state}/rulesets-paid" ] && { echo "Upgrade to GitHub Pro or make this repository public" >&2; exit 1; }
     cat "{state}/rulesets.json" 2>/dev/null || echo '[]' ;;
+  "api repos/"*) cat "{state}/private" 2>/dev/null || echo true ;;
   "repo create")
     [ -e "{state}/gh-fails" ] && { echo "HTTP 403" >&2; exit 1; }
     source=""; while [ $# -gt 0 ]; do [ "$1" = --source ] && source="$2"; shift; done
@@ -340,7 +341,8 @@ class AdoptTests(ProjectTestCase):
         self.assertIn("FINDING  AGENTS.md has no `Language:` line", output)
         self.assertIn("FINDING  pyproject.toml lacks the Python tooling defaults", output)
         self.assertIn("FINDING  deploy/release.toml: release.toml: compose_files must list at least one file", output)
-        writes = [call for call in self.calls() if not call.startswith("gh api repos/")]
+        reads = ("gh api repos/", "gh --version", "gh auth status")
+        writes = [call for call in self.calls() if not call.startswith(reads)]
         self.assertEqual(writes, [], "adopt runs no installers and only reads the forge")
         self.assertFalse((self.repo / "tests" / "test_package.py").exists(), "no starter code in an existing project")
         self.assertFalse((self.repo / "src").exists())
@@ -372,6 +374,32 @@ class AdoptTests(ProjectTestCase):
               '[hosts.prod]\ntarget = "admin@203.0.113.7"\nprojects = ["demo"]\n')
         again = self.adopt("--yes")
         self.assertNotIn("setup host", again.stdout, "this device may already release it")
+
+    def test_visibility_comes_from_github(self) -> None:
+        (self.state / "private").write_text("false\n")
+        refused = self.adopt("--yes")
+        self.assert_fails(refused, code=6)
+        self.assertIn("octo/demo is public on GitHub, not private", refused.stderr)
+        completed = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--yes")
+        self.assertIn(completed.returncode, (3, 4), completed.stderr)
+        facts = tomllib.loads((self.repo / ".pakem" / "project.toml").read_text())
+        self.assertEqual(facts["visibility"], "public")
+        self.assertNotIn("self-hosted runner", completed.stdout)
+
+    def test_a_public_repository_never_keeps_self_hosted_jobs(self) -> None:
+        (self.state / "private").write_text("false\n")
+        write(self.repo / ".github" / "workflows" / "ci.yml", "jobs:\n  check:\n    runs-on: [self-hosted, linux, x64, pakem]\n")
+        refused = self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--yes")
+        self.assert_fails(refused, code=6)
+        self.assertIn("a self-hosted runner would run any fork's pull request", refused.stderr)
+        self.assertIn(".github/workflows/ci.yml", refused.stderr)
+        self.assertFalse((self.repo / ".pakem").exists(), "nothing changed")
+
+        check = self.run_pakem("project", "check", str(self.repo))
+        self.assert_fails(check, code=6)
+        self.assertIn("octo/demo is public", check.stdout)
+        (self.state / "private").write_text("true\n")
+        self.assertNotIn("is public", self.run_pakem("project", "check", str(self.repo)).stdout)
 
     def test_plan_writes_nothing(self) -> None:
         completed = self.adopt("--plan")

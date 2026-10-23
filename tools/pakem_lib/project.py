@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .capabilities import ALWAYS, declarable_names, load_capabilities
 from .common import (
+    EXIT_REFUSED,
     PakemError,
     Framework,
     Report,
@@ -25,6 +26,7 @@ from .pinned import (
     render_block,
 )
 from .gaps import STUB_MARKER
+from .github import origin_repository, public_runner_refusal, repository_visibility, self_hosted_workflows
 from .profiles import Profile, load_profiles
 
 AGENTS_FILE = "AGENTS.md"
@@ -451,10 +453,29 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     return report
 
 
+def check_public_runner(repo: Path, report: Report) -> bool:
+    """Whether a public GitHub repository runs jobs on a self-hosted runner (an error). GitHub
+    is asked only when a workflow uses one, so other checks stay offline."""
+    workflows = self_hosted_workflows(repo)
+    repository = origin_repository(repo)
+    if not workflows or repository is None:
+        return False
+    try:
+        visibility = repository_visibility(repository)
+    except PakemError as error:
+        report.warn(f"{', '.join(workflows)} use a self-hosted runner, and {error}")
+        return False
+    if visibility != "public":
+        return False
+    report.error(f"{public_runner_refusal(repository)} (self-hosted jobs in {', '.join(workflows)})")
+    return True
+
+
 def run_check(args) -> int:
     framework = Framework(Path(args.root))
     repo = _resolve_repo(args.repo)
     report = check_repo(framework, repo)
+    refused = check_public_runner(repo, report)
     print(f"pakem project check {repo}")
     report.print()
-    return report.exit_code
+    return EXIT_REFUSED if refused else report.exit_code
