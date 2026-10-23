@@ -37,7 +37,7 @@ as revised by ADR 0010 (accepted 2026-10-21):
 - Checks run on every push, merge request, and tag on a free runner, separately from
   releases; a release refuses a commit whose checks did not pass.
 - Nothing billed unless the project approves it (`default:no-billed`).
-- Direct delivery is `pakem release` (stage `experimental`): the owner's device sends
+- Direct delivery is `pakem release` (stage `stable` for services): the owner's device sends
   signed source and the host builds it ([contracts §13](references/deployment-contracts.md#13-direct-delivery)).
   The registry mode in the contracts is valid only where its CI minutes and registry
   are free.

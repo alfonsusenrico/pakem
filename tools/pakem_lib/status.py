@@ -73,14 +73,22 @@ def framework_line(status: FrameworkStatus) -> str:
     if status.state == UNTRACKED_SOURCE:
         return f"Pakem {version} installed; update check off: {status.notes[0]}."
     if status.state == UP_TO_DATE:
-        return f"Pakem {version} is up to date with {status.target.ref} ({_checked(status.fetch)})."
+        installed = _labelled(version, status.installed_commit)
+        return f"Pakem {installed} is up to date with {status.target.ref} ({_checked(status.fetch)})."
     if status.state == UPDATE_AVAILABLE:
-        line = f"Pakem update available: {version} -> {status.target.version} on {status.target.ref}"
+        # Between releases both sides share a version, so the commits tell them apart.
+        installed = _labelled(version, status.installed_commit)
+        target = _labelled(status.target.version, status.target.commit)
+        line = f"Pakem update available: {installed} -> {target} on {status.target.ref}"
         if status.changed:
             line += f" (changes: {', '.join(status.changed)})"
         return line + "."
     reason = "; ".join(status.notes) or "no target known"
     return f"Pakem {version} installed; update state unknown: {reason} ({_checked(status.fetch)})."
+
+
+def _labelled(version: str | None, commit: str | None) -> str:
+    return f"{version} ({commit[:7]})" if commit else f"{version}"
 
 
 def update_advice(status: FrameworkStatus, for_agent: bool) -> str | None:

@@ -77,8 +77,8 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
      the design (settings instead of constants, clean module boundaries).
    - A due decision (its date passed, or the work reached a stage it blocks) is raised
      at session start as one question.
-   - `pakem decide <gap> <answer>` records it; `pakem` regenerates the affected files and lists
-     provisional work to revisit.
+   - `pakem decide <gap> <answer>` records it; `pakem` regenerates the Open decisions list
+     in `AGENTS.md` and lists provisional work to revisit.
    - Decisions live in the committed `.pakem/decisions.toml`, so every agent on every device
      sees them, with a generated "Open decisions" list in `AGENTS.md`. Client
      repositories keep both out of deliverables.
@@ -107,8 +107,9 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
      Linux, and WSL (the macOS Keychain unlocks it without prompts); a device nobody can
      unlock is created with `--no-passphrase`, recorded per device. Native Windows is not
      supported; WSL is.
-9. **Release pace.** The `pakem` tool may release as often as its areas mature; the kernel and
-   skills keep ADR 0007's monthly batch.
+9. **Release pace.** The `pakem` tool releases whenever one of its areas is proven. Kernel
+   and skill text never triggers a release on its own: it waits for the next one, batched at
+   most once a month (ADR 0007, amended 2026-10-23).
 10. **Maturity per area:** `draft`, then `experimental` (usable, may change), then
    `stable` (complete, tested end to end, documented in the `pakem` skill; the kernel rule
    applies). `pakem help` shows each area's stage.

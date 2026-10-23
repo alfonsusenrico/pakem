@@ -99,9 +99,17 @@ class StatusTests(StatusUpdateTestCase):
 
         refreshed = self.pakem("status", "--refresh")
         self.assert_ok(refreshed)
-        self.assertIn("Pakem update available: 0.2.0 -> 0.3.0 on origin/main", refreshed.stdout)
+        self.assertRegex(refreshed.stdout, r"Pakem update available: 0\.2\.0 \([0-9a-f]{7}\) -> 0\.3\.0 \([0-9a-f]{7}\) "
+                                           r"on origin/main")
         self.assertIn("changes: kernel, skill demo-skill", refreshed.stdout)
         self.assertIn("Run `pakem update` to install it.", refreshed.stdout)
+
+    def test_an_update_between_releases_names_both_commits(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply"))
+        installed = self.head()
+        upstream = self.push_upstream()
+        line = self.pakem("status", "--refresh").stdout.splitlines()[0]
+        self.assertIn(f"0.2.0 ({installed[:7]}) -> 0.2.0 ({upstream[:7]}) on origin/main", line)
 
     def test_offline_never_fetches(self) -> None:
         self.assert_ok(self.pakem("install", "--apply"))
@@ -176,7 +184,7 @@ class UpdateTests(StatusUpdateTestCase):
         release = self.push_upstream(version="0.3.0", tag="v0.3.0")
         self.push_upstream(kernel_line="Unreleased rule.")
 
-        self.assertIn("0.2.0 -> 0.3.0 on v0.3.0", self.pakem("status", "--refresh").stdout)
+        self.assertRegex(self.pakem("status", "--refresh").stdout, r"0\.2\.0 \([0-9a-f]{7}\) -> 0\.3\.0 \([0-9a-f]{7}\) on v0\.3\.0")
         self.assert_ok(self.pakem("update", "--yes"))
         self.assertEqual(self.head(), release)
         self.assertNotIn("Unreleased rule.", (self.home / ".claude" / "CLAUDE.md").read_text())
@@ -244,7 +252,7 @@ class HookTests(StatusUpdateTestCase):
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude,codex"))
         start = self.hook("session-start", {"session_id": "abc-1", "cwd": str(self.base)})
         self.assert_ok(start)
-        self.assertIn("Pakem 0.2.0 is up to date with origin/main", start.stdout)
+        self.assertRegex(start.stdout, r"Pakem 0\.2\.0 \([0-9a-f]{7}\) is up to date with origin/main")
 
         quiet = self.hook("prompt", {"session_id": "abc-1"})
         self.assert_ok(quiet)
@@ -327,7 +335,7 @@ class OtherHostHookTests(StatusUpdateTestCase):
         self.assert_ok(self.pakem("install", "--apply"))
         payload = {"session_id": "codex-1", "cwd": str(self.base), "hook_event_name": "SessionStart"}
         start = self.hook_for("codex", "session-start", payload)
-        self.assertIn("Pakem 0.2.0 is up to date", start.stdout)
+        self.assertRegex(start.stdout, r"Pakem 0\.2\.0 \([0-9a-f]{7}\) is up to date")
         self.reinstall_with_new_kernel()
         notice = self.hook_for("codex", "prompt", {"session_id": "codex-1", "prompt": "hi"})
         self.assertIn("Re-read before continuing: ~/.codex/AGENTS.md", notice.stdout)
@@ -337,7 +345,7 @@ class OtherHostHookTests(StatusUpdateTestCase):
         self.assert_ok(self.pakem("install", "--apply"))
         payload = {"conversationId": "ec33ebf9-0cba", "workspacePaths": [str(self.base)]}
         start = json.loads(self.hook_for("antigravity", "session-start", payload).stdout)
-        self.assertIn("Pakem 0.2.0 is up to date", start["injectSteps"][0]["ephemeralMessage"])
+        self.assertRegex(start["injectSteps"][0]["ephemeralMessage"], r"Pakem 0\.2\.0 \([0-9a-f]{7}\) is up to date")
         quiet = json.loads(self.hook_for("antigravity", "prompt", payload).stdout)
         self.assertEqual(quiet, {"injectSteps": []})
         self.reinstall_with_new_kernel()

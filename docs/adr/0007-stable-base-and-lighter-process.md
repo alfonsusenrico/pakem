@@ -1,6 +1,6 @@
 # 0007. Stable base and lighter process
 
-- Status: Accepted; amended 2026-10-22 (owner: each accepted proposal is its own pull request and applies when merged)
+- Status: Accepted; amended 2026-10-22 (owner: each accepted proposal is its own pull request and applies when merged) and 2026-10-23 (owner: a proposal is a pull request; the tool releases when an area is proven)
 - Date: 2026-10-13
 
 ## Context
@@ -20,7 +20,12 @@ works alone on many projects and wants the framework to reduce work, not add it.
    the agent writes from the case it discussed with the owner; the owner reviews it, and
    each accepted proposal becomes its own pull request that applies as soon as it is
    merged and devices run `pakem update` (devices that follow release tags get it with
-   the next release). Version releases still batch the CHANGELOG, at most one a month.
+   the next release).
+   *Amended 2026-10-23 (owner):* the proposal is itself that pull request, carrying the
+   change, opened before acceptance; the owner's merge accepts it (kernel section 6).
+   Releases: the `pakem` tool releases whenever one of its areas is proven (ADR 0011
+   decision 9). Kernel and skill text never triggers a release on its own: it waits for
+   the next one, batched at most once a month.
 2. Compliance evals are optional: run by hand after a large host or model change,
    never as a release gate, and read as evidence rather than a score to tune.
 3. Repositories no longer pin the kernel digest (supersedes ADR 0003). The kernel is

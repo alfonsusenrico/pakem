@@ -29,7 +29,8 @@ it is installed into each host by `tools/pakem install`, not loaded from here.
 - Instruction text drafted by an agent needs owner review before it is merged.
 - The framework is stable (ADR 0007, amended 2026-10-22). Change rules only for a
   problem a real project hit, through `pakem propose`: each accepted proposal is its own
-  PR; version releases batch the CHANGELOG (at most one a month), none for wording alone.
+  PR. The `pakem` tool releases whenever an area is proven; kernel and skill text waits for
+  the next release, batched at most once a month, and never triggers one alone (ADR 0011).
   Build no new `pakem` mechanism unless a project needs it.
 - ADRs only for decisions with real trade-offs. Record each change as a fragment
   `changes/<type>-<kebab-topic>.md` (`changes/README.md`); never edit `CHANGELOG.md`

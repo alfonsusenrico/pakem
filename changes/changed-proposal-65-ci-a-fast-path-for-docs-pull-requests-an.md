@@ -1,1 +1,0 @@
-- CI: a fast path for docs pull requests and local caches on self-hosted runners (proposal #65).
