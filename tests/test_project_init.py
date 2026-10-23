@@ -103,6 +103,10 @@ class InitTests(ProjectTestCase):
         self.assertIn("Delivery: us", agents)
         self.assertIn("- `health.proof`: open", agents)
         self.assertTrue((self.repo / "deploy" / "hooks" / "backup").stat().st_mode & 0o100)
+        dockerfile = (self.repo / "Dockerfile").read_text()
+        self.assertRegex(dockerfile, r"(?m)^FROM \S+@sha256:[0-9a-f]{64}$", "the base image is pinned by digest")
+        self.assertIn(".env.*", (self.repo / ".dockerignore").read_text())
+        self.assertIn("DATABASE_URL=", (self.repo / ".env.example").read_text())
         self.assertIn("uv add --dev ruff pyright pytest", self.calls())
         self.assertIn("gh repo create octo/demo --private", "\n".join(self.calls()))
         pushed = git(self.state / "origin.git", "log", "--format=%s", "main", home=self.home).stdout.split("\n")
@@ -183,6 +187,17 @@ class InitTests(ProjectTestCase):
         refused = self.init(*SERVICE, "--client-ci", "somewhere")
         self.assert_fails(refused, code=2)
         self.assertIn("--client-ci is for --delivery others", refused.stderr)
+
+    def test_a_node_service_without_a_database(self) -> None:
+        flags = list(SERVICE)
+        flags[flags.index("python")] = "node"
+        flags[flags.index("database")] = "none"
+        completed = self.init(*flags)
+        self.assertIn(completed.returncode, (3, 4), completed.stderr)
+        dockerfile = (self.repo / "Dockerfile").read_text()
+        self.assertIn("RUN npm ci --omit=dev", dockerfile, "the image keeps production dependencies only")
+        self.assertIn("COPY --from=build /app/dist ./dist", dockerfile)
+        self.assertNotIn("DATABASE_URL", (self.repo / ".env.example").read_text())
 
     def test_a_public_node_library(self) -> None:
         completed = self.init("--description", "A small library", "--public", "--kind", "none", "--delivery",
