@@ -5,6 +5,69 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-23
+
+### Added
+
+- `--plan` and `--json` on every command: `setup key` and `host add` gain `--plan`; with
+  `--json`, `setup key`, `setup host`, `setup check --host`, and the `host` commands print
+  one result document on stdout (`{status, done, owner_actions, gaps, checks}`, plus
+  `error`) and move what they print as they go, ssh and sudo included, to stderr.
+
+### Fixed
+
+- The command map lists what `pakem project check` really checks, names `report` (there is
+  no `project report`), and puts section 6 before section 7; the `pakem` skill lists
+  `host allow-device` and `revoke-device` under releases, as `pakem help` does.
+- `pakem setup host` stops with an owner action when the new device key could not be
+  added to ssh-agent, no longer marks a host whose check failed as set up, removes its
+  temporary directory on the server when an upload fails, and refuses an SSH target that
+  starts with `-` (it would be read as an ssh option).
+- `pakem setup key --no-passphrase` needs the owner's terminal: an agent never makes an
+  unprotected key.
+- `--json` stays parseable while installers run (their output goes to stderr). On macOS,
+  an installed Docker Desktop or OrbStack that is not running is the owner's to start;
+  pakem no longer installs Colima and switches the docker context.
+- `af_runner.sh` passes runner tokens to `config.sh` through its environment
+  (`ACTIONS_RUNNER_INPUT_TOKEN`) instead of an argument, so they never show in the
+  process list.
+- `pakem project init` resumes an init that stopped part-way: before its commit it writes
+  only the missing files and commits; after it, it creates the GitHub repository (unless
+  origin exists) and pushes. Before, init refused the non-empty directory and adopt
+  needed a repository that did not exist yet.
+- The release receiver takes the environment's deployment lock before it builds, so a
+  second release for the same environment is busy at once. Each signed request runs only
+  once while fresh, and one more than 2 minutes ahead of the host's clock is refused.
+- A failed or timed-out build sends a `failed` notice, and unexpected errors end with a
+  message instead of a traceback.
+- `pakem host revoke-device` reports (exit 6) when the host had no matching key line.
+- An environment switched from the registry can republish the commit it runs, and the
+  images it pulled from the registry are removed.
+- Run `pakem setup host <name>` to update each host.
+- Service starter files: the Dockerfiles pin their base images by digest (the uv and Node
+  images in `PINS.md`), the Node image keeps production dependencies and the build output
+  only, a `.dockerignore` keeps `.git`, `.env` files, local environments, and research
+  out of the build context, and `.env.example` lists `DATABASE_URL` only for a project
+  with the database capability.
+- `pakem status` always exits 0: an unreadable config or another error becomes a line in
+  its report. It notes when the installed commit is not on `origin/main` (an install
+  from an unmerged branch), and the mid-session hook names the `pakem-update` skill.
+- `pakem update` shows what the install changes (kernel, skills, tool, hooks) before it
+  asks, and a failed fetch exits 5 (check failed) instead of 2 (usage).
+
+### Security
+
+- The deploy user's SSH keys live in a root-owned `/etc/af/authorized_keys`, which sshd
+  reads for `af` alone (`AuthorizedKeysFile`, via `/etc/ssh/sshd_config.d/pakem-user.conf`);
+  the user could rewrite its own `~/.ssh` files, or add `authorized_keys2`. The bootstrap
+  moves the existing lines once, keeps the change only when sshd confirms it, and `check`
+  reports it. Which devices exist is read from `allowed_signers`.
+- `pakem host allow-device --device builder-<project> --key FILE` gives a shared builder its
+  own key for one project (ADR 0010 decision 8).
+- The deployment contracts note that the release port listens wherever sshd does, so a
+  host with a public or LAN address firewalls it.
+- Run `pakem setup host <name>` to update each host.
+
 ## [2.1.0] - 2026-10-23
 
 ### Added
