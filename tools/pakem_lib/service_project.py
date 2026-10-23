@@ -52,11 +52,14 @@ def is_service_project(directory: Path) -> bool:
     return (directory / "deploy" / "release.toml").is_file()
 
 
-def authorize_arguments(project: Project, deploy_root: str, proxy: bool, switch_from_registry: bool) -> list[str]:
-    """`af_receive.py authorize` as root: this device's key may release the project there."""
-    key = " ".join(device_key.public_path().read_text(encoding="utf-8").split()[:2])
+def authorize_arguments(project: Project, deploy_root: str, proxy: bool, switch_from_registry: bool,
+                        device: str | None = None, key: str | None = None) -> list[str]:
+    """`af_receive.py authorize` as root: this device's key (or a named builder's) may
+    release the project there."""
+    if key is None:
+        key = " ".join(device_key.public_path().read_text(encoding="utf-8").split()[:2])
     arguments = [
-        "sudo", "python3", INSTALLED_RECEIVER, "authorize", "--device", device_label(), "--key", key,
+        "sudo", "python3", INSTALLED_RECEIVER, "authorize", "--device", device or device_label(), "--key", key,
         "--project", project.name, "--deploy-root", deploy_root,
     ]
     for environment in project.environments:

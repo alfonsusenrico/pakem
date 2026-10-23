@@ -102,6 +102,7 @@ class DirectReleaseOverSsh(HostOverSsh):
         waivers = ("--allow-unmerged", "--allow-dirty")
         code, output = self.pakem("setup", "host", "pakem-sandbox", "--name", "sandbox", "--yes", *waivers)
         self.assertEqual(code, 0, output[-4000:])
+        self.assertIn("sshd: the deploy user's keys now come from /etc/af/authorized_keys", output)
         # Port 22 now lets the deploy user in with no key, as Tailscale SSH does: forced commands
         # never run there, so setup must notice and name the release port.
         self.in_host(
@@ -125,6 +126,12 @@ class DirectReleaseOverSsh(HostOverSsh):
                                   str(self.release_port), "--project-dir", str(self.project), "--yes", *waivers)
         self.assertEqual(code, 0, output[-4000:])
         self.assertIn(f"sshd: release port {self.release_port}", output)
+        # sshd reads the deploy user's keys only from the root-owned file, whatever af writes.
+        self.assertIn("deploy user keys in /etc/af/authorized_keys (root-owned)", output, "pinned by the first setup")
+        keys = self.in_host("sshd -T -C lport=22,user=af,host=localhost,addr=127.0.0.1 | grep -i '^authorizedkeysfile'")
+        self.assertEqual(keys.split(), ["authorizedkeysfile", "/etc/af/authorized_keys"])
+        self.assertEqual(self.in_host("stat -c '%U %a' /etc/af/authorized_keys").strip(), "root 644")
+        self.assertIn("--project sandbox", self.in_host("cat /etc/af/authorized_keys"))
         self.assertIn("missing placement settings: HTTP_PORT, PUBLIC_HOST", output)
         self.assertIn("This device may release sandbox there", output)
         for environment, port in PORTS.items():
@@ -170,6 +177,13 @@ class DirectReleaseOverSsh(HostOverSsh):
         shell = self.device_ssh("id")
         self.assertEqual(shell.returncode, 2, "the device key reaches only the release receiver")
         self.assertIn("expected `release`", shell.stdout)
+        # Key files the deploy user could write itself give no shell: sshd never reads them.
+        public = (self.home / ".ssh" / "pakem_device_ed25519.pub").read_text().strip()
+        self.in_host(f"for f in authorized_keys authorized_keys2; do echo '{public}' > /var/lib/af/.ssh/$f; "
+                     "chown af:af /var/lib/af/.ssh/$f; chmod 600 /var/lib/af/.ssh/$f; done")
+        shell = self.device_ssh("id")
+        self.assertNotIn("uid=", shell.stdout + shell.stderr)
+        self.assertIn("expected `release`", shell.stdout)
 
         code, output = self.pakem("host", "revoke-device", "sandbox", "--yes", timeout=120)
         self.assertEqual(code, 0, output[-4000:])
@@ -177,7 +191,7 @@ class DirectReleaseOverSsh(HostOverSsh):
         self.assertEqual(code, 3, output[-2000:])
         self.assertIn("run `pakem setup host sandbox` in your terminal", output)
         self.assertNotEqual(self.device_ssh("status sandbox").returncode, 0, "the host no longer takes the key")
-        signers = self.in_host("cat /etc/af/allowed_signers; cat /var/lib/af/.ssh/authorized_keys 2>/dev/null || true")
+        signers = self.in_host("cat /etc/af/allowed_signers /etc/af/authorized_keys")
         self.assertNotIn("pakem-device", signers)
 
 

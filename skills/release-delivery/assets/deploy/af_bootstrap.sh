@@ -40,6 +40,10 @@ PROXY=1
 REPLACE_CADDYFILE=0
 RELEASE_PORT=0
 SSHD_DROPIN=/etc/ssh/sshd_config.d/pakem-release.conf
+# The deploy user owns its home, so a bug in anything it runs could rewrite
+# ~/.ssh/authorized_keys or add authorized_keys2; sshd reads its keys from a root-owned file.
+DEPLOY_KEYS=/etc/af/authorized_keys
+KEYS_DROPIN=/etc/ssh/sshd_config.d/pakem-user.conf
 FRESH_DOCKER=0
 FRESH_CADDY=0
 FAILURES=0
@@ -337,6 +341,40 @@ reload_sshd() {
   fi
 }
 
+sshd_keys_file() {
+  sshd -T -C "lport=22,user=af,host=localhost,addr=127.0.0.1" | awk '$1 == "authorizedkeysfile" { $1 = ""; sub(/^ /, ""); print }'
+}
+
+pin_deploy_keys() {
+  command -v sshd >/dev/null || { say "note: no OpenSSH server here; the deploy user's keys stay in ~af/.ssh"; return 0; }
+  if [[ -f "$DEPLOY_KEYS" && "$(sshd_keys_file 2>/dev/null)" == "$DEPLOY_KEYS" ]]; then
+    say "deploy user keys in $DEPLOY_KEYS (root-owned)"
+    return
+  fi
+  local staged
+  staged=$(mktemp /etc/af/.authorized_keys.XXXXXX)
+  # The lines written so far (device keys, push-trigger keys) move along once.
+  if [[ -f "$DEPLOY_KEYS" ]]; then
+    cat "$DEPLOY_KEYS" > "$staged"
+  elif [[ -f /var/lib/af/.ssh/authorized_keys ]]; then
+    cat /var/lib/af/.ssh/authorized_keys > "$staged"
+  fi
+  chown root:root "$staged"
+  chmod 0644 "$staged"
+  mv "$staged" "$DEPLOY_KEYS"
+  install -d -m 0755 /etc/ssh/sshd_config.d
+  printf '%s\n' "# Written by af_bootstrap.sh (Pakem): the deploy user's keys are root's to change." \
+    "Match User af" "  AuthorizedKeysFile $DEPLOY_KEYS" > "$KEYS_DROPIN"
+  if sshd -t && [[ "$(sshd_keys_file 2>/dev/null)" == "$DEPLOY_KEYS" ]]; then
+    say "sshd: the deploy user's keys now come from $DEPLOY_KEYS (root-owned)"
+    reload_sshd
+    return
+  fi
+  # sshd reads no drop-ins (or rejected this one): keep the keys where sshd reads them.
+  rm -f "$KEYS_DROPIN" "$DEPLOY_KEYS"
+  say "note: sshd does not read /etc/ssh/sshd_config.d; the deploy user's keys stay in ~af/.ssh"
+}
+
 configure_release_port() {
   ((RELEASE_PORT)) || return 0
   command -v sshd >/dev/null || die "--release-port needs the OpenSSH server (sshd)"
@@ -417,6 +455,7 @@ admin_socket_ready() { [[ "$(stat -c '%a %G' /run/caddy/admin.sock)" == "660 cad
 sites_ready() { af_in_group caddy && [[ "$(stat -c %U /etc/caddy/sites)" == af ]]; }
 logs_bounded() { grep -q '"max-size"' /etc/docker/daemon.json; }
 release_port_listening() { sshd_only_on "$RELEASE_PORT"; }
+keys_pinned() { [[ "$(stat -c '%U' "$DEPLOY_KEYS")" == root && "$(sshd_keys_file)" == "$DEPLOY_KEYS" ]]; }
 
 check() {
   say "checking this host"
@@ -442,6 +481,9 @@ check() {
     result "$(passes sites_ready)" "caddy sites" "/etc/caddy/sites owned by af, af in the caddy group"
   fi
   result "$(passes logs_bounded)" "container logs" "size limit in /etc/docker/daemon.json"
+  if command -v sshd >/dev/null; then
+    result "$(passes keys_pinned)" "deploy user keys" "sshd reads them from $DEPLOY_KEYS, owned by root"
+  fi
   if ((RELEASE_PORT)); then
     result "$(passes release_port_listening)" "release port" \
       "only the ssh service listens on $RELEASE_PORT ($(echo $(port_holders "$RELEASE_PORT")); $SSHD_DROPIN)"
@@ -468,6 +510,7 @@ main() {
     install_engine
     install_units
     configure_release_port
+    pin_deploy_keys
     ((FRESH_DOCKER)) || say "note: an existing Docker keeps its daemon.json; add a log size limit there if 'container logs' fails"
   fi
   check

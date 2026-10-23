@@ -297,8 +297,10 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
   - `none`: tag only.
 - **`pakem setup host <target> --project-dir DIR`** is how a device is allowed (area 2);
   agents that need it get that one line as their owner action.
-- **`pakem host allow-device <host> [--project-dir] [--switch-from-registry]`** (owner's
-  admin login, terminal only) does only the last part, for one more project later: it runs
+- **`pakem host allow-device <host> [--project-dir] [--switch-from-registry] [--device
+  builder-<project> --key FILE]`** (owner's admin login, terminal only) does only the last
+  part, for one more project later, for this device or, with `--device` and `--key`, for a
+  shared builder's own key for that project: it runs
   `af_receive.py authorize` as root,
   which writes a direct host config and deploy base for every environment the project's
   `deploy/release.toml` declares, the device key's forced-command line listing the

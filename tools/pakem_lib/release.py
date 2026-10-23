@@ -507,9 +507,11 @@ def run_host_allow_device(args) -> int:
     framework = Framework(Path(args.root))
     project = read_project(Path(args.project_dir))
     record = resolve_host(args.host)
-    ensure(framework, ("ssh", "device-key"), args, "pakem host allow-device")
-    device = device_label()
-    arguments = authorize_arguments(project, record.deploy_root, record.proxy, args.switch_from_registry)
+    builder_key = builder_public_key(args, project)
+    ensure(framework, ("ssh",) if builder_key else ("ssh", "device-key"), args, "pakem host allow-device")
+    device = args.device if builder_key else device_label()
+    arguments = authorize_arguments(project, record.deploy_root, record.proxy, args.switch_from_registry,
+                                    device=device, key=builder_key)
     print(f"pakem host allow-device {record.name}: device {device} may release {project.name}")
     print(f"  sign in to {record.target} with your own login")
     print(
@@ -522,6 +524,8 @@ def run_host_allow_device(args) -> int:
         print("Plan only: nothing changed.")
         return EXIT_DONE
     words = ["pakem", "host", "allow-device", args.host, "--project-dir", str(project.root)]
+    if builder_key:
+        words += ["--device", device, "--key", args.key]
     if args.switch_from_registry:
         words.append("--switch-from-registry")
     require_terminal(shlex.join(words))
@@ -529,11 +533,28 @@ def run_host_allow_device(args) -> int:
     code = _admin(record, arguments)
     if code != 0:
         raise PakemError(f"allowing the device failed on {record.target} with exit {code}; see the lines above")
-    if project.name not in record.projects:
+    if builder_key is None and project.name not in record.projects:
+        # Only this device's own permissions are recorded here.
         record.projects.append(project.name)
     save_host(record)
     print(f"Device {device} may release {project.name} on {record.name}.")
     return EXIT_DONE
+
+
+def builder_public_key(args, project) -> str | None:
+    """A shared builder (a CI runner, a client platform) gets one key per project (ADR 0010
+    decision 8), so its name is `builder-<project>`."""
+    if args.key is None:
+        if args.device is not None:
+            raise PakemError("--device names a shared builder's key; pass its public key with --key FILE")
+        return None
+    expected = f"builder-{project.name}"
+    if args.device != expected:
+        raise PakemError(f"a shared builder's key for {project.name} is named {expected}: pass --device {expected}")
+    words = Path(args.key).expanduser().read_text(encoding="utf-8").split()
+    if len(words) < 2 or words[0] != "ssh-ed25519":
+        raise PakemError(f"{args.key} is not an ssh-ed25519 public key")
+    return " ".join(words[:2])
 
 
 def run_host_revoke_device(args) -> int:
