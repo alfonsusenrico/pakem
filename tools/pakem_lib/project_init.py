@@ -68,8 +68,9 @@ VISIBILITIES = ("private", "public")
 ENVIRONMENT_SETS = {"production": ["production"], "staging,production": ["staging", "production"]}
 BOOTSTRAP_SUBJECT = "chore: bootstrap project"
 ADOPT_BRANCH = "chore/adopt-pakem"
-# CI jobs on private repositories run on the owner's self-hosted runner (ADR 0010).
-SELF_HOSTED = "[self-hosted, linux, x64, pakem]"
+# CI jobs on private repositories run on the owner's self-hosted runner (ADR 0010). One custom
+# label: the templates pass `runner` to `runs-on` as a single string, and only that runner has it.
+SELF_HOSTED = "pakem"
 HOSTED = "ubuntu-24.04"
 PYTHON_DEV_TOOLS = ("ruff", "pyright", "pytest")
 NODE_DEV_TOOLS = (
@@ -234,8 +235,13 @@ def ci_text(facts: Facts) -> str:
         lines += ["", "  security:", "    uses: ./.github/workflows/security.yml", "    with:",
                   f'      {directory}: "."', f"      runner: {json.dumps(runner)}"]
     if "database" in facts.capabilities:
+        test = {"python": "uv run pytest", "node": "npm test"}[facts.stack]
         lines += ["", "  database:", "    uses: ./.github/workflows/database.yml", "    with:",
-                  f"      stack: {facts.stack}", f"      runner: {json.dumps(runner)}"]
+                  f"      stack: {facts.stack}",
+                  "      # pakem:stub - the project's migration command (gap migrations.rule); fails until set.",
+                  "      migrate_cmd: echo 'set migrate_cmd in .github/workflows/ci.yml' >&2; exit 1",
+                  f"      test_cmd: {test}",
+                  f"      runner: {json.dumps(runner)}"]
     return "\n".join(lines) + "\n"
 
 

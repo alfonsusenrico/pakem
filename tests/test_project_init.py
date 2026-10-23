@@ -91,7 +91,9 @@ class InitTests(ProjectTestCase):
         settings = tomllib.loads((self.repo / "deploy" / "settings.toml").read_text())
         self.assertEqual(contracts.validate_settings_manifest(settings), [])
         ci = (self.repo / ".github" / "workflows" / "ci.yml").read_text()
-        self.assertIn('runner: "[self-hosted, linux, x64, pakem]"', ci)
+        self.assertIn('runner: "pakem"', ci, "one label: a bracketed string would match no runner")
+        self.assertIn("migrate_cmd:", ci)
+        self.assertIn("test_cmd: uv run pytest", ci)
         self.assertIn('tags: ["v*"]', ci)
         for name in ("verify-python.yml", "security.yml", "database.yml"):
             self.assertTrue((self.repo / ".github" / "workflows" / name).is_file(), name)
