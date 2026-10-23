@@ -25,6 +25,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .common import (
+    CheckFailed,
     CommandBusy,
     CommandRefused,
     Framework,
@@ -152,7 +153,7 @@ def plan_update(framework: Framework, manifest: dict) -> tuple[list[tuple[str, l
         raise CommandRefused(f"the framework checkout {display_path(root)} has uncommitted changes")
     fetch = refresh(root, force=True)
     if fetch.error:
-        raise PakemError(f"could not fetch {REMOTE}: {fetch.error}")
+        raise CheckFailed(f"could not fetch {REMOTE}: {fetch.error}")
     target = target_for(root, follows)
     if target is None:
         raise PakemError(f"no release on {REMOTE}/{INSTALL_BRANCH} found")
@@ -190,6 +191,11 @@ def run_update(args) -> int:
             print(f"pakem update: {before.get('framework_version')} -> {target.version} ({target.ref})")
             for description, _ in steps:
                 print(f"  {description}")
+            if before.get("framework_commit"):
+                # What the install will change, before the owner confirms it.
+                groups = summarize_changes(changed_paths(framework.root, before["framework_commit"], target.commit))
+                if groups:
+                    print(f"  changes: {', '.join(groups)}")
         if args.plan:
             result["status"] = "planned"
             result["done"] = [description for description, _ in steps]

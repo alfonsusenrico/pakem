@@ -153,6 +153,7 @@ class UpdateTests(StatusUpdateTestCase):
         self.assert_ok(planned)
         self.assertIn("fast-forward", planned.stdout)
         self.assertIn("pakem install --apply --hosts claude", planned.stdout)
+        self.assertIn("changes: kernel, skill demo-skill", planned.stdout, "the owner sees what changes first")
         self.assertNotEqual(self.head(), upstream, "--plan changes nothing")
 
         updated = self.pakem("update", "--yes")
@@ -167,6 +168,29 @@ class UpdateTests(StatusUpdateTestCase):
         again = self.pakem("update", "--yes")
         self.assert_ok(again)
         self.assertIn("nothing to do", again.stdout)
+
+    def test_a_failed_fetch_is_a_failed_check(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        git(self.framework, "remote", "set-url", "origin", str(self.base / "missing.git"), home=self.home)
+        completed = self.pakem("update", "--yes")
+        self.assert_fails(completed, code=5)
+        self.assertIn("could not fetch origin", completed.stderr)
+
+    def test_status_reports_a_broken_config_and_still_exits_0(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        write(self.home / ".config" / "pakem" / "config.toml", "update = [\n")
+        completed = self.pakem("status")
+        self.assert_ok(completed)
+        self.assertIn("Updates by agents: unknown (invalid TOML", completed.stdout)
+
+    def test_an_install_from_an_unmerged_branch_says_so(self) -> None:
+        git(self.framework, "switch", "-q", "-c", "feat/try", home=self.home)
+        write(self.framework / "kernel" / "KERNEL.md", (self.framework / "kernel" / "KERNEL.md").read_text() + "\nTrial.\n")
+        git(self.framework, "commit", "-q", "-am", "feat: try", home=self.home)
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude", "--allow-unmerged"))
+        line = self.pakem("status", "--offline").stdout.splitlines()[0]
+        self.assertIn("update check off", line)
+        self.assertIn("is not on origin/main (an unmerged branch)", line)
 
     def test_update_refreshes_recorded_guardrails(self) -> None:
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
@@ -265,7 +289,7 @@ class HookTests(StatusUpdateTestCase):
 
         notice = self.hook("prompt", {"session_id": "abc-1"})
         self.assert_ok(notice)
-        self.assertIn("Re-read before continuing: ~/.claude/CLAUDE.md", notice.stdout)
+        self.assertIn("Re-read before continuing (the `pakem-update` skill does this): ~/.claude/CLAUDE.md", notice.stdout)
         self.assertNotIn(".codex", notice.stdout, "only the hook's own host is named")
         self.assertEqual(self.hook("prompt", {"session_id": "abc-1"}).stdout, "", "said once")
 
@@ -338,7 +362,7 @@ class OtherHostHookTests(StatusUpdateTestCase):
         self.assertRegex(start.stdout, r"Pakem 0\.2\.0 \([0-9a-f]{7}\) is up to date")
         self.reinstall_with_new_kernel()
         notice = self.hook_for("codex", "prompt", {"session_id": "codex-1", "prompt": "hi"})
-        self.assertIn("Re-read before continuing: ~/.codex/AGENTS.md", notice.stdout)
+        self.assertIn("Re-read before continuing (the `pakem-update` skill does this): ~/.codex/AGENTS.md", notice.stdout)
         self.assertNotIn(".claude", notice.stdout)
 
     def test_antigravity_hooks_answer_with_inject_steps(self) -> None:
