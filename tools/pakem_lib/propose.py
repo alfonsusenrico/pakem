@@ -15,8 +15,12 @@ decision 2026-10-23: one place to review the reasoning and the change together):
   commit on the same pull request (history is never rewritten).
 - `reject` records the owner's reason and closes the pull request; closed proposals stay
   searchable, so the idea is not raised again.
-- The owner's merge accepts it; then `pakem update` loads it for every agent (ADR 0007 as
-  amended 2026-10-22). Version releases still batch the CHANGELOG.
+- The owner's merge accepts it; then `pakem update`, on the owner's instruction, loads it
+  for every agent (ADR 0007 as amended 2026-10-22). Version releases still batch the CHANGELOG.
+
+The framework repository is public, so a proposal's text and change are scanned for private
+names, the owner's hosts, addresses, and home paths first, and the text is shown before
+anything is pushed.
 """
 
 from __future__ import annotations
@@ -32,7 +36,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from .common import EXIT_DONE, CheckFailed, CommandRefused, Framework, PakemError, run_git
+from .common import EXIT_DONE, CheckFailed, CommandRefused, Framework, PakemError, confirm_steps, run_git
+from .privacy import Scanner
 from .requirements import ensure
 
 LABEL = "proposal"
@@ -42,6 +47,8 @@ HOMES = ("kernel", "skill", "reference", "template", "tooling", "adr")
 GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 TEST_COMMAND = (sys.executable, "-m", "unittest", "discover", "-s", "tests")
 SLUG_WORDS = 6
+COMMIT_TYPES = ("docs", "feat", "fix", "refactor", "ci", "chore")
+SUBJECT_LIMIT = 72
 
 
 @dataclass
@@ -56,6 +63,7 @@ class Proposal:
     enforcement: str
     project: str
     diff: str
+    commit_type: str = "docs"
 
     @property
     def slug(self) -> str:
@@ -66,11 +74,17 @@ class Proposal:
     def branch(self) -> str:
         return f"docs/proposal-{self.slug}"
 
+    def subject(self, prefix: str = "") -> str:
+        """A Conventional Commits subject within 72 characters, cut at a word."""
+        start = f"{self.commit_type}: {prefix}"
+        return start + shorten(self.title, SUBJECT_LIMIT - len(start))
+
     def body(self) -> str:
         evidence = "\n".join(f"- {item}" for item in self.evidence) or "- (none given)"
         return "\n".join([
             MARKER,
-            f"Proposed from **{self.project}** on {date.today().isoformat()} with `pakem propose`.",
+            f"Proposed from {f'**{self.project}**' if self.project else 'a project'} on "
+            f"{date.today().isoformat()} with `pakem propose`.",
             "",
             "## Rule", "", self.rule, "",
             "## Case", "", self.case, "",
@@ -82,8 +96,15 @@ class Proposal:
             "## Review", "",
             "The change is this pull request (lint and unit tests passed on its branch). Merge to accept; "
             "ask for changes in the session that proposed it (`pakem propose revise`); or reject with the "
-            "reason (`pakem propose reject`). After a merge, run `pakem update`.",
+            "reason (`pakem propose reject`). After a merge, `pakem update` is due on each device.",
         ]) + "\n"
+
+
+def shorten(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit + 1].rsplit(" ", 1)[0].rstrip(" ,;:")
+    return cut if cut else text[:limit]
 
 
 def framework_repository(framework: Framework) -> str:
@@ -120,8 +141,26 @@ def proposal_from_args(args) -> Proposal:
     return Proposal(
         title=args.title, rule=args.rule, case=args.case, why_general=args.why_general, home=args.home,
         evidence=args.evidence or [], replaces=args.replaces or "", enforcement=args.enforcement or "",
-        project=args.project or Path.cwd().name, diff=read_diff(args.change_file),
+        project=args.project or "", diff=read_diff(args.change_file),
+        commit_type=args.type or ("feat" if args.home == "tooling" else "docs"),
     )
+
+
+def refuse_private_text(proposal: Proposal) -> None:
+    """The framework repository is public: nothing private goes into a proposal's text or
+    change (owner decision 2026-10-23). Places are named, values never."""
+    scanner = Scanner.for_kinds(names=True, hosts=True, addresses=True, homes=True)
+    places = [f"body line {number}: {', '.join(kinds)}" for number, kinds in scanner.findings(proposal.body())]
+    for number, line in enumerate(proposal.diff.splitlines(), start=1):
+        if line.startswith("+") and not line.startswith("+++"):
+            kinds = scanner.kinds_in(line)
+            if kinds:
+                places.append(f"change line {number}: {', '.join(kinds)}")
+    if places:
+        raise CommandRefused(
+            "the proposal would publish private text to the public framework repository; rewrite it in generic "
+            "terms (\"a client project\", \"the server\"):\n  " + "\n  ".join(places)
+        )
 
 
 def similar(repository: str, title: str) -> list[str]:
@@ -178,6 +217,7 @@ def run_propose_new(args) -> int:
     ensure(framework, ("git", "gh", "github-login"), args, "pakem propose new")
     repository = framework_repository(framework)
     proposal = proposal_from_args(args)
+    refuse_private_text(proposal)
     earlier = similar(repository, proposal.title)
     if earlier and not args.new_subject:
         raise CommandRefused(
@@ -196,15 +236,18 @@ def run_propose_new(args) -> int:
         print(proposal.body())
         print(f"Plan only: the change applies to main; branch {proposal.branch} and the pull request were not made.")
         return EXIT_DONE
+    print(proposal.body())
+    print(f"Pushes branch {proposal.branch} to the public repository {repository} and opens this pull request.")
+    confirm_steps(args.yes, "pakem propose new")
     with Worktree(framework, f"proposal-{proposal.slug}") as worktree:
         run_git(framework.root, "worktree", "add", "--quiet", "-B", proposal.branch, str(worktree), "origin/main")
         apply_change(worktree, proposal)
         check_change(worktree)
-        run_git(worktree, "commit", "--quiet", "-m", f"docs: {proposal.title[:60]}")
+        run_git(worktree, "commit", "--quiet", "-m", proposal.subject())
         run_git(worktree, "push", "--quiet", "-u", "origin", proposal.branch)
         ensure_labels(repository)
         created = gh("pr", "create", "--repo", repository, "--base", "main", "--head", proposal.branch,
-                     "--label", LABEL, "--title", f"docs: {proposal.title[:60]}", "--body-file", "-",
+                     "--label", LABEL, "--title", proposal.subject(), "--body-file", "-",
                      data=proposal.body())
     print(f"Proposal for the owner's review (merge to accept): {created.stdout.strip()}")
     return EXIT_DONE
@@ -228,6 +271,10 @@ def run_propose_revise(args) -> int:
     if current["state"].lower() != "open":
         raise CommandRefused(f"#{args.number} is {current['state'].lower()}; only an open proposal can be revised")
     proposal = proposal_from_args(args)
+    refuse_private_text(proposal)
+    print(proposal.body())
+    print(f"Pushes a new commit to {current['headRefName']} on the public repository {repository}.")
+    confirm_steps(args.yes, "pakem propose revise")
     branch = current["headRefName"]
     run_git(framework.root, "fetch", "--quiet", "origin")
     with Worktree(framework, f"proposal-{args.number}") as worktree:
@@ -241,9 +288,9 @@ def run_propose_revise(args) -> int:
                 raise CheckFailed(f"the earlier change could not be undone on {branch}: {undone.stderr.strip()}")
         apply_change(worktree, proposal)
         check_change(worktree)
-        run_git(worktree, "commit", "--quiet", "-m", f"docs: revise {proposal.title[:52]}")
+        run_git(worktree, "commit", "--quiet", "-m", proposal.subject("revise "))
         run_git(worktree, "push", "--quiet", "origin", branch)
-    gh("pr", "edit", str(args.number), "--repo", repository, "--title", f"docs: {proposal.title[:60]}",
+    gh("pr", "edit", str(args.number), "--repo", repository, "--title", proposal.subject(),
        "--body-file", "-", data=proposal.body())
     gh("pr", "comment", str(args.number), "--repo", repository, "--body", "Revised after the owner's review.")
     print(f"Proposal #{args.number} revised: {current['url']}")
@@ -308,9 +355,12 @@ def add_parser(commands) -> None:
         parser.add_argument("--evidence", action="append", help="file, commit, or link (repeatable)")
         parser.add_argument("--replaces", help="the rule it replaces or makes obsolete")
         parser.add_argument("--enforcement", help="a check that could enforce it instead of prose, if any")
-        parser.add_argument("--project", help="the project it came from (default: this directory's name)")
+        parser.add_argument("--project", help="the project it came from, if its name may be public "
+                                               "(default: \"a project\")")
+        parser.add_argument("--type", choices=COMMIT_TYPES,
+                            help="commit type (default: feat for tooling, else docs)")
         parser.add_argument("--plan", action="store_true", help="check the change and print the text; send nothing")
-        parser.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+        parser.add_argument("--yes", action="store_true", help="push without asking (after the owner saw the text)")
         parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
         if name == "new":
             parser.add_argument("--new-subject", action="store_true", help="it differs from the similar proposals found")

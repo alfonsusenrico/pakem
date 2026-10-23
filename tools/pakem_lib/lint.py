@@ -13,10 +13,11 @@ from urllib.parse import unquote
 
 from .capabilities import registry_problems
 from .changelog import UNRELEASED_HEADING, load_fragments, unreleased_bullet_lines
-from .common import PakemError, Framework, Report, read_text
+from .common import PakemError, Framework, Report, display_path, read_text
 from .frontmatter import parse_frontmatter
 from .hosts import load_targets
 from .kernel import render_kernel, size_violations
+from .privacy import Scanner, private_names_path
 from .profiles import Profile, load_profile
 
 KERNEL_WARN_CHARS = 9_500
@@ -299,6 +300,7 @@ class Linter:
         self.check_status_headers()
         self.check_markdown_links()
         self.check_banned_patterns()
+        self.check_private_names()
         self.check_template()
         self.check_changelog()
         self.check_change_fragments()
@@ -445,6 +447,20 @@ class Linter:
         if not self.banned_patterns:
             return
         scan_banned_patterns(self.banned_scan_files(), self.root, self.banned_patterns, self.report)
+
+    def check_private_names(self) -> None:
+        """Client and private names from this device's list (never in the public tree)."""
+        scanner = Scanner.for_kinds(names=True)
+        if not scanner.patterns:
+            return
+        for path in self.banned_scan_files():
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            for number, _ in scanner.findings(text):
+                self.report.error(f"{self.rel(path)}:{number}: [private-name] a name from "
+                                  f"{display_path(private_names_path())}; use generic wording")
 
     def check_template(self) -> None:
         template = self.framework.project_template_path

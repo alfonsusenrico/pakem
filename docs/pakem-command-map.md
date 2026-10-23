@@ -304,16 +304,25 @@ proposal is a pull request, 2026-10-23, so the reasoning and the change are revi
 place and the owner's merge is the acceptance).
 
 - **Flow:** the agent discusses a case with the owner in the project where it came up,
-  then runs `pakem propose new` there and gives the owner the link; the owner merges it
+  then runs `pakem propose new --plan` there, shows the owner the text, runs it again with
+  `--yes` once the owner agrees, and gives the owner the link; the owner merges it
   (accept), asks for changes (the agent runs `revise`), or rejects it (the agent runs
-  `reject` with the reason); after a merge the agent runs `pakem update`.
+  `reject` with the reason). After a merge the agent tells the owner `pakem update` is
+  due and runs it only on the owner's instruction or with `update = "apply"` (ADR 0011
+  decision 7).
 - **`pakem propose new --title --rule --case --why-general --home
   kernel|skill|reference|template|tooling|adr --change-file DIFF [--evidence ...]
-  [--replaces] [--enforcement] [--project] [--plan] [--new-subject]`:** refuses when
-  earlier proposals look like the same subject (unless `--new-subject`); applies the change
+  [--replaces] [--enforcement] [--project] [--type] [--plan] [--yes] [--new-subject]`:**
+  refuses (exit `6`) when its text or added lines hold a name from the device-local
+  `~/.config/pakem/private-names.txt`, a host, address, or port from `hosts.toml`, a
+  non-documentation IP address, or a home directory path, naming each place but never the
+  value; the project is "a project" unless `--project` names it. Refuses when
+  earlier proposals look like the same subject (unless `--new-subject`); prints the text
+  and asks before it pushes (`--yes` skips the question); applies the change
   on `docs/proposal-<slug>` in a worktree beside the framework checkout (which stays on
   `main`), adds its change fragment, runs `pakem lint` and the unit tests, pushes, and opens
-  a pull request labelled `proposal` with the owner's `gh` login. A failing check pushes
+  a pull request labelled `proposal` with the owner's `gh` login, its subject `docs:` (or
+  `feat:` for tooling, or `--type`) cut at a word within 72 characters. A failing check pushes
   nothing and keeps the worktree for a look; `--plan` checks that the change applies and
   prints the text.
 - **`revise <n>`** adds a commit to the proposal's branch (main merged in, the old change
