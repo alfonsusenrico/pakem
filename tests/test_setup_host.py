@@ -38,6 +38,10 @@ case "$target" in
     if [ -e "{state}/af-shell" ]; then exec sh -c "$*"; fi
     echo '{{"project": "demo", "environments": {{}}}}'; exit 0 ;;
 esac
+# Tailscale SSH's check mode: before the login, a link on stderr (set state/check-link).
+if [ "$*" = true ] && [ -e "{state}/check-link" ]; then
+  echo "# Tailscale SSH requires an additional check. To authenticate, visit: https://login.example.test/a/check" >&2
+fi
 PATH="{remote_bin}:$PATH" exec sh -c "$*"
 """
 FAKE_SUDO = """#!/bin/sh
@@ -146,6 +150,16 @@ class SetupHostTests(IsolatedTestCase):
         self.assertEqual(code, 5, output)
         self.assertIn("prod", self.hosts())
         self.assertNotIn("set_up_at", self.hosts()["prod"], "a host whose check failed is not marked as set up")
+
+    def test_what_the_host_asks_at_sign_in_is_shown(self) -> None:
+        (self.state / "check-link").touch()
+        code, output = self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--yes")
+        self.assertEqual(code, 0, output)
+        self.assertIn("To authenticate, visit: https://login.example.test/a/check", output)
+        sign_in = output.index("signing in to admin@203.0.113.7")
+        self.assertLess(sign_in, output.index("af-bootstrap") if "af-bootstrap" in output else len(output))
+        first = next(call for call in self.calls() if call.startswith("ssh -o ControlPath"))
+        self.assertTrue(first.endswith("admin@203.0.113.7 true"), "the first connection is the visible sign-in")
 
     def test_a_target_is_never_read_as_an_ssh_option(self) -> None:
         for target in ("-oProxyCommand=touch pwned", "admin@host name"):
