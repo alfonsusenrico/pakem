@@ -194,6 +194,17 @@ class Remote:
     def __init__(self, record: HostRecord, control_dir: Path) -> None:
         self.record = record
         self.control = control_dir / "%C"
+        self.sign_in()
+
+    def sign_in(self) -> None:
+        """Open the shared connection in the foreground, on the owner's terminal: whatever
+        the host asks first (a password, a new host key, Tailscale SSH's check link, which
+        arrives on stderr) must be seen. Later calls reuse the connection and ask nothing."""
+        print(f"  signing in to {self.record.target}; answer any prompt, or open any link it shows", flush=True)
+        completed = subprocess.run(self._command("true", tty=False))
+        if completed.returncode != 0:
+            raise PakemError(f"could not sign in to {self.record.target} (ssh exit {completed.returncode}); "
+                             "see the lines above")
 
     def _command(self, remote: str, tty: bool) -> list[str]:
         command = [
