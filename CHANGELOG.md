@@ -5,10 +5,13 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
-## [2.2.0] - 2026-10-23
+## [2.2.0] - 2026-10-24
 
 ### Added
 
+- The framework repository has CI: lint and the unit tests on Python 3.11 and 3.14 for
+  every pull request and `main`, on GitHub-hosted runners (actions pinned by SHA). A test
+  used f-string syntax that needs Python 3.12; it now runs on 3.11, the oldest supported.
 - `--plan` and `--json` on every command: `setup key` and `host add` gain `--plan`; with
   `--json`, `setup key`, `setup host`, `setup check --host`, and the `host` commands print
   one result document on stdout (`{status, done, owner_actions, gaps, checks}`, plus
