@@ -70,7 +70,7 @@ class FakeBuilder:
         if self.fails:
             raise af_receive.ReceiveError("building web failed", af_engine.EXIT_FAILED)
         self.built.append(commit)
-        return {image["name"]: f"sha256:{hashlib.sha256(f'{image['name']}-{commit}'.encode()).hexdigest()}"
+        return {image["name"]: "sha256:" + hashlib.sha256(f"{image['name']}-{commit}".encode()).hexdigest()
                 for image in config["images"]}
 
 
