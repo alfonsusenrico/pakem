@@ -1,0 +1,39 @@
+# CI for the framework itself: lint and the unit tests on every pull request and on main.
+# The repository is public, so jobs run on GitHub-hosted runners only; the self-hosted
+# runner never serves a public repository (ADR 0010). Actions are pinned by commit SHA
+# (skills/release-delivery/assets/ci/PINS.md).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported version (AGENTS.md: Python 3.11+) and a current one.
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Python ${{ matrix.python }}
+        run: uv python install "${{ matrix.python }}"
+      - name: Lint
+        run: uv run --no-project --python "${{ matrix.python }}" python tools/pakem lint
+      - name: Unit tests
+        run: uv run --no-project --python "${{ matrix.python }}" python -m unittest discover -s tests
