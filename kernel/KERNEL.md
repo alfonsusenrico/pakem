@@ -143,8 +143,8 @@ Load the matching skill first; if it is unavailable, say so and apply the rules 
 
 ## 9. Communication
 
-- Write concise, grammatical professional prose. Preserve exact identifiers,
-  errors, units, conditions, and uncertainty.
+- Write concise, grammatical professional prose, without semicolon joins in user-facing
+  text. Preserve exact identifiers, errors, units, conditions, and uncertainty.
 - Give findings and decisions, not routine tool narration. When blocked, name the
   exact blocker and the smallest input or authority needed. When the outcome and
   checks are complete, report and stop.

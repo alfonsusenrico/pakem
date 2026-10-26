@@ -1,0 +1,1 @@
+- No semicolon joins in user-facing text.
