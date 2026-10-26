@@ -352,6 +352,26 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         self.assert_ok(completed)
         self.assertIn("framework git hooks are not active here (core.hooksPath is unset)", completed.stdout)
 
+    def test_an_unfiltered_prune_in_a_pipeline_warns(self) -> None:
+        self.agents_path.write_text(self.synced + "Capabilities: none\n")
+        write(self.repo / ".gitlab-ci.yml", (
+            "deploy:\n  script:\n"
+            "    # never docker system prune here\n"
+            "    - docker image prune -f\n"
+            "    - docker image prune -f --filter until=24h\n"
+            "    - docker image prune -f --filter label=project=app\n"
+            "    - docker image rm app:old\n"
+        ))
+        write(self.repo / "deploy" / "clean.sh", "docker system prune \\\n  --all --force\n")
+        write(self.repo / "docs" / "ops.md", "Never run docker image prune on the server.\n")
+        completed = self.pakem("project", "check", str(self.repo))
+        self.assert_ok(completed)
+        warnings = [line for line in completed.stdout.splitlines() if "without a label filter" in line]
+        self.assertEqual(len(warnings), 3, completed.stdout)
+        for place in (".gitlab-ci.yml line 4: `docker image prune`", ".gitlab-ci.yml line 5:",
+                      "deploy/clean.sh line 1: `docker system prune`"):
+            self.assertIn(place, completed.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
