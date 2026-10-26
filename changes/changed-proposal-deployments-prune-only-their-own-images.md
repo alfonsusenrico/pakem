@@ -1,1 +1,0 @@
-- Deployments prune only their own images.
