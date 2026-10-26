@@ -197,6 +197,19 @@ class ProposeTests(ProposeTestCase):
         self.assertEqual(git(self.framework, "status", "--short", home=self.home).stdout, "")
         self.assertEqual(git(self.framework, "worktree", "list", home=self.home).stdout.count("\n"), 1)
 
+    def test_a_change_with_its_own_note_gets_no_second_one(self) -> None:
+        note = ("diff --git a/changes/changed-readme-scope.md b/changes/changed-readme-scope.md\n"
+                "new file mode 100644\n--- /dev/null\n+++ b/changes/changed-readme-scope.md\n"
+                "@@ -0,0 +1 @@\n+- The README shows the project.\n")
+        self.diff.write_text(DIFF + note)
+        self.assert_ok(self.propose("new", *self.fields()))
+        files = git(self.origin, "show", "--name-only", "--format=", BRANCH, home=self.home).stdout.split()
+        self.assertEqual([name for name in files if name.startswith("changes/")], ["changes/changed-readme-scope.md"])
+        self.diff.write_text(REVISED + note)
+        self.assert_ok(self.propose("revise", "1", *self.fields()))
+        changed = git(self.origin, "diff", "--name-only", "main", BRANCH, "--", "changes/", home=self.home).stdout
+        self.assertEqual(changed.split(), ["changes/changed-readme-scope.md"], "a revision adds none either")
+
     def test_a_change_that_does_not_apply_is_refused(self) -> None:
         self.diff.write_text(DIFF.replace("Write docs.", "Something else."))
         completed = self.propose("new", *self.fields())

@@ -187,7 +187,13 @@ def apply_change(worktree: Path, proposal: Proposal) -> None:
                              capture_output=True, text=True)
     if applied.returncode != 0:
         raise CommandRefused(f"the drafted change does not apply to the framework's main: {applied.stderr.strip()}")
-    fragment = worktree / "changes" / f"changed-proposal-{proposal.slug}.md"
+    # A drafted change that already adds its own note keeps it: one note per change, or the
+    # release lists the change twice.
+    drafted_notes = run_git(worktree, "diff", "--cached", "--name-only", "--diff-filter=A", "origin/main", "--",
+                            "changes/").stdout.split()
+    if drafted_notes:
+        return
+    fragment =worktree / "changes" / f"changed-proposal-{proposal.slug}.md"
     fragment.write_text(f"- {proposal.title}.\n", encoding="utf-8")
     run_git(worktree, "add", str(fragment))
 
