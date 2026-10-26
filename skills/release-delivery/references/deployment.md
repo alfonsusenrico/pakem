@@ -29,7 +29,11 @@ Sources: owner release pipelines (2026); comparison of five owner pipelines (202
    failure restore the previous release automatically.
 9. **Public check**: verify the public URL serves the new revision; then clean up old
    releases (keep 3 on staging, 6 on production), removing their images, never the
-   running ones.
+   running ones. Remove only images this project built, by their tags or by a label
+   every image it builds carries (`docker image prune --filter label=...`); never run
+   an unfiltered `docker image prune` or `docker system prune`, which deletes other
+   projects' images on a shared host and, on a disk mounted with online `discard`,
+   stalls every writer while the freed space is trimmed.
 10. **Rollback**: a manual job for every environment that redeploys a previous release
     commit through the same steps; schema changes across the rollback boundary need
     explicit confirmation.
