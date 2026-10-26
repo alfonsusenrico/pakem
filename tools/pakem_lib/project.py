@@ -48,6 +48,12 @@ PROJECT_STATE_FILE = "PROJECT_STATE.md"
 PROJECT_STATE_WARN_CHARS = 8_000
 PROJECT_STATE_ERROR_CHARS = 16_000
 RESEARCH_DIR = "research"
+MAX_SCANNED_FILE = 512 * 1024
+# CI pipelines and the scripts they run, where image clean-up lives.
+PIPELINE_PATHSPECS = (".github/workflows/*", ".gitlab-ci.yml", "*.gitlab-ci.yml", ".gitlab/*", "*.sh",
+                      "Makefile", "justfile", "deploy/*", "scripts/*", "ci/*")
+PRUNE_PATTERN = re.compile(r"docker\s+(?:image|system)\s+prune\b(?P<options>.*)")
+LABEL_FILTER_PATTERN = re.compile(r"--filter[=\s]+[\"']?label=")
 
 
 def _insert_with_spacing(lines: list[str], index: int, block_lines: list[str]) -> None:
@@ -419,6 +425,43 @@ def _check_starters(repo: Path, report: Report) -> None:
         report.warn(f"{path} is still a starter stub (it carries `{STUB_MARKER}`)")
 
 
+def _logical_lines(text: str) -> list[tuple[int, str]]:
+    """Lines with shell continuations (a trailing backslash) joined, each with its first line number."""
+    joined: list[tuple[int, str]] = []
+    pending: tuple[int, str] | None = None
+    for number, line in enumerate(text.splitlines(), start=1):
+        start, before = pending if pending else (number, "")
+        if line.rstrip().endswith("\\"):
+            pending = (start, before + line.rstrip()[:-1] + " ")
+            continue
+        joined.append((start, before + line))
+        pending = None
+    if pending:
+        joined.append(pending)
+    return joined
+
+
+def _check_image_cleanup(repo: Path, report: Report) -> None:
+    """An unfiltered prune on a shared host deletes other projects' images and, on a disk
+    mounted with online discard, stalls every writer while the space is trimmed (2026-10-26)."""
+    if not is_git_work_tree(repo):
+        return
+    listed = run_git(repo, "ls-files", "--cached", "--others", "--exclude-standard", "--",
+                     *PIPELINE_PATHSPECS, check=False).stdout.splitlines()
+    for name in sorted(set(listed)):
+        path = repo / name
+        if not path.is_file() or path.is_symlink() or path.stat().st_size > MAX_SCANNED_FILE:
+            continue
+        for number, line in _logical_lines(path.read_text(encoding="utf-8", errors="replace")):
+            if line.lstrip().startswith("#"):
+                continue
+            found = PRUNE_PATTERN.search(line)
+            if found and not LABEL_FILTER_PATTERN.search(found.group("options")):
+                report.warn(f"{name} line {number}: `docker {found.group(0).split()[1]} prune` without a label "
+                            "filter removes other projects' images on a shared host; remove this project's "
+                            "images by tag, or prune with `--filter label=...` on a label its images carry")
+
+
 def check_repo(framework: Framework, repo: Path) -> Report:
     report = Report()
     agents_path = repo / AGENTS_FILE
@@ -451,10 +494,8 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     _check_project_files(repo, report)
     _check_hooks(repo, report)
     _check_starters(repo, report)
+    _check_image_cleanup(repo, report)
     return report
-
-
-MAX_SCANNED_FILE = 512 * 1024
 
 
 def check_public_text(repo: Path, report: Report) -> None:

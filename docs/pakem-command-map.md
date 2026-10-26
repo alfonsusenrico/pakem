@@ -244,7 +244,8 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   required gap that blocks release is open or pending (exit `4`).
 - **Check:** `pakem project check` (`AGENTS.md`: blocks, size, overrides, capabilities,
   `Delivery:`, billing approvals, home paths; `PROJECT_STATE.md` size, `research/`, the git
-  hooks, starter stubs; exit `6` when a public GitHub repository has self-hosted jobs; in a
+  hooks, starter stubs; a warning for each `docker image prune` or `docker system prune`
+  without a label filter in CI pipelines and deploy scripts; exit `6` when a public GitHub repository has self-hosted jobs; in a
   public repository, a warning for each tracked line naming a host or port from
   `hosts.toml` or a private name, values never printed), and
   `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
