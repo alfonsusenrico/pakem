@@ -87,12 +87,12 @@ def parse_fragment_text(text: str) -> tuple[list[str], list[str]]:
 def check_fragment(path: Path) -> tuple[Fragment | None, list[str]]:
     """Parse one fragment file; return (fragment or None, problems)."""
     if not path.is_file():
-        return None, ["is not a regular file; fragments are changes/<type>-<kebab-topic>.md files"]
+        return None, ["is not a regular file. Fragments are changes/<type>-<kebab-topic>.md files"]
     problems: list[str] = []
     change_type = None
     match = FRAGMENT_NAME.match(path.name)
     if match is None:
-        problems.append("bad name; use changes/<type>-<kebab-topic>.md")
+        problems.append("bad name. Use changes/<type>-<kebab-topic>.md")
     elif match.group("type") not in CHANGE_TYPES:
         problems.append(f"unknown type '{match.group('type')}' (use one of: {', '.join(CHANGE_TYPES)})")
     else:
@@ -190,7 +190,7 @@ def legacy_entries(section: UnreleasedSection) -> dict[str, list[str]]:
             continue
         raise PakemError(
             f"{location}: text under {UNRELEASED_HEADING} that is neither a bullet entry nor a "
-            "### subsection; move it before releasing"
+            "### subsection. Move it before releasing"
         )
     for change_type, entry_lines in entries:
         groups[change_type].append("\n".join(entry_lines))

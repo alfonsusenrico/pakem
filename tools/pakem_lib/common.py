@@ -251,7 +251,7 @@ def confirm_steps(assume_yes: bool, command: str) -> None:
     if not sys.stdin.isatty():
         raise PakemError(f"pass --yes to run {command} without a prompt")
     if input("Apply these steps? [y/N] ").strip().lower() not in ("y", "yes"):
-        raise CommandRefused(f"{command} cancelled; nothing changed")
+        raise CommandRefused(f"{command} cancelled. Nothing changed")
 
 
 @dataclass(frozen=True)

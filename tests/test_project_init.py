@@ -146,7 +146,7 @@ class InitTests(ProjectTestCase):
     def test_without_a_terminal_every_fact_is_a_flag(self) -> None:
         completed = self.run_pakem("project", "init", str(self.repo), "--stack", "python", "--yes")
         self.assert_fails(completed, code=2)
-        self.assertIn("missing: --description --visibility --kind --delivery --environments --capabilities",
+        self.assertIn("Missing: --description --visibility --kind --delivery --environments --capabilities",
                       completed.stderr)
         self.assertFalse(self.repo.exists())
 
@@ -187,7 +187,7 @@ class InitTests(ProjectTestCase):
         self.assertEqual(git(self.repo, "rev-list", "--count", "HEAD", home=self.home).stdout.strip(), "1")
         again = self.run_pakem("project", "init", str(self.repo), "--description", "Demo service", "--yes")
         self.assert_fails(again, code=6)
-        self.assertIn("use `pakem project adopt`", again.stderr)
+        self.assertIn("Use `pakem project adopt`", again.stderr)
 
     def test_others_deliver_so_ci_but_no_deploy_files(self) -> None:
         flags = list(SERVICE)
@@ -281,7 +281,7 @@ class BootstrapPushTests(ProjectTestCase):
         self.commit("more.py", "feat: more code")
         rejected = self.push()
         self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("only *.md and docs/** may be pushed to main", rejected.stderr)
+        self.assertIn("Only *.md and docs/** may be pushed to main", rejected.stderr)
 
     def test_only_a_single_root_commit_with_that_subject(self) -> None:
         self.commit("app.py", "chore: start")

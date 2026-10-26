@@ -201,7 +201,7 @@ def _check_settings(repo: Path) -> str | None:
     if not named:
         return "deploy/settings.toml names no settings yet"
     if manifest == _toml(SERVICE_TEMPLATES / "settings.toml.tmpl"):
-        return "deploy/settings.toml is still the template; name the project's own settings"
+        return "deploy/settings.toml is still the template. Name the project's own settings"
     return None
 
 
@@ -262,7 +262,7 @@ def uses_client_ci(repo: Path) -> bool:
 def _check_ci_owner(repo: Path) -> str | None:
     if uses_client_ci(repo) or (repo / ".github" / "workflows" / "ci.yml").is_file():
         return None
-    return f".github/workflows/ci.yml is missing; restore it, or answer `{CLIENT_CI}: <where>`"
+    return f".github/workflows/ci.yml is missing. Restore it, or answer `{CLIENT_CI}: <where>`"
 
 
 def catalogue(facts: Facts) -> list[Gap]:
@@ -271,7 +271,7 @@ def catalogue(facts: Facts) -> list[Gap]:
         Gap(
             "language.text", True,
             "Which language do user-facing text and generated content use, and which number and date formats?",
-            "Agents write UI text, messages, and documents in it; guessing means rework.",
+            "Agents write UI text, messages, and documents in it. Guessing means rework.",
             ("English", "Indonesian", "both (say which where)"), "English",
             "AGENTS.md Language: line", "AGENTS.md has a filled Language: line", (), _check_language,
         ),
@@ -279,7 +279,7 @@ def catalogue(facts: Facts) -> list[Gap]:
     if facts.delivery == "others":
         gaps.append(Gap(
             CI_OWNER, True, "Does the project keep Pakem's CI, or does the client run their own?",
-            "Pakem writes CI for every project; a client with its own pipeline opts out, and that is recorded.",
+            "Pakem writes CI for every project. A client with its own pipeline opts out, and that is recorded.",
             ("pakem CI", f"{CLIENT_CI}: <where>"), "pakem CI", ".github/workflows/ci.yml, or this decision",
             "the Pakem ci.yml exists, or the decision names the client's CI", ("ci",), _check_ci_owner,
         ))
@@ -298,13 +298,13 @@ def catalogue(facts: Facts) -> list[Gap]:
         Gap(
             "settings.sources", True,
             "Which settings are placement (host facts), which are secrets, and which are committed defaults?",
-            "Each runtime name has exactly one source; secrets never enter files or images.",
+            "Each runtime name has exactly one source. Secrets never enter files or images.",
             ("list them per source",), None, "deploy/settings.toml",
             "settings.toml names every runtime setting with one source", ("deploy-setup", "release"), _check_settings,
         ),
         Gap(
             "network.shared", False, "Does it join another project's network, and under which service names?",
-            "Shared networks expose service names; bare names can resolve to the other project.",
+            "Shared networks expose service names. Bare names can resolve to the other project.",
             ("none", "joins <network> as <alias>"), "none", "deploy/release.toml + AGENTS.md project rules",
             "compose and AGENTS.md name the network and aliases", ("deploy-setup",),
         ),
@@ -319,7 +319,7 @@ def catalogue(facts: Facts) -> list[Gap]:
         gaps += [
             Gap(
                 "backup.restore", True, "How is the database backed up before migrations, and how is it restored?",
-                "Production with migrations requires a backup; a schema change is undone by a restore.",
+                "Production with migrations requires a backup. A schema change is undone by a restore.",
                 ("pg_dump in the backup hook", "custom"), "pg_dump in the backup hook",
                 "deploy/hooks/backup + docs/deployment.md", "deploy/hooks/backup is the project's own and executable",
                 ("release",), _check_backup,
@@ -472,7 +472,7 @@ def decisions_span(text: str, path: Path) -> tuple[int, int] | None:
     if len(starts) != 1 or len(ends) != 1 or ends[0] < starts[0]:
         raise PakemError(
             f"{display_path(path)} must hold the Open decisions markers once each, start before end, on their own "
-            f"lines (found {len(starts)} start and {len(ends)} end); fix it by hand, nothing changed"
+            f"lines (found {len(starts)} start and {len(ends)} end). Fix it by hand, nothing changed"
         )
     return starts[0], ends[0] + len(DECISIONS_END)
 
@@ -531,8 +531,8 @@ def run_decide(args) -> int:
     decisions = load_decisions(repo)
     if gap_id not in known and gap_id not in decisions and not args.question:
         raise CommandRefused(
-            f"{gap_id} is not one of this project's gaps ({', '.join(sorted(known))}); "
-            "record a new blocker with --question and --blocks"
+            f"{gap_id} is not one of this project's gaps ({', '.join(sorted(known))}). "
+            "Record a new blocker with --question and --blocks"
         )
     require_decision_markers(repo)
     modes = [bool(args.answer), bool(args.provisional), bool(args.pending)]
@@ -599,7 +599,7 @@ def gaps_report(repo: Path, as_json: bool) -> int:
             blocks = f" (blocks {', '.join(status.gap.blocks)})" if status.gap.blocks else ""
             print(f"  {marker}  {status.gap.id}: {detail}{blocks}")
         if unsettled:
-            print(f"{len(unsettled)} required gap(s) open; answer them with `pakem decide` (gap protocol).")
+            print(f"{len(unsettled)} required gap(s) open. Answer them with `pakem decide` (gap protocol).")
     return EXIT_GAPS if unsettled else EXIT_DONE
 
 

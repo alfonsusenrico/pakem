@@ -389,14 +389,14 @@ class PrepareTests(ReleaseHostTestCase):
         self.assertEqual(self.prepare(SHA_A)[0], 0)
         code, output = self.prepare(SHA_A)
         self.assertEqual(code, 0, output)
-        self.assertIn("already prepared; content verified", output)
+        self.assertIn("already prepared. Content verified", output)
 
     def test_same_commit_with_different_content_is_refused(self) -> None:
         self.assertEqual(self.prepare(SHA_A)[0], 0)
         before = (self.base() / "releases" / SHA_A / "source" / "message.txt").read_text()
         code, output = self.prepare(SHA_A, release_files(message="changed"))
         self.assertEqual(code, release_host.EXIT_INVALID)
-        self.assertIn("releases are immutable", output)
+        self.assertIn("Releases are immutable", output)
         self.assertEqual((self.base() / "releases" / SHA_A / "source" / "message.txt").read_text(), before)
 
     def test_a_modified_release_on_disk_is_detected(self) -> None:

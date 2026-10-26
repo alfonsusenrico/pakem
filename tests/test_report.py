@@ -64,7 +64,7 @@ class ReportTests(IsolatedTestCase):
         head = git(self.framework, "rev-parse", "HEAD", home=self.home).stdout.strip()
         self.assert_ok(self.report())
         text = (self.output / "latest.md").read_text()
-        self.assertIn(f"main @ {head[:12]}; no origin remote; merge state not checked", text)
+        self.assertIn(f"main @ {head[:12]}, no origin remote. Merge state not checked", text)
 
     def test_report_is_read_only_for_checked_repos(self) -> None:
         before = self.snapshot(self.org)

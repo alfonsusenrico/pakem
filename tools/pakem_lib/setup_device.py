@@ -55,7 +55,7 @@ def run_setup_key(args) -> int:
     if args.plan:
         private = device_key.private_path()
         if private.exists():
-            print(f"{display_path(private)} already exists; nothing to do")
+            print(f"{display_path(private)} already exists. Nothing to do")
         else:
             print(f"create {display_path(private)} " + ("with no passphrase" if args.no_passphrase else
                                                          "(ssh-keygen asks for its passphrase on your terminal)"))
@@ -72,20 +72,20 @@ def create_device_key(passphrase: bool) -> int:
     device = detect_device()
     private, public = device_key.private_path(), device_key.public_path()
     if private.exists() and public.exists():
-        print(f"{display_path(private)} already exists ({device_key.fingerprint(public)}); nothing to do")
+        print(f"{display_path(private)} already exists ({device_key.fingerprint(public)}). Nothing to do")
         return EXIT_DONE
     if not sys.stdin.isatty():
         # With a passphrase, ssh-keygen needs the owner to type it; without one, leaving the
         # key unprotected is the owner's choice, so an agent never makes it.
         raise OwnerActionRequired(SETUP_KEY_ACTION if passphrase else
-                                  "OWNER ACTION REQUIRED: a device key without a passphrase is your choice; run "
+                                  "OWNER ACTION REQUIRED: a device key without a passphrase is your choice. Run "
                                   "`pakem setup key --no-passphrase` in your terminal")
     device_key.create(f"pakem-device {device_name()}", passphrase)
     print(f"Created {display_path(private)} ({device_key.fingerprint(public)})")
     code = EXIT_DONE
     if passphrase:
         add = device_key.add_command(device.system == MACOS)
-        print(f"Adding it to ssh-agent with `{' '.join(add)}`; it asks for the passphrase once.")
+        print(f"Adding it to ssh-agent with `{' '.join(add)}`. It asks for the passphrase once.")
         if subprocess.run(add).returncode != 0:
             print(f"OWNER ACTION REQUIRED: start an ssh-agent, then run `{' '.join(add)}`")
             code = EXIT_OWNER_ACTION

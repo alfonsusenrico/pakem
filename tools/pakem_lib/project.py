@@ -111,7 +111,7 @@ def synchronize_text(
     for block in sorted(document.blocks, key=lambda item: item.start, reverse=True):
         if block.kind == DIGEST_KIND:
             _delete_range(lines, block.start, block.end)
-            report.warn("removed the framework digest block; the globally installed kernel carries those rules")
+            report.warn("removed the framework digest block. The globally installed kernel carries those rules")
             continue
         replacement = wanted.get(block.identity)
         if replacement is None:
@@ -281,7 +281,7 @@ def _check_blocks(document, report: Report) -> None:
         if not block.integrity_ok():
             report.error(
                 f"profile {block.attributes.get('name', '?')} block (line {block.start + 1}) body does not "
-                "match its sha256; it was edited by hand"
+                "match its sha256. It was edited by hand"
             )
 
 
@@ -305,13 +305,13 @@ def _check_capabilities(framework: Framework, document, report: Report) -> None:
     declarations = declared_capabilities(document)
     if not declarations:
         report.warn(
-            "AGENTS.md has no 'Capabilities:' line; declare project capabilities "
+            "AGENTS.md has no 'Capabilities:' line. Declare project capabilities "
             "(for example `Capabilities: deployed, database`, or `Capabilities: none`)"
         )
         return
     if len(declarations) > 1:
         lines = ", ".join(str(index + 1) for index, _ in declarations)
-        report.error(f"AGENTS.md declares capabilities on more than one line ({lines}); keep one")
+        report.error(f"AGENTS.md declares capabilities on more than one line ({lines}). Keep one")
 
     try:
         known = declarable_names(load_capabilities(framework.capabilities_path))
@@ -353,13 +353,13 @@ def _check_delivery(document, report: Report) -> None:
             declarations.append((index, match.group(1).strip().strip("`").strip()))
     if not declarations:
         report.warn(
-            "AGENTS.md has no 'Delivery:' line; declare who releases the project "
+            "AGENTS.md has no 'Delivery:' line. Declare who releases the project "
             "(`Delivery: us`, `Delivery: others (<who>)`, or `Delivery: nobody`)"
         )
         return
     if len(declarations) > 1:
         lines = ", ".join(str(index + 1) for index, _ in declarations)
-        report.error(f"AGENTS.md declares delivery on more than one line ({lines}); keep one")
+        report.error(f"AGENTS.md declares delivery on more than one line ({lines}). Keep one")
     for index, value in declarations:
         first = value.split()[0].strip(":,;").lower() if value else ""
         if first not in DELIVERY_VALUES:
@@ -381,7 +381,7 @@ def _check_billing(document, report: Report) -> None:
             labels.add(prefix.group(1))
     if NO_BILLED_LABEL not in labels:
         report.warn(
-            "capability 'llm' without a `default:no-billed` override; record the paid services "
+            "capability 'llm' without a `default:no-billed` override. Record the paid services "
             "this project may use and their budget there, or that it uses none (local models only)"
         )
 
@@ -392,8 +392,8 @@ def _check_project_files(repo: Path, report: Report) -> None:
         char_count = len(read_text(state_path))
         if char_count > PROJECT_STATE_ERROR_CHARS:
             report.error(
-                f"{PROJECT_STATE_FILE} is {char_count} chars (limit {PROJECT_STATE_ERROR_CHARS}); "
-                "move history to JOURNAL.md or verification.md"
+                f"{PROJECT_STATE_FILE} is {char_count} chars (limit {PROJECT_STATE_ERROR_CHARS}). "
+                "Move history to JOURNAL.md or verification.md"
             )
         elif char_count > PROJECT_STATE_WARN_CHARS:
             report.warn(
@@ -411,7 +411,7 @@ def _check_hooks(repo: Path, report: Report) -> None:
     if hooks_path != ".githooks" or not (repo / ".githooks" / "pre-push").is_file():
         report.warn(
             "framework git hooks are not active here (core.hooksPath is "
-            f"{hooks_path or 'unset'}); nothing checks pushes to protected branches "
+            f"{hooks_path or 'unset'}). Nothing checks pushes to protected branches "
             "(pakem hooks install)"
         )
 
@@ -458,7 +458,7 @@ def _check_image_cleanup(repo: Path, report: Report) -> None:
             found = PRUNE_PATTERN.search(line)
             if found and not LABEL_FILTER_PATTERN.search(found.group("options")):
                 report.warn(f"{name} line {number}: `docker {found.group(0).split()[1]} prune` without a label "
-                            "filter removes other projects' images on a shared host; remove this project's "
+                            "filter removes other projects' images on a shared host. Remove this project's "
                             "images by tag, or prune with `--filter label=...` on a label its images carry")
 
 
@@ -516,7 +516,7 @@ def check_public_text(repo: Path, report: Report) -> None:
         if b"\0" in data:
             continue
         for number, kinds in scanner.findings(data.decode("utf-8", errors="replace")):
-            report.warn(f"{name} line {number}: names {' and '.join(kinds)} in a public repository; write "
+            report.warn(f"{name} line {number}: names {' and '.join(kinds)} in a public repository. Write "
                         "\"the server\" or \"the release port\", or generic wording, instead")
 
 

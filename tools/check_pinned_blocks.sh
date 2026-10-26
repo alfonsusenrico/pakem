@@ -104,7 +104,7 @@ while IFS='|' read -r tag field1 field2 field3 field4 field5; do
                 label="$field2 $field3"
             fi
             if [ "$actual" != "$field4" ]; then
-                echo "ERROR: $label block (line $field5) body does not match its sha256; it was edited by hand"
+                echo "ERROR: $label block (line $field5) body does not match its sha256. It was edited by hand"
                 errors=$((errors + 1))
             fi
             ;;

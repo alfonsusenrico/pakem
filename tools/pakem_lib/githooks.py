@@ -17,12 +17,14 @@ HOOK_MODE = 0o755
 PREVIOUS_HOOK_SHA256 = {
     "commit-msg": frozenset({
         "7f6c0591b4a05cfd1d6cbbdb0c3a9fd2fd8b29ae488c586fa3c6888e7dd918c8",
+        "d8b113050ef1fcfd3fb7a0aa3b6d2ebad91e86f7b0eeb1b6f03c6ab7ec4551ae",
     }),
     "pre-push": frozenset({
         "85dc3f0b251ca35538d99c0c558c245b8c6f8fe5cab19efeb7e660c9f1fe9ee8",
         "cb4e5be45985114e36528fcecf6a9c6516a080986205c732fc7207581b333dc3",
         "fe19b8b42273b109961f256870a9188ccdad85768ead47173be3713a3132c97e",
         "df05f48c534cdeceffadb010400acc636f513d28409a3917e971bbdb835a59aa",
+        "b10b30d3853475ecf9cd81f36c715f2aa764b0411ed594e68adcd43ab1ffa73f",
     }),
 }
 PROTECTED_BRANCH_KEY = "pakem.protectedBranch"
@@ -79,7 +81,7 @@ def run_hooks_install(args) -> int:
         else:
             action = "BLOCKED-different-hook"
             errors.append(
-                f"an existing hook in {HOOKS_DIR_NAME}/ differs from the framework hook; use --force to replace it"
+                f"an existing hook in {HOOKS_DIR_NAME}/ differs from the framework hook. Use --force to replace it"
             )
         print(f"  {action:22}  {HOOKS_DIR_NAME}/{name}")
         planned.append((destination, source_text if action in ("create", "update", "replace") else ""))
@@ -98,7 +100,7 @@ def run_hooks_install(args) -> int:
             print(f"  {'BLOCKED-tracked-hooks':22}  {HOOKS_DIR_NAME}/ is already committed")
             errors.append(
                 f"{HOOKS_DIR_NAME}/ is tracked in this repository, so --local-only cannot keep it "
-                "out of commits; remove it from the index or install without --local-only"
+                "out of commits. Remove it from the index or install without --local-only"
             )
         else:
             exclude_file, exclude_text = plan_exclude(top_level)

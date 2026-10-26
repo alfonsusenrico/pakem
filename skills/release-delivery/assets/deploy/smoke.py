@@ -102,7 +102,7 @@ def check_revision(
         if attempt < attempts:
             sleep(interval)
     print(
-        f"FAIL  revision {revision[:12]} not served at {url} after {attempts} attempt(s); last: {observed}", flush=True
+        f"FAIL  revision {revision[:12]} not served at {url} after {attempts} attempt(s). Last: {observed}", flush=True
     )
     return False
 

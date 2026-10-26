@@ -40,7 +40,7 @@ JSON_HOSTS = {
 }
 GUARDED_HOSTS = ("claude", "antigravity")
 CODEX_TRUST_ACTION = (
-    "OWNER ACTION REQUIRED: open Codex and trust the Pakem hooks with /hooks; Codex skips a hook "
+    "OWNER ACTION REQUIRED: open Codex and trust the Pakem hooks with /hooks. Codex skips a hook "
     "until it is trusted, and again after each change to it"
 )
 CODEX_RULES_SOURCE = "codex/pakem.rules"
@@ -136,12 +136,12 @@ def revert_changes(data: dict, changes: list[dict]) -> list[str]:
             if parent[key] == change["value"]:
                 del parent[key]
             else:
-                warnings.append(f"'{dotted}' was changed after install; left in place")
+                warnings.append(f"'{dotted}' was changed after install. Left in place")
         elif change["op"] == "replace":
             if parent[key] == change["value"]:
                 parent[key] = change["previous"]
             else:
-                warnings.append(f"'{dotted}' was changed after install; not restored")
+                warnings.append(f"'{dotted}' was changed after install. Not restored")
     return warnings
 
 
@@ -167,7 +167,7 @@ def load_json_object(path: Path) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise PakemError(
-            f"{display_path(path)} is not valid JSON ({exc}); fix it before running pakem enforce"
+            f"{display_path(path)} is not valid JSON ({exc}). Fix it before running pakem enforce"
         ) from exc
     if not isinstance(data, dict):
         raise PakemError(f"{display_path(path)} must contain a JSON object")
@@ -203,7 +203,7 @@ def _install_guard(framework: Framework, manifest: dict, host: str, apply: bool)
         managed = record is not None and record.get("sha256") == current_sha
         if not managed and read_text(destination) != source_text:
             raise PakemError(
-                f"{display_path(destination)} exists and was not installed by pakem; refusing to overwrite"
+                f"{display_path(destination)} exists and was not installed by pakem. Refusing to overwrite"
             )
     print(f"  guard: {display_path(destination)}")
     if not apply:
@@ -230,7 +230,7 @@ def _release_guard(manifest: dict, host: str, apply: bool) -> None:
             record["users"] = users
         return
     if destination.exists() and sha256_file(destination) != record.get("sha256"):
-        print(f"WARNING: {record['path']} was edited after install; left in place")
+        print(f"WARNING: {record['path']} was edited after install. Left in place")
         if apply:
             del manifest["enforcement"][GUARD_RECORD]
         return
@@ -330,7 +330,7 @@ def uninstall_json_host(host: str, apply: bool) -> int:
 def validate_codex_rules(rules_path: Path) -> None:
     codex = shutil.which("codex")
     if codex is None:
-        print("WARNING: codex is not on PATH; rules syntax not verified with `codex execpolicy check`")
+        print("WARNING: codex is not on PATH. Rules syntax not verified with `codex execpolicy check`")
         return
     completed = subprocess.run(
         [codex, "execpolicy", "check", "--rules", str(rules_path), *CODEX_PROBE_COMMAND],
@@ -388,7 +388,7 @@ def uninstall_codex(apply: bool) -> int:
         return 0
     destination = expand_user_path(record["target"])
     if destination.exists() and sha256_file(destination) != record.get("sha256"):
-        print(f"ERROR: {record['target']} was edited after install; remove it by hand if intended")
+        print(f"ERROR: {record['target']} was edited after install. Remove it by hand if intended")
         return 1
     print(f"  remove {record['target']}")
     if not apply:

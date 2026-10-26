@@ -69,7 +69,7 @@ def _add_host_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--deploy-root", help="deploy root on the host (default: /srv/deploy)")
     parser.add_argument(
         "--proxy", action=argparse.BooleanOptionalAction, default=None,
-        help="Caddy reverse proxy for public routes (default: yes; --no-proxy for a private host)",
+        help="Caddy reverse proxy for public routes (default: yes, or --no-proxy for a private host)",
     )
     parser.add_argument(
         "--runner", action=argparse.BooleanOptionalAction, default=None, help="the isolated CI runner (default: no)"
@@ -80,7 +80,7 @@ def _add_host_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--project-dir", action="append", metavar="DIR",
-        help="a service project on this device to release there (repeatable; recorded)",
+        help="a service project on this device to release there (repeatable, recorded)",
     )
 
 
@@ -103,7 +103,7 @@ def _bounded_int(low: int, high: int):
 
 def areas_text() -> str:
     width = max(len(name) for name, _, _ in AREAS)
-    lines = ["areas (stage: commands; see docs/pakem-command-map.md):"]
+    lines = ["areas (stage: commands, see docs/pakem-command-map.md):"]
     lines += [f"  {name.ljust(width)}  {stage}: {commands}" for name, stage, commands in AREAS]
     return "\n".join(lines)
 
@@ -133,7 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     network.add_argument(
         "--refresh", action="store_true", help="fetch origin now (default: at most every 4 hours)"
     )
-    network.add_argument("--offline", action="store_true", help="never fetch; use the last check")
+    network.add_argument("--offline", action="store_true", help="never fetch. Use the last check")
     status.add_argument("--hook", choices=(HOOK_SESSION_START, HOOK_PROMPT), help=argparse.SUPPRESS)
     status.add_argument("--host", default="claude", choices=ENFORCE_HOSTS, help=argparse.SUPPRESS)
 
@@ -167,7 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     setup_host.add_argument(
         "target", nargs="?",
-        help="a recorded host's name, or a new SSH target (alias or user@address); none: pakem asks",
+        help="a recorded host's name, or a new SSH target (alias or user@address). Without it, pakem asks",
     )
     _add_host_options(setup_host)
     setup_host.add_argument(
@@ -189,12 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
     host = commands.add_parser("host", help="manage servers set up with `pakem setup host`")
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_add = host_commands.add_parser(
-        "add", help="record a server's options on this device only (agents may run it); then `pakem setup host NAME`"
+        "add", help="record a server's options on this device only (agents may run it). Then `pakem setup host NAME`"
     )
     host_add.add_argument("name", help="name for the server on this device")
-    host_add.add_argument("--target", help="its SSH target (alias or user@address); needed for a new host")
+    host_add.add_argument("--target", help="its SSH target (alias or user@address). Needed for a new host")
     _add_host_options(host_add)
-    host_add.add_argument("--plan", action="store_true", help="show what would be recorded; record nothing")
+    host_add.add_argument("--plan", action="store_true", help="show what would be recorded. Record nothing")
     host_add.add_argument("--json", action="store_true", help="machine-readable result")
     runner = host_commands.add_parser("runner", help="register a private repository with the host's CI runner")
     runner_commands = runner.add_subparsers(dest="runner_command", required=True)
@@ -234,7 +234,7 @@ def build_parser() -> argparse.ArgumentParser:
     rollback.add_argument("target", help="previous, a release tag, or a commit")
     rollback.add_argument("--environment", help="default: staging when the project has it, else production")
     rollback.add_argument(
-        "--allow-schema", action="store_true", help="the target has another database schema; you restored the backup"
+        "--allow-schema", action="store_true", help="the target has another database schema, and you restored the backup"
     )
     for changing in (promote, rollback):
         changing.add_argument("--production", action="store_true", help="confirm a production change")
@@ -274,7 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-unmerged",
         action="store_true",
         help=(
-            "install from a framework checkout that is not on main or differs from origin/main; "
+            "install from a framework checkout that is not on main or differs from origin/main, "
             "independent of --allow-dirty (testing a dirty branch needs both)"
         ),
     )
@@ -312,7 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--release", metavar="X.Y.Z", help="build the release section for this version (dry run by default)"
     )
     changelog.add_argument(
-        "--date", metavar="YYYY-MM-DD", help="release date (default: today; requires --release)"
+        "--date", metavar="YYYY-MM-DD", help="release date (default: today, requires --release)"
     )
     _add_apply(changelog)
 
@@ -345,7 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
         starting.add_argument("--delivery", choices=("us", "others", "nobody"), help="who releases it")
         starting.add_argument("--delivery-note", help="with --delivery others: who, and where our work ends")
         starting.add_argument("--client-ci", metavar="WHERE",
-                              help="with --delivery others: the client runs its own CI there; Pakem writes none "
+                              help="with --delivery others: the client runs its own CI there, so Pakem writes none "
                                    "and records the decision ci.owner")
         starting.add_argument("--environments", choices=("production", "staging,production"))
         starting.add_argument("--stack", choices=("python", "node"))
@@ -414,7 +414,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="BRANCH",
         help=(
-            "protect this branch (repeatable); replaces the repository's protected set, "
+            "protect this branch (repeatable). Replaces the repository's protected set, "
             "so list main too if it stays protected (default when never set: main, master)"
         ),
     )
@@ -422,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--protect-none",
         action="store_true",
         help=(
-            "protect no branch, so code may be pushed directly to main; only for a project whose "
+            "protect no branch, so code may be pushed directly to main. Only for a project whose "
             "AGENTS.md records default:branching in ## Overrides"
         ),
     )
@@ -447,7 +447,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_run.add_argument("--host", required=True, choices=sorted(EVAL_HOSTS))
     eval_run.add_argument(
-        "--scenario", action="append", metavar="ID", help="run only this scenario (repeatable; default: all)"
+        "--scenario", action="append", metavar="ID", help="run only this scenario (repeatable, default: all)"
     )
     eval_run.add_argument(
         "--repeat", type=_bounded_int(1, 20), default=3, metavar="K", help="repeats per scenario (default: 3)"

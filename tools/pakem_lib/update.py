@@ -110,8 +110,8 @@ def _move_step(root: Path, follows: str, target_commit: str, target_ref: str) ->
         return None
     if run_git(root, "merge-base", "--is-ancestor", "HEAD", target_commit, check=False).returncode != 0:
         raise CommandRefused(
-            f"the framework checkout {display_path(root)} has commits {REMOTE}/{INSTALL_BRANCH} lacks; "
-            "merge them through a pull request first"
+            f"the framework checkout {display_path(root)} has commits {REMOTE}/{INSTALL_BRANCH} lacks. "
+            "Merge them through a pull request first"
         )
     return f"fast-forward {display_path(root)} {INSTALL_BRANCH} to {target_commit[:12]}"
 
@@ -186,7 +186,7 @@ def run_update(args) -> int:
         steps, target = plan_update(framework, before)
         result = {"status": "up-to-date", "done": [], "owner_actions": [], "gaps": [], "checks": [], "reread": []}
         if not steps:
-            return _finish(args, result, [f"Pakem is up to date with {target.ref} ({target.commit[:12]}); nothing to do."])
+            return _finish(args, result, [f"Pakem is up to date with {target.ref} ({target.commit[:12]}). Nothing to do."])
         if not args.json:
             print(f"pakem update: {before.get('framework_version')} -> {target.version} ({target.ref})")
             for description, _ in steps:

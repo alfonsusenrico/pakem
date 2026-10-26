@@ -85,18 +85,18 @@ def _branch_findings(root: Path, label: str, waiver: str | None) -> tuple[list[S
 def _remote_findings(root: Path, head: str) -> tuple[list[SourceFinding], str]:
     """Compare HEAD with the local origin/main ref; returns findings and a summary fragment."""
     if REMOTE not in _remote_names(root):
-        return [], f"no {REMOTE} remote; merge state not checked"
+        return [], f"no {REMOTE} remote. Merge state not checked"
     remote_head = resolve_commit(root, REMOTE_BRANCH_REF)
     if remote_head is None:
-        message = f"{REMOTE}/{INSTALL_BRANCH} is not known locally, so merge state is unknown; fetch to refresh"
+        message = f"{REMOTE}/{INSTALL_BRANCH} is not known locally, so merge state is unknown. Fetch to refresh"
         return [SourceFinding(message, WAIVER_UNMERGED)], f"{REMOTE}/{INSTALL_BRANCH} unknown"
     if remote_head == head:
-        return [], f"matches {REMOTE}/{INSTALL_BRANCH} as of the last fetch; fetch to refresh"
+        return [], f"matches {REMOTE}/{INSTALL_BRANCH} as of the last fetch. Fetch to refresh"
     counts = run_git(root, "rev-list", "--left-right", "--count", f"{REMOTE_BRANCH_REF}...HEAD").stdout.split()
     behind, ahead = int(counts[0]), int(counts[1])
     message = (
         f"framework HEAD {_short(head)} differs from {REMOTE}/{INSTALL_BRANCH} {_short(remote_head)} "
-        f"({ahead} ahead, {behind} behind as of the last fetch; fetch to refresh, then merge or pull)"
+        f"({ahead} ahead, {behind} behind as of the last fetch. Fetch to refresh, then merge or pull)"
     )
     return [SourceFinding(message, WAIVER_UNMERGED)], f"differs from {REMOTE}/{INSTALL_BRANCH}"
 
@@ -125,7 +125,7 @@ def _release_findings(root: Path, tag: str, head: str) -> tuple[list[SourceFindi
 
 def framework_source_status(root: Path) -> SourceStatus:
     if not is_git_work_tree(root):
-        message = f"framework root {root} is not a git work tree; installed content cannot be tied to a commit"
+        message = f"framework root {root} is not a git work tree. Installed content cannot be tied to a commit"
         return SourceStatus([SourceFinding(message, WAIVER_DIRTY)], "not a git work tree")
 
     findings: list[SourceFinding] = []
@@ -135,7 +135,7 @@ def framework_source_status(root: Path) -> SourceStatus:
         branch_findings, branch = _branch_findings(root, "framework checkout", WAIVER_UNMERGED)
         findings += branch_findings
     if has_uncommitted_changes(root):
-        message = "framework git tree has uncommitted changes; installed content would not match a commit"
+        message = "framework git tree has uncommitted changes. Installed content would not match a commit"
         findings.append(SourceFinding(message, WAIVER_DIRTY))
 
     head = resolve_commit(root, "HEAD")
@@ -145,10 +145,10 @@ def framework_source_status(root: Path) -> SourceStatus:
     if tag is not None:
         remote_findings, remote_summary = _release_findings(root, tag, head)
         findings += remote_findings
-        return SourceStatus(findings, f"release {tag} @ {_short(head)}; {remote_summary}")
+        return SourceStatus(findings, f"release {tag} @ {_short(head)}, {remote_summary}")
     remote_findings, remote_summary = _remote_findings(root, head)
     findings += remote_findings
-    summary = f"{branch or 'detached HEAD'} @ {_short(head)}; {remote_summary}"
+    summary = f"{branch or 'detached HEAD'} @ {_short(head)}, {remote_summary}"
     return SourceStatus(findings, summary)
 
 

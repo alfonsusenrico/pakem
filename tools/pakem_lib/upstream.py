@@ -244,20 +244,20 @@ def framework_status(root: Path, manifest: dict, fetch: FetchState) -> Framework
     status.target = target_for(root, follows)
     if status.target is None:
         status.notes.append(
-            f"no {'release on ' if follows == FOLLOW_RELEASES else ''}{REMOTE}/{INSTALL_BRANCH} known yet; "
-            "the update check needs one successful fetch"
+            f"no {'release on ' if follows == FOLLOW_RELEASES else ''}{REMOTE}/{INSTALL_BRANCH} known yet. "
+            "The update check needs one successful fetch"
         )
         return status
     if manifest.get("framework_clean") is False:
         status.notes.append("the install was made from uncommitted changes")
     if installed_commit is None:
-        status.notes.append("this install predates commit tracking; `pakem update` records it")
+        status.notes.append("this install predates commit tracking, and `pakem update` records it")
     _note_unmerged(root, installed_commit, status)
     status.state = _compare(status, manifest)
     if status.state == UPDATE_AVAILABLE and installed_commit is not None:
         status.changed = summarize_changes(changed_paths(root, installed_commit, status.target.commit))
     if status.checkout_commit not in (None, installed_commit) and status.checkout_commit == status.target.commit:
-        status.notes.append("the checkout already has the update; `pakem update` installs it")
+        status.notes.append("the checkout already has the update, and `pakem update` installs it")
     return status
 
 
@@ -268,7 +268,7 @@ def _note_unmerged(root: Path, installed_commit: str | None, status: FrameworkSt
     merged = run_git(root, "merge-base", "--is-ancestor", installed_commit, REMOTE_BRANCH_REF, check=False)
     if merged.returncode == 1:
         status.notes.append(
-            f"the installed commit {installed_commit[:7]} is not on {REMOTE}/{INSTALL_BRANCH} (an unmerged branch); "
+            f"the installed commit {installed_commit[:7]} is not on {REMOTE}/{INSTALL_BRANCH} (an unmerged branch). "
             f"`pakem update` from {INSTALL_BRANCH} replaces it"
         )
 

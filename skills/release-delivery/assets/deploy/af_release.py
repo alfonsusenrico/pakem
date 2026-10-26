@@ -132,7 +132,7 @@ def _member_path(name: str) -> PurePosixPath:
     if path.is_absolute() or ".." in path.parts or not path.parts or "\x00" in name:
         raise ReleaseError("bundle entry escapes the bundle")
     if any(part.startswith(".env") for part in path.parts):
-        raise ReleaseError("bundle contains an .env file; settings never travel in bundles")
+        raise ReleaseError("bundle contains an .env file. Settings never travel in bundles")
     return path
 
 

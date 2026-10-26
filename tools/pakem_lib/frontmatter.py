@@ -47,10 +47,10 @@ def _parse_value(raw: str | None, location: str, errors: list[str]) -> str | Non
             return None
         return quoted.group(1).replace('\\"', '"').replace("\\\\", "\\")
     if value[0] in PLAIN_FORBIDDEN_START or value.startswith(("- ", "? ", ": ")):
-        errors.append(f"{location}: plain value starts with a YAML indicator; double-quote it")
+        errors.append(f"{location}: plain value starts with a YAML indicator. Double-quote it")
         return None
     if ": " in value or " #" in value or value.endswith(":"):
-        errors.append(f"{location}: plain value contains ': ' or ' #'; double-quote it")
+        errors.append(f"{location}: plain value contains ': ' or ' #'. Double-quote it")
         return None
     return value
 

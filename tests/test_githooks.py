@@ -102,7 +102,7 @@ class PrePushTests(IsolatedTestCase):
         self.commit("src/app.py", "print('x')\n", "feat: add app")
         completed = self.push("main")
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("only *.md and docs/** may be pushed to main", completed.stderr)
+        self.assertIn("Only *.md and docs/** may be pushed to main", completed.stderr)
 
     def test_code_push_to_topic_branch_is_allowed(self) -> None:
         git(self.repo, "checkout", "-q", "-b", "feat/app", home=self.home)
@@ -149,7 +149,7 @@ class PrePushTests(IsolatedTestCase):
             with self.subTest(refspec=refspec):
                 completed = self.push(refspec)
                 self.assertNotEqual(completed.returncode, 0)
-                self.assertIn("only *.md and docs/** may be pushed to development", completed.stderr)
+                self.assertIn("Only *.md and docs/** may be pushed to development", completed.stderr)
 
     def test_former_key_still_protects_a_repository_configured_before_the_rename(self) -> None:
         git(self.repo, "config", "--add", "agentframework.protectedBranch", "development", home=self.home)
@@ -157,7 +157,7 @@ class PrePushTests(IsolatedTestCase):
         self.commit("src/app.py", "print('x')\n", "feat: add app")
         completed = self.push("development")
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("only *.md and docs/** may be pushed to development", completed.stderr)
+        self.assertIn("Only *.md and docs/** may be pushed to development", completed.stderr)
 
     def test_configured_branch_accepts_docs_only_push(self) -> None:
         self.protect("development")

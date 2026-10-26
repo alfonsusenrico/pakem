@@ -225,7 +225,7 @@ class Owner:
         except FileNotFoundError as error:
             raise DeployError(f"{path} does not exist", EXIT_INVALID) from error
         if stat.S_ISLNK(info.st_mode):
-            raise DeployError(f"{path} is a symlink; refusing to follow it", EXIT_INVALID)
+            raise DeployError(f"{path} is a symlink. Refusing to follow it", EXIT_INVALID)
         if kind == "dir" and not stat.S_ISDIR(info.st_mode):
             raise DeployError(f"{path} is not a directory", EXIT_INVALID)
         if kind == "file" and not stat.S_ISREG(info.st_mode):
@@ -783,7 +783,7 @@ class Host:
     def ensure_structure(self) -> None:
         layout = self.layout
         if not layout.base.parent.is_dir():
-            raise DeployError(f"{layout.base.parent} does not exist; create the deploy root first", EXIT_INVALID)
+            raise DeployError(f"{layout.base.parent} does not exist. Create the deploy root first", EXIT_INVALID)
         self.owner.check_ancestors(layout.base.parent)
         self.owner.ensure_dir(layout.base)
         for directory in (layout.releases, layout.incoming, layout.shared, layout.backups):
@@ -826,8 +826,8 @@ class Host:
                     holder = read_json(self.layout.lock_owner)
                     since = holder.get("acquired_at", "unknown time")
                     raise DeployError(
-                        f"another deployment holds the lock for {self.layout.base} (since {since}); "
-                        f"waited {wait_seconds}s",
+                        f"another deployment holds the lock for {self.layout.base} (since {since}). "
+                        f"Waited {wait_seconds}s",
                         EXIT_LOCK_BUSY,
                     ) from None
                 self.deps.sleep(1)
@@ -942,7 +942,7 @@ class Host:
         args += ["--format", '{{.Label "' + REVISION_LABEL + '"}}']
         result = self.docker(*args)
         if result.returncode != 0:
-            raise DeployError("docker ps failed; cannot tell which releases are running")
+            raise DeployError("docker ps failed. Cannot tell which releases are running")
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     # -- hooks ---------------------------------------------------------------
@@ -1118,7 +1118,7 @@ def command_prepare(host: Host, args: argparse.Namespace) -> int:
         os.mkdir(staging / "source", 0o700)
         skipped = safe_extract(archive, staging / "source", args.max_bytes)
         if skipped:
-            log(f"skipped {skipped} .env* file(s) from the archive; runtime comes from the runtime file only")
+            log(f"skipped {skipped} .env* file(s) from the archive. Runtime comes from the runtime file only")
         digest = tree_digest(staging / "source")
         release_dir = layout.release_dir(sha)
         if os.path.lexists(release_dir):
@@ -1127,19 +1127,19 @@ def command_prepare(host: Host, args: argparse.Namespace) -> int:
             recorded = meta.get("tree_sha256")
             if not recorded:
                 raise DeployError(
-                    f"release {sha[:12]} exists without a recorded digest; refusing to reuse it", EXIT_INVALID
+                    f"release {sha[:12]} exists without a recorded digest. Refusing to reuse it", EXIT_INVALID
                 )
             on_disk = tree_digest(layout.source_dir(sha))
             if on_disk != recorded:
                 raise DeployError(
-                    f"release {sha[:12]} was modified on disk (tree digest mismatch); investigate before deploying",
+                    f"release {sha[:12]} was modified on disk (tree digest mismatch). Investigate before deploying",
                     EXIT_INVALID,
                 )
             if digest != recorded:
                 raise DeployError(
-                    f"release {sha[:12]} already exists with different content; releases are immutable", EXIT_INVALID
+                    f"release {sha[:12]} already exists with different content. Releases are immutable", EXIT_INVALID
                 )
-            log(f"release {sha[:12]} already prepared; content verified (tree {digest[:12]})")
+            log(f"release {sha[:12]} already prepared. Content verified (tree {digest[:12]})")
         else:
             make_read_only(staging / "source")
             meta = {
@@ -1200,13 +1200,13 @@ def ensure_images(host: Host, config: ReleaseConfig, environment: str, sha: str)
             if details is None:
                 raise DeployError(f"image {tag} is missing after the build")
             if image.name in recorded and recorded[image.name] != details.get("Id"):
-                warn(f"{tag} was rebuilt; its image id changed from the recorded one")
+                warn(f"{tag} was rebuilt. Its image id changed from the recorded one")
             recorded[image.name] = details.get("Id", "")
         labels = (details.get("Config") or {}).get("Labels") or {}
         if labels.get(REVISION_LABEL) != sha or labels.get(APP_LABEL) != config.app:
             raise DeployError(f"image {tag} does not carry the expected revision and app labels")
         if recorded.get(image.name) not in (None, details.get("Id")):
-            raise DeployError(f"image {tag} id differs from the id recorded at build time; refusing to run it")
+            raise DeployError(f"image {tag} id differs from the id recorded at build time. Refusing to run it")
         recorded[image.name] = details.get("Id", "")
         tags[image.name] = tag
     meta["images"] = recorded
@@ -1266,7 +1266,7 @@ def run_backup(host: Host, config: ReleaseConfig, environment: str, sha: str, ru
     host.owner.ensure_dir(backup_dir)
     host.run_hook("backup", config, environment, sha, runtime, {"AF_BACKUP_DIR": str(backup_dir)})
     if not any(backup_dir.iterdir()):
-        raise DeployError("backup hook wrote nothing into AF_BACKUP_DIR; refusing to migrate")
+        raise DeployError("backup hook wrote nothing into AF_BACKUP_DIR. Refusing to migrate")
     log(f"backup stored in {backup_dir}")
     return str(backup_dir)
 
@@ -1294,7 +1294,7 @@ def start_release(host: Host, config: ReleaseConfig, environment: str, sha: str,
 def restore_previous(host: Host, environment: str, failed_sha: str, previous: str | None) -> int:
     """Bring the previous release back after a failed start; returns the exit code."""
     if previous is None:
-        warn("no previous release to restore; stopping the failed release")
+        warn("no previous release to restore. Stopping the failed release")
         try:
             config = host.load_config(failed_sha)
             runtime = host.layout.runtime_next(failed_sha)
@@ -1337,7 +1337,7 @@ def activate(host: Host, environment: str, sha: str, *, rollback: bool, prepared
     backup_hook = layout.source_dir(sha) / "deploy" / "hooks" / "backup"
     if not rollback and environment == "production" and config.migrate and not os.path.lexists(backup_hook):
         raise DeployError(
-            "production with migrations needs deploy/hooks/backup (pre-migration backup); nothing was changed",
+            "production with migrations needs deploy/hooks/backup (pre-migration backup). Nothing was changed",
             EXIT_INVALID,
         )
 
@@ -1350,7 +1350,7 @@ def activate(host: Host, environment: str, sha: str, *, rollback: bool, prepared
             config, environment, sha, runtime, "run", "--rm", "--no-deps", "-T", config.service, *config.preflight
         )
         if result.returncode != 0:
-            raise DeployError(f"preflight failed (exit {result.returncode}); nothing was changed")
+            raise DeployError(f"preflight failed (exit {result.returncode}). Nothing was changed")
     else:
         warn("preflight is disabled in deploy/release.toml")
     if config.candidate:
@@ -1373,7 +1373,7 @@ def activate(host: Host, environment: str, sha: str, *, rollback: bool, prepared
                 config, environment, sha, runtime, "run", "--rm", "-T", config.migrate_service, *config.migrate
             )
             if result.returncode != 0:
-                raise DeployError(f"migrations failed (exit {result.returncode}); the previous release keeps serving")
+                raise DeployError(f"migrations failed (exit {result.returncode}). The previous release keeps serving")
 
     try:
         start_release(host, config, environment, sha, runtime)
@@ -1444,7 +1444,7 @@ def command_rollback(host: Host, args: argparse.Namespace) -> int:
         raise DeployError("no previous release to roll back to", EXIT_INVALID)
     if not host.layout.release_dir(target).is_dir():
         raise DeployError(
-            f"release {target[:12]} is not retained on this host; redeploy it through CI rollback", EXIT_INVALID
+            f"release {target[:12]} is not retained on this host. Redeploy it through CI rollback", EXIT_INVALID
         )
     log(f"rolling back {environment} from {current[:12] if current else 'nothing'} to {target[:12]}")
     activate(host, environment, target, rollback=True, prepared_runtime=args.use_prepared_runtime)
@@ -1458,7 +1458,7 @@ def command_cleanup(host: Host, args: argparse.Namespace) -> int:
     layout = host.layout
     current = current_sha(layout)
     if current is None:
-        log("cleanup: nothing is current; skipping")
+        log("cleanup: nothing is current. Skipping")
         return EXIT_OK
     config = host.load_config(current)
     keep = args.keep if args.keep is not None else config.environment(environment).keep

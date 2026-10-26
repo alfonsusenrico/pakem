@@ -367,7 +367,7 @@ class GuardFileToolTests(unittest.TestCase):
         self.assertEqual(claude_decision(clear), DENY)
         harmless = run_guard("claude", '{"tool_name": "Bash", "tool_input": {"command": "ls"')
         self.assertIsNone(claude_decision(harmless))
-        self.assertIn("not blocking", harmless.stderr)
+        self.assertIn("Not blocking", harmless.stderr)
 
     def test_unclosed_quote_falls_back(self) -> None:
         payload = {"tool_name": "Bash", "tool_input": {"command": "cat .env 'unterminated"}}

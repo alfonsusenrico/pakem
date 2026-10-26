@@ -200,8 +200,8 @@ class Publisher:
                 if not missing:
                     raise
                 if self.clock() >= deadline:
-                    raise PublishError(f"{tag} was not published; publish the commit on main first") from None
-                log(f"{tag} is not published yet; checking again in {RECORD_POLL_SECONDS}s")
+                    raise PublishError(f"{tag} was not published. Publish the commit on main first") from None
+                log(f"{tag} is not published yet. Checking again in {RECORD_POLL_SECONDS}s")
                 self.sleep(RECORD_POLL_SECONDS)
 
     def signing_config(self) -> Path:

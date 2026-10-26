@@ -54,7 +54,7 @@ PROBE_TIMEOUT_SECONDS = 20
 # The framework install runs as its own command, with the same tool that runs this one.
 RUNNING_TOOL = Path(__file__).resolve().parent.parent / "pakem"
 SETUP_KEY_ACTION = (
-    "OWNER ACTION REQUIRED: run `pakem setup key` in your terminal; it asks for the key's "
+    "OWNER ACTION REQUIRED: run `pakem setup key` in your terminal. It asks for the key's "
     "passphrase (add --no-passphrase only for a device nobody can unlock, such as a headless machine)"
 )
 
@@ -152,7 +152,7 @@ def detect_device() -> Device:
             kernel = ""
         return Device(LINUX, "microsoft" in kernel, platform.machine())
     if name == "Windows":
-        raise CommandRefused("native Windows is not supported; run pakem inside WSL")
+        raise CommandRefused("native Windows is not supported. Run pakem inside WSL")
     raise CommandRefused(f"unsupported system {name}; pakem supports macOS, Linux, and WSL")
 
 
@@ -249,7 +249,7 @@ def _need_tool(assessment: Assessment, name: str) -> None:
     package = _package_for(tool, assessment.device)
     if package is not None:
         assessment.packages.append(package)
-        assessment.checks.append(Check(name, False, f"missing; pakem installs package {package}"))
+        assessment.checks.append(Check(name, False, f"missing. Pakem installs package {package}"))
         return
     assessment.checks.append(Check(name, False, "missing"))
     assessment.owner_actions.append(f"OWNER ACTION REQUIRED: install {name} ({tool.manual})")
@@ -283,11 +283,11 @@ def _need_runtime(assessment: Assessment) -> None:
         return
     if _version(COLIMA) is None:
         if shutil.which("brew") is None:
-            assessment.checks.append(Check("container runtime", False, "none running; Colima needs Homebrew"))
+            assessment.checks.append(Check("container runtime", False, "none running, and Colima needs Homebrew"))
             return
         assessment.packages.append(COLIMA.brew)
     assessment.steps.append(Step("colima start", lambda: _run(["colima", "start"])))
-    assessment.checks.append(Check("container runtime", False, "none running; pakem starts Colima"))
+    assessment.checks.append(Check("container runtime", False, "none running. Pakem starts Colima"))
 
 
 def _need_key(assessment: Assessment) -> None:
@@ -295,12 +295,12 @@ def _need_key(assessment: Assessment) -> None:
     if private.exists() and public.exists():
         found = device_key.fingerprint(public)
         if found is None:
-            raise PakemError(f"{display_path(public)} is not a valid SSH public key; fix or move it away")
+            raise PakemError(f"{display_path(public)} is not a valid SSH public key. Fix or move it away")
         assessment.checks.append(Check("device key", True, f"{display_path(private)} {found}"))
         return
     if private.exists() or public.exists():
         raise CommandRefused(
-            f"only one of {display_path(private)} and its .pub exists; move it away so a new pair can be made"
+            f"only one of {display_path(private)} and its .pub exists. Move it away so a new pair can be made"
         )
     assessment.checks.append(Check("device key", False, f"missing: {display_path(private)}"))
     if not assessment.interactive:
@@ -449,7 +449,7 @@ def _plan_packages(assessment: Assessment) -> None:
 def _missing_manager(device: Device) -> str:
     if device.system == MACOS:
         return "OWNER ACTION REQUIRED: install Homebrew (https://brew.sh), then run the command again"
-    return "OWNER ACTION REQUIRED: this Linux has no apt; install the listed tools with its package manager"
+    return "OWNER ACTION REQUIRED: this Linux has no apt. Install the listed tools with its package manager"
 
 
 def prepare(

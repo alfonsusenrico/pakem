@@ -111,7 +111,7 @@ validate_inputs() {
         only_chars "$path" 'A-Za-z0-9._/@+-' || invalid "$name path may use only A-Z a-z 0-9 . _ / @ + -"
     done
     if [ -n "$(find "$key_file" -prune \( -perm -040 -o -perm -004 \) -print)" ]; then
-        invalid "DEPLOY_SSH_KEY_FILE is readable by group or others; chmod 600 it"
+        invalid "DEPLOY_SSH_KEY_FILE is readable by group or others. Run chmod 600 on it"
     fi
     if [ "$port" = 22 ]; then
         known_name=$host
@@ -167,7 +167,7 @@ validate_inputs() {
     for protected in $protected_environments; do
         if [ "$protected" = "$environment" ]; then
             git -C "$repo_dir" merge-base --is-ancestor "$sha" "$release_ref" 2> /dev/null ||
-                invalid "$environment deploys only commits on $release_ref; $sha is not an ancestor"
+                invalid "$environment deploys only commits on $release_ref, and $sha is not an ancestor"
             if [ -z "$(git -C "$repo_dir" tag --points-at "$sha" --list 'v[0-9]*')" ]; then
                 invalid "$environment deploys only commits tagged v*; $sha has no such tag"
             fi
@@ -255,18 +255,18 @@ restore_previous() {
     reason=$1
     if [ -z "$previous" ] || [ "$previous" = "$sha" ]; then
         record failed
-        fail 1 "$reason; there is no other release to restore"
+        fail 1 "$reason. There is no other release to restore"
     fi
-    log "$reason; restoring $previous"
+    log "$reason. Restoring $previous"
     restore_status=0
     host_tool_command rollback --base "$base" --owner "$owner" --environment "$environment" \
         --sha "$previous" --lock-token "$token" || restore_status=$?
     if [ "$restore_status" -eq 0 ]; then
         record restored
-        fail 3 "$reason; the previous release $previous was restored"
+        fail 3 "$reason. The previous release $previous was restored"
     fi
     record restore-failed
-    fail 4 "$reason; restoring $previous failed - manual action needed (release_host.py status)"
+    fail 4 "$reason. Restoring $previous failed - manual action needed (release_host.py status)"
 }
 
 run_public_smoke() {
@@ -278,7 +278,7 @@ run_public_smoke() {
     "$python" "$script_dir/smoke.py" "$@"
 }
 
-[ $# -eq 0 ] || invalid "deploy_remote.sh takes no arguments; configure it through environment variables"
+[ $# -eq 0 ] || invalid "deploy_remote.sh takes no arguments. Configure it through environment variables"
 validate_inputs
 base="$deploy_root/$environment"
 log "$mode $sha to $environment on $host (owner $owner)"
@@ -322,7 +322,7 @@ rm -f -- "$work/runtime.env"
 
 if [ -n "$host_tool" ]; then
     remote "cmp -s $staging/release_host.py $host_tool" ||
-        fail 2 "$host_tool on the host differs from this release_host.py; an administrator must install the new version"
+        fail 2 "$host_tool on the host differs from this release_host.py. An administrator must install the new version"
     tool="$remote_python $host_tool"
     if [ "$owner" = root ] && [ "$user" != root ]; then
         tool="sudo -n $tool"
@@ -350,7 +350,7 @@ host_tool_command prepare --base "$base" --owner "$owner" --environment "$enviro
     --archive "$archive_path" --runtime "$runtime_path" --lock-token "$token" || step_status=$?
 if [ "$step_status" -ne 0 ]; then
     record failed
-    fail "$step_status" "prepare failed; nothing was changed"
+    fail "$step_status" "prepare failed. Nothing was changed"
 fi
 
 if [ "$mode" = deploy ]; then
@@ -360,7 +360,7 @@ if [ "$mode" = deploy ]; then
         0) ;;
         3)
             record restored
-            fail 3 "activation failed; the previous release was restored"
+            fail 3 "activation failed. The previous release was restored"
             ;;
         4)
             record restore-failed
@@ -391,7 +391,7 @@ fi
 
 run_public_smoke || restore_previous "the public check failed"
 host_tool_command cleanup --base "$base" --owner "$owner" --environment "$environment" --lock-token "$token" ||
-    log "WARNING: cleanup failed; the deployment itself succeeded"
+    log "WARNING: cleanup failed. The deployment itself succeeded"
 record succeeded
 release_lock
 log "$mode of $sha to $environment succeeded"

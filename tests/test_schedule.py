@@ -191,7 +191,7 @@ class ScheduleTests(IsolatedTestCase):
         write(self.plist, "owner's own job\n")
         code, output = self.run_schedule("uninstall", "--apply")
         self.assertEqual(code, 0)
-        self.assertIn("was not installed by pakem; left in place", output)
+        self.assertIn("was not installed by pakem. Left in place", output)
         self.assertTrue(self.plist.exists())
         self.assertEqual(self.launchctl.calls, [])
 
@@ -224,7 +224,7 @@ class ScheduleTests(IsolatedTestCase):
             with self.subTest(arguments=arguments):
                 with self.assertRaises(PakemError) as raised:
                     self.run_schedule(*arguments, context=self.context(platform="linux"))
-                self.assertIn("macOS (launchd) only; this platform is linux", str(raised.exception))
+                self.assertIn("macOS (launchd) only. This platform is linux", str(raised.exception))
         self.assertEqual(self.launchctl.calls, [])
         self.assertFalse((self.home / "Library").exists())
         self.assertFalse(self.manifest_path.exists())

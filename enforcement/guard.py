@@ -137,15 +137,15 @@ HEREDOC_SUBSTITUTION = re.compile(
 )
 
 REASON_DELETE_PROTECTED = "deleting protected branch {branch} on the remote is blocked"
-REASON_FORCE_PROTECTED = "force push to protected branch {branch} rewrites deployed history; it is blocked"
-REASON_PUSH_ALL = "pushing every branch at once also pushes the protected branches ({branches}); confirm with the owner first"
-REASON_FORCE = "force push rewrites remote history; confirm with the owner first"
-REASON_UNKNOWN_FORCE = "could not determine which branch this force push targets; confirm with the owner first"
-REASON_NO_VERIFY = "--no-verify bypasses the repository hooks; fix the reported problem instead"
+REASON_FORCE_PROTECTED = "force push to protected branch {branch} rewrites deployed history. It is blocked"
+REASON_PUSH_ALL = "pushing every branch at once also pushes the protected branches ({branches}). Confirm with the owner first"
+REASON_FORCE = "force push rewrites remote history. Confirm with the owner first"
+REASON_UNKNOWN_FORCE = "could not determine which branch this force push targets. Confirm with the owner first"
+REASON_NO_VERIFY = "--no-verify bypasses the repository hooks. Fix the reported problem instead"
 REASON_SUBJECT_ONLY = "subject-only commits: one -m with a single-line conventional subject, no body or trailers (including Co-Authored-By)"
-SECRET_HINT = "use skills/sensitive-operations/scripts/env_keys.py to list variable names"
-REASON_SECRET_READ = f"reading secret files is blocked; {SECRET_HINT}"
-REASON_ENV_DUMP = "environment dumps can expose secrets; inspect only the variable names you need"
+SECRET_HINT = "Use skills/sensitive-operations/scripts/env_keys.py to list variable names"
+REASON_SECRET_READ = f"reading secret files is blocked. {SECRET_HINT}"
+REASON_ENV_DUMP = "environment dumps can expose secrets. Inspect only the variable names you need"
 
 # Last-resort patterns, used only when the structured analysis itself fails. The
 # working directory is unknown then, so per-repository protected branches cannot be
@@ -841,7 +841,7 @@ def evaluate_claude(payload: dict) -> Decision:
         candidates += list(tool_input.get("paths") or [])
         for candidate in candidates:
             if isinstance(candidate, str) and is_secret_path(candidate, cwd):
-                return Decision(DENY, f"{tool_name} on a secret file is blocked; {SECRET_HINT}")
+                return Decision(DENY, f"{tool_name} on a secret file is blocked. {SECRET_HINT}")
     return NO_OBJECTION
 
 
@@ -856,7 +856,7 @@ def evaluate_antigravity(payload: dict) -> Decision:
         return analyze_command(str(command), Context(arguments.get("Cwd") or cwd))
     for value in string_values(arguments):
         if is_secret_path(value, cwd):
-            return Decision(DENY, f"{name} on a secret file is blocked; {SECRET_HINT}")
+            return Decision(DENY, f"{name} on a secret file is blocked. {SECRET_HINT}")
     return NO_OBJECTION
 
 
@@ -905,7 +905,7 @@ def main(argv: list[str] | None = None) -> int:
         decision = fallback_decision(raw_input)
         if decision.verdict is None:
             print(
-                f"pakem guard: analysis failed ({type(exc).__name__}); not blocking",
+                f"pakem guard: analysis failed ({type(exc).__name__}). Not blocking",
                 file=sys.stderr,
             )
     emit(args.host, decision)

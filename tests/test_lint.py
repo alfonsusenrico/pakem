@@ -117,7 +117,7 @@ class LintTests(IsolatedTestCase):
         (references / "guide.md").write_text(FIXTURE_REFERENCE + "\nSee [second](second.md).\n")
         completed = self.lint()
         self.assert_ok(completed)
-        self.assertIn("keep references one level deep", completed.stdout)
+        self.assertIn("Keep references one level deep", completed.stdout)
 
     def test_status_headers(self) -> None:
         references = self.framework / "skills" / "demo-skill" / "references"
@@ -263,8 +263,8 @@ class ChangelogLintTests(IsolatedTestCase):
         completed = self.pakem("lint")
         self.assert_fails(completed)
         self.assertIn(
-            "CHANGELOG.md line 7: bullet entry under ## [Unreleased] (2 in total); record changes as "
-            "fragments in changes/; only `pakem changelog --release` edits CHANGELOG.md",
+            "CHANGELOG.md line 7: bullet entry under ## [Unreleased] (2 in total). Record changes as "
+            "fragments in changes/. Only `pakem changelog --release` edits CHANGELOG.md",
             completed.stdout,
         )
 
