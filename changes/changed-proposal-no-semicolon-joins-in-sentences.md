@@ -1,1 +1,0 @@
-- No semicolon joins in sentences.
