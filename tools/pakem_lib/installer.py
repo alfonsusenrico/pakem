@@ -114,7 +114,7 @@ def framework_skill_sources(framework: Framework, report: Report) -> list[SkillS
         if not directory.is_dir() or directory.name.startswith("."):
             continue
         if not (directory / "SKILL.md").is_file():
-            report.warn(f"skills/{directory.name} has no SKILL.md; not installed")
+            report.warn(f"skills/{directory.name} has no SKILL.md. Not installed")
             continue
         sources.append(SkillSource(directory.name, directory, f"skills/{directory.name}"))
     return sources
@@ -129,7 +129,7 @@ def profile_skill_sources(profiles, report: Report) -> list[SkillSource]:
             if not directory.is_dir() or directory.name.startswith("."):
                 continue
             if not (directory / "SKILL.md").is_file():
-                report.warn(f"profile {profile.name}: {directory.name} has no SKILL.md; not installed")
+                report.warn(f"profile {profile.name}: {directory.name} has no SKILL.md. Not installed")
                 continue
             label = f"{PROFILE_SOURCE_PREFIX}{profile.name}/{directory.name}"
             sources.append(SkillSource(directory.name, directory, label))
@@ -145,7 +145,7 @@ def read_skill_lock_names(report: Report) -> set[str]:
         data = json.loads(lock_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         report.warn(
-            f"could not parse {display_path(lock_path)} ({type(exc).__name__}); skill-lock collisions not checked"
+            f"could not parse {display_path(lock_path)} ({type(exc).__name__}). Skill-lock collisions not checked"
         )
         return set()
 
@@ -191,7 +191,7 @@ def _decide_instruction_action(item: InstallItem, entry: dict | None, force: boo
         item.action = BACKUP_EDITED
     else:
         item.action = BLOCKED_EDITED
-        item.detail = "content differs from what pakem installed; use --force to back up and replace"
+        item.detail = "content differs from what pakem installed. Use --force to back up and replace"
 
 
 def _decide_skill_action(
@@ -228,7 +228,7 @@ def _decide_skill_action(
         item.action = BACKUP_EDITED
     else:
         item.action = BLOCKED_EDITED
-        item.detail = "skill differs from what pakem installed; use --force to back up and replace"
+        item.detail = "skill differs from what pakem installed. Use --force to back up and replace"
 
 
 def profile_of_source(source: str) -> str | None:
@@ -276,7 +276,7 @@ def _plan_orphan_removal(entry: dict, force: bool) -> InstallItem:
     path = item.path
     if not path.exists() and not path.is_symlink():
         item.action = ALREADY_ABSENT
-        item.detail = "source no longer exists; the manifest entry is dropped"
+        item.detail = "source no longer exists. The manifest entry is dropped"
     elif path.is_symlink():
         item.action = BLOCKED_EDITED
         item.detail = "source no longer exists, but the installed skill was replaced by a symlink"
@@ -286,12 +286,12 @@ def _plan_orphan_removal(entry: dict, force: bool) -> InstallItem:
     elif installed_sha(path, KIND_SKILL) != entry.get("sha256"):
         if force:
             item.action = BACKUP_AND_REMOVE
-            item.detail = "source no longer exists; the edited copy is backed up first"
+            item.detail = "source no longer exists. The edited copy is backed up first"
         else:
             item.action = BLOCKED_EDITED
             item.detail = (
-                "source no longer exists, but the installed copy was edited since install; "
-                "use --force to back up and remove"
+                "source no longer exists, but the installed copy was edited since install. "
+                "Use --force to back up and remove"
             )
     return item
 
@@ -350,7 +350,7 @@ def build_install_plan(
         for forbidden in host.must_not_exist:
             if forbidden.exists() or forbidden.is_symlink():
                 plan.report.warn(
-                    f"{host.host_id}: {display_path(forbidden)} exists; it competes with "
+                    f"{host.host_id}: {display_path(forbidden)} exists. It competes with "
                     f"{display_path(host.instructions)} as a global instruction file (not deleted)"
                 )
 
@@ -520,11 +520,11 @@ def _roll_back_and_raise(
         )
     print("Manifest unchanged.")
     if problems:
-        outcome = f"rollback incomplete ({len(problems)} problem(s) listed above)"
+        outcome = f"Rollback incomplete ({len(problems)} problem(s) listed above)"
     else:
-        outcome = f"rolled back {len(done)} change(s)"
+        outcome = f"Rolled back {len(done)} change(s)"
     raise PakemError(
-        f"install failed while writing {where} ({type(exc).__name__}); {outcome}; manifest unchanged"
+        f"install failed while writing {where} ({type(exc).__name__}). {outcome}. Manifest unchanged"
     ) from exc
 
 
@@ -661,7 +661,7 @@ def build_uninstall_plan(force: bool) -> tuple[list[UninstallItem], dict]:
         else:
             items.append(
                 UninstallItem(
-                    path, kind, BLOCKED_EDITED, "edited since install; use --force to back up and remove"
+                    path, kind, BLOCKED_EDITED, "edited since install. Use --force to back up and remove"
                 )
             )
 
@@ -751,5 +751,5 @@ def run_uninstall(args) -> int:
     manifest["backups"] = [record for record in manifest["backups"] if record not in restored_backups]
     save_manifest(manifest)
     report.print()
-    print(f"Removed {len(removed_paths)} item(s); restored {len(restored_backups)} backup(s).")
+    print(f"Removed {len(removed_paths)} item(s). Restored {len(restored_backups)} backup(s).")
     return 0

@@ -91,7 +91,7 @@ def main() -> int:
         print(f"not in {arguments.compare.name}: {', '.join(extra) or 'none'}")
 
     if skipped:
-        print(f"note: {skipped} unparsable line(s) skipped; contents not shown", file=sys.stderr)
+        print(f"note: {skipped} unparsable line(s) skipped. Contents not shown", file=sys.stderr)
     return 0
 
 

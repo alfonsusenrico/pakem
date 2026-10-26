@@ -102,7 +102,7 @@ def shell_line(arguments: list[str]) -> str:
 def _require_platform(context: ScheduleContext) -> None:
     if context.platform != SUPPORTED_PLATFORM:
         raise PakemError(
-            f"pakem schedule supports macOS (launchd) only; this platform is {context.platform}. "
+            f"pakem schedule supports macOS (launchd) only. This platform is {context.platform}. "
             "Run `pakem report` from this system's own scheduler instead."
         )
 
@@ -128,8 +128,8 @@ def install(framework: Framework, args, context: ScheduleContext) -> int:
     text = render_plist(framework, context.python, args.weekday, args.hour, args.minute)
     if (path.exists() or path.is_symlink()) and not managed(record, path):
         raise PakemError(
-            f"{display_path(path)} exists and was not installed by pakem, or was edited since; "
-            "refusing to overwrite (remove it by hand if intended)"
+            f"{display_path(path)} exists and was not installed by pakem, or was edited since. "
+            "Refusing to overwrite (remove it by hand if intended)"
         )
 
     commands = []
@@ -186,14 +186,14 @@ def uninstall(args, context: ScheduleContext) -> int:
     if record is None:
         path = plist_path()
         if path.exists() or path.is_symlink():
-            print(f"  {display_path(path)} exists but was not installed by pakem; left in place")
+            print(f"  {display_path(path)} exists but was not installed by pakem. Left in place")
         else:
             print("  nothing recorded for the drift report schedule")
         return 0
 
     path = expand_user_path(record["plist"])
     if path.exists() and not managed(record, path):
-        print(f"ERROR: {record['plist']} was edited after install; unload and remove it by hand if intended")
+        print(f"ERROR: {record['plist']} was edited after install. Unload and remove it by hand if intended")
         return 1
     command = bootout_command(context.uid)
     print(f"  run: {shell_line(command)}")

@@ -77,10 +77,10 @@ DEPLOY_USER = "af"
 # The receiver's exit codes (the engine's, contracts §5).
 HOST_OK, HOST_REFUSED, HOST_BUSY = 0, 2, 75
 HOST_RESULTS = {
-    1: "failed; nothing to restore",
-    3: "failed; the previous release was restored and verified",
+    1: "failed. Nothing to restore",
+    3: "failed. The previous release was restored and verified",
     4: "failed, and restoring the previous release failed too",
-    5: "failed after a schema change; services are stopped for you",
+    5: "failed after a schema change. Services are stopped for you",
 }
 SSH_FAILED = 255
 # A POSIX shell's exit code for a command it cannot find.
@@ -203,8 +203,8 @@ class Remote:
         print(f"  signing in to {self.record.target}; answer any prompt, or open any link it shows", flush=True)
         completed = subprocess.run(self._command("true", tty=False))
         if completed.returncode != 0:
-            raise PakemError(f"could not sign in to {self.record.target} (ssh exit {completed.returncode}); "
-                             "see the lines above")
+            raise PakemError(f"could not sign in to {self.record.target} (ssh exit {completed.returncode}). "
+                             "See the lines above")
 
     def _command(self, remote: str, tty: bool) -> list[str]:
         command = [
@@ -270,7 +270,7 @@ def run_sudo(remote: Remote, directory: str, script: Path, arguments: list[str])
 def require_terminal(command_line: str) -> None:
     if not sys.stdin.isatty():
         raise OwnerActionRequired(
-            f"OWNER ACTION REQUIRED: run `{command_line}` in your terminal; it signs in with your own admin "
+            f"OWNER ACTION REQUIRED: run `{command_line}` in your terminal. It signs in with your own admin "
             "login, and sudo asks for your password there"
         )
 
@@ -295,7 +295,7 @@ def record_from_args(args) -> HostRecord:
     elif args.target:
         record = HostRecord(args.name or default_name(args.target), args.target)
     else:
-        raise PakemError("name a host: `pakem setup host <name>`; a new one needs its SSH target, too")
+        raise PakemError("name a host: `pakem setup host <name>`. A new one needs its SSH target, too")
     for option in HOST_OPTIONS:
         value = getattr(args, option, None)
         if value is not None:
@@ -336,7 +336,7 @@ def check_release_port(record: HostRecord) -> None:
         raise PakemError(f"--release-port must be a TCP port, not {port}")
     if port == login_port(record):
         raise PakemError(
-            f"--release-port {port} is the port you log in on ({record.target}); only the deploy user could log "
+            f"--release-port {port} is the port you log in on ({record.target}). Only the deploy user could log "
             "in there afterwards. Choose a free port, such as 2223"
         )
 
@@ -374,7 +374,7 @@ def _projects(record: HostRecord) -> list[Project]:
     projects = []
     for directory in directories:
         if not is_service_project(Path(directory)):
-            print(f"  note: {directory} is no service project on this device any more; skipped")
+            print(f"  note: {directory} is no service project on this device any more. Skipped")
             continue
         projects.append(read_project(Path(directory)))
     return projects
@@ -449,7 +449,7 @@ def run_setup_host(args) -> int:
     if projects and not device_key.private_path().exists():
         steps.append("create this device's release key (ssh-keygen asks for its passphrase here)")
     steps += [
-        f"sign in to {record.target} with your own login (one connection; a password is asked at most once)",
+        f"sign in to {record.target} with your own login (one connection, so a password is asked at most once)",
         f"upload the deploy assets of Pakem {framework.version()} to a temporary directory there",
         install,
     ]
@@ -458,7 +458,7 @@ def run_setup_host(args) -> int:
     steps.append("remove the temporary directory")
     for project in projects:
         steps.append(
-            f"let this device's key release {project.name} ({', '.join(project.environments)}); an environment "
+            f"let this device's key release {project.name} ({', '.join(project.environments)}). An environment "
             "that deploys from a registry moves to direct delivery, keeping its settings, secrets, and backups"
         )
     steps.append(f"record host {record.name} in {display_path(hosts_path())}")
@@ -475,7 +475,7 @@ def run_setup_host(args) -> int:
     confirm_steps(args.yes, "pakem setup host")
     if projects and create_device_key(passphrase=not args.no_passphrase) == EXIT_OWNER_ACTION:
         raise OwnerActionRequired(
-            f"OWNER ACTION REQUIRED: the device key exists but is not in ssh-agent; add it as shown above, then run "
+            f"OWNER ACTION REQUIRED: the device key exists but is not in ssh-agent. Add it as shown above, then run "
             f"`pakem setup host {record.name}` again"
         )
     allowed = []
@@ -492,18 +492,18 @@ def run_setup_host(args) -> int:
             for project in projects if code == 0 else []:
                 arguments = authorize_arguments(project, record.deploy_root, record.proxy, switch_from_registry=True)
                 if remote.run(shlex.join(arguments), tty=True).returncode != 0:
-                    raise PakemError(f"allowing this device to release {project.name} failed; see the lines above")
+                    raise PakemError(f"allowing this device to release {project.name} failed. See the lines above")
                 allowed.append(project.name)
         finally:
             remote.close()
     record.projects = sorted(set(record.projects) | set(allowed))
     if code == BOOTSTRAP_CHECK_FAILED:
         save_host(record, set_up=False)
-        raise CheckFailed(f"{record.target} is installed but its check failed; see the lines above")
+        raise CheckFailed(f"{record.target} is installed but its check failed. See the lines above")
     if code != 0:
         raise PakemError(f"host setup failed on {record.target} with exit {code}; see the lines above")
     save_host(record)
-    print(f"Host {record.name} is ready; recorded in {display_path(hosts_path())}.")
+    print(f"Host {record.name} is ready. Recorded in {display_path(hosts_path())}.")
     for name in allowed:
         # The device key must reach the receiver, not a shell (see DeviceLink.failure).
         DeviceLink(record).query(f"status {name}")
@@ -532,7 +532,7 @@ def run_host_check(args, name_or_target: str) -> int:
         finally:
             remote.close()
     if code == BOOTSTRAP_CHECK_FAILED:
-        raise CheckFailed(f"{record.name}: a host check failed; see the lines above")
+        raise CheckFailed(f"{record.name}: a host check failed. See the lines above")
     if code != 0:
         raise PakemError(f"host check could not run on {record.target} (exit {code})")
     return EXIT_DONE
@@ -559,7 +559,7 @@ def run_host_runner(args) -> int:
     record = resolve_host(args.host)
     if not record.runner:
         raise CommandRefused(
-            f"{record.name} has no CI runner; set it up first with `pakem setup host {record.target} --runner`"
+            f"{record.name} has no CI runner. Set it up first with `pakem setup host {record.target} --runner`"
         )
     verb = "add-repo" if args.runner_command == "add" else "remove-repo"
     ensure(framework, ("gh", "github-login"), args, f"pakem host runner {args.runner_command}")
@@ -628,27 +628,27 @@ class DeviceLink:
             # A shell ran the request: something answered before OpenSSH's forced command,
             # such as Tailscale SSH on port 22, which logs in by tailnet identity.
             return CheckFailed(
-                f"{self.record.name} gave the device key a shell instead of the release receiver ({last}); "
-                "something on that port skips authorized_keys forced commands (Tailscale SSH does). Set up a "
+                f"{self.record.name} gave the device key a shell instead of the release receiver ({last}). "
+                "Something on that port skips authorized_keys forced commands (Tailscale SSH does). Set up a "
                 f"release port: `{setup_host_command(self.record)} --release-port 2222`"
             )
         if code == SSH_FAILED and self.record.release_port is not None:
             return PakemError(
                 f"could not reach {DEPLOY_USER}@{self.record.address} on release port {self.record.release_port} "
-                f"with the device key ({last}); check that only sshd listens there "
+                f"with the device key ({last}). Check that only sshd listens there "
                 f"(`sudo ss -ltnp 'sport = :{self.record.release_port}'` on the host), or choose a free port with "
                 f"`{setup_host_command(self.record)}` and another --release-port"
             )
         if code == SSH_FAILED:
             return PakemError(
-                f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}); if this device "
+                f"could not reach {DEPLOY_USER}@{self.record.address} with the device key ({last}). If this device "
                 f"was never allowed there, run `{setup_host_command(self.record)} --project-dir <project>` in your "
                 "terminal"
             )
         if code == HOST_REFUSED:
             return CommandRefused(f"{self.record.name} refused: {last}")
         if code == HOST_BUSY:
-            return CommandBusy(f"{self.record.name}: another deployment holds the lock; try again shortly")
+            return CommandBusy(f"{self.record.name}: another deployment holds the lock. Try again shortly")
         if operation != "release":
             return CheckFailed(f"{self.record.name}: `{operation}` failed with exit {code}: {last}")
         return CheckFailed(f"{self.record.name}: release {HOST_RESULTS.get(code, f'failed with exit {code}')}")

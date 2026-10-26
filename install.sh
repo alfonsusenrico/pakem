@@ -49,7 +49,7 @@ step "Checking this device"
 case "$(uname -s)" in
   Darwin) OS=macos ;;
   Linux) OS=linux ;;
-  *) fail "unsupported system $(uname -s); Pakem runs on macOS and Linux" ;;
+  *) fail "unsupported system $(uname -s). Pakem runs on macOS and Linux" ;;
 esac
 say "  system: $OS ($(uname -m))"
 
@@ -98,7 +98,7 @@ if [ -d "$SOURCE/.git" ]; then
   say "  updating $SOURCE"
   run git -C "$SOURCE" fetch --quiet --tags origin
 else
-  [ ! -e "$SOURCE" ] || fail "$SOURCE exists and is not a Pakem checkout; move it away first"
+  [ ! -e "$SOURCE" ] || fail "$SOURCE exists and is not a Pakem checkout. Move it away first"
   run mkdir -p "$HOME_DIR"
   run git clone --quiet "$REPO" "$SOURCE"
 fi
@@ -109,7 +109,7 @@ run mkdir -p "$BIN_DIR"
 for name in pakem pk; do
   wrapper="$BIN_DIR/$name"
   if [ -e "$wrapper" ] && ! grep -q '^# pakem-managed$' "$wrapper" 2>/dev/null; then
-    fail "$wrapper exists and was not made by Pakem; remove or rename it first"
+    fail "$wrapper exists and was not made by Pakem. Remove or rename it first"
   fi
   if [ "$DRY_RUN" -eq 1 ]; then
     say "  would write $wrapper"
@@ -126,7 +126,7 @@ case ":$PATH:" in
 esac
 
 if [ "$AGENTS" -eq 0 ]; then
-  step "Done. Agent install skipped (--no-agents); run: pakem install"
+  step "Done. Agent install skipped (--no-agents). Run: pakem install"
   exit 0
 fi
 
@@ -148,5 +148,5 @@ case "$answer" in
     "$PYTHON" "$SOURCE/tools/pakem" install --apply
     step "Done. Open your coding agent and say: \"Set up this project with Pakem.\"" ;;
   *)
-    step "Commands installed; agents unchanged. Apply later with: pakem install --apply" ;;
+    step "Commands installed, agents unchanged. Apply later with: pakem install --apply" ;;
 esac

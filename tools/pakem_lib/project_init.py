@@ -143,13 +143,13 @@ def gather_answers(args, known: dict[str, str], capability_names: list[str]) -> 
             raise PakemError(f"--{question.key.replace('_', '-')} must be one of {', '.join(question.choices)}")
         answers[question.key] = value
     if missing:
-        raise PakemError(f"without a terminal, pass every fact as a flag; missing: {' '.join(missing)}")
+        raise PakemError(f"without a terminal, pass every fact as a flag. Missing: {' '.join(missing)}")
     return answers
 
 
 def build_facts(name: str, repository: str, answers: dict[str, str], capability_names: list[str]) -> Facts:
     if answers["kind"] == "artifact":
-        raise CommandRefused("the artifact kind comes with its own area (GitLab and artifacts); not built yet")
+        raise CommandRefused("the artifact kind comes with its own area (GitLab and artifacts). Not built yet")
     capabilities = [] if answers["capabilities"] == "none" else [
         part.strip() for part in answers["capabilities"].split(",") if part.strip()
     ]
@@ -514,7 +514,7 @@ def client_ci(args, facts: Facts, repo: Path) -> bool:
 def record_client_ci(args, repo: Path, done: list[str]) -> None:
     if args.client_ci:
         record_decision(repo, CI_OWNER, {"state": ANSWERED, "answer": f"{CLIENT_CI}: {args.client_ci}",
-                                         "reason": "chosen with --client-ci; Pakem writes no CI"})
+                                         "reason": "chosen with --client-ci, so Pakem writes no CI"})
         done.append(f"recorded {CI_OWNER}: {CLIENT_CI}, no Pakem CI written")
 
 
@@ -531,7 +531,7 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
             )
         else:
             actions.append(
-                "OWNER ACTION REQUIRED: this private repository's CI needs a self-hosted runner; set one up with "
+                "OWNER ACTION REQUIRED: this private repository's CI needs a self-hosted runner. Set one up with "
                 "`pakem setup host <target> --runner`, then `pakem host runner add <host> "
                 f"{facts.repository}`"
             )
@@ -593,7 +593,7 @@ def github_login() -> str:
     completed = subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True)
     login = completed.stdout.strip()
     if completed.returncode != 0 or not login:
-        raise PakemError("gh could not tell which GitHub account is logged in; pass --repository owner/name")
+        raise PakemError("gh could not tell which GitHub account is logged in. Pass --repository owner/name")
     return login
 
 
@@ -618,14 +618,14 @@ def interrupted_init(repo: Path) -> str | None:
 def run_project_init(args) -> int:
     framework = Framework(Path(args.root))
     if args.forge != "github":
-        raise CommandRefused("GitLab projects come with the GitLab area; not built yet")
+        raise CommandRefused("GitLab projects come with the GitLab area. Not built yet")
     repo = Path(args.directory).resolve()
     resume = None
     known: dict[str, str] = {}
     if repo.exists() and any(repo.iterdir()):
         resume = interrupted_init(repo)
         if resume is None:
-            raise CommandRefused(f"{display_path(repo)} is not empty; use `pakem project adopt` for an existing project")
+            raise CommandRefused(f"{display_path(repo)} is not empty. Use `pakem project adopt` for an existing project")
         existing = load_facts(repo)
         known = {
             "visibility": existing.visibility, "kind": existing.kind, "delivery": existing.delivery,
@@ -656,7 +656,7 @@ def run_project_init(args) -> int:
             ("resume the interrupted init: write the missing files" if resume else f"write {len(files.texts)} files")
             + ": AGENTS.md, .pakem/, CI, " + ("deploy files, " if facts.releases_here else "")
             + f"{facts.stack} tooling, OpenSpec, research/",
-            "install the framework git hooks; keep PROJECT_STATE.md and JOURNAL.md untracked",
+            "install the framework git hooks. Keep PROJECT_STATE.md and JOURNAL.md untracked",
             f"add the {facts.stack} dev tools ({'uv add --dev' if facts.stack == 'python' else 'npm install --save-dev'})",
             f"commit `{BOOTSTRAP_SUBJECT}`",
             publish,
@@ -781,13 +781,13 @@ def registry_findings(repo: Path) -> list[str]:
     for path in sorted(workflows.glob("*.y*ml")) if workflows.is_dir() else []:
         if any(marker in read_text(path) for marker in REGISTRY_MARKERS):
             findings.append(
-                f".github/workflows/{path.name} publishes releases to a registry (ADR 0009); direct delivery "
-                "(`pakem release`) replaces it: remove it; `pakem setup host` with this project switches the host"
+                f".github/workflows/{path.name} publishes releases to a registry (ADR 0009). Direct delivery "
+                "(`pakem release`) replaces it, so remove it. `pakem setup host` with this project switches the host"
             )
     # deploy/af/contracts.py stays useful: a project's own checks may validate its deploy files with it.
     for relative in ("deploy/af/af_publish.py", "deploy/release-signing.pub"):
         if (repo / relative).exists():
-            findings.append(f"{relative} belongs to the registry mode's signing and publishing; remove it with the workflows")
+            findings.append(f"{relative} belongs to the registry mode's signing and publishing. Remove it with the workflows")
     release = repo / "deploy" / "release.toml"
     if release.is_file():
         try:
@@ -809,14 +809,14 @@ def adopt_findings(framework: Framework, repo: Path, files: Files) -> list[str]:
         if relative.startswith(".github/workflows/") and relative != ".github/workflows/ci.yml":
             source = framework.root / "skills/release-delivery/assets/ci/github/workflows" / Path(relative).name
             if not filecmp.cmp(source, path, shallow=False):
-                findings.append(f"{relative} differs from the Pakem CI template; review it against the template")
+                findings.append(f"{relative} differs from the Pakem CI template. Review it against the template")
     agents = read_text(repo / "AGENTS.md") if (repo / "AGENTS.md").is_file() else ""
     for line in ("Capabilities:", "Delivery:", "Language:"):
         if not re.search(rf"^(?:[-*+]\s+)?{line}", agents, re.MULTILINE):
             findings.append(f"AGENTS.md has no `{line}` line")
     pyproject = repo / "pyproject.toml"
     if pyproject.is_file() and "[tool.ruff" not in read_text(pyproject):
-        findings.append("pyproject.toml lacks the Python tooling defaults (ruff, pyright, pytest); merge the fragment")
+        findings.append("pyproject.toml lacks the Python tooling defaults (ruff, pyright, pytest). Merge the fragment")
     release = repo / "deploy" / "release.toml"
     if release.is_file():
         try:
@@ -844,7 +844,7 @@ def github_visibility(args, repository: str, repo: Path) -> str:
     workflows = self_hosted_workflows(repo)
     if visibility == "public" and workflows:
         refusal = public_runner_refusal(repository)
-        raise CommandRefused(f"{refusal} (self-hosted jobs in {', '.join(workflows)}); nothing changed")
+        raise CommandRefused(f"{refusal} (self-hosted jobs in {', '.join(workflows)}). Nothing changed")
     return visibility
 
 
@@ -866,12 +866,12 @@ def run_project_adopt(args) -> int:
     if args.repository:
         repository = args.repository
     if repository is None or not REPOSITORY.match(repository):
-        raise PakemError("origin is not a GitHub repository; pass --repository owner/name (GitLab comes later)")
+        raise PakemError("origin is not a GitHub repository. Pass --repository owner/name (GitLab comes later)")
     ensure(framework, ("gh", "github-login"), args, "pakem project adopt")
     known["visibility"] = github_visibility(args, repository, repo)
     name = project_name(repo, existing)
     if not NAME.match(name):
-        raise PakemError(f"project name {name!r} is not lowercase letters, digits, and hyphens; pass it in "
+        raise PakemError(f"project name {name!r} is not lowercase letters, digits, and hyphens. Pass it in "
                          "deploy/release.toml or rename the directory")
     answers = gather_answers(args, known, capability_names)
     facts = build_facts(name, repository, answers, capability_names)

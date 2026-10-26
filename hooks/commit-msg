@@ -40,7 +40,7 @@ fail() {
     echo "  subject: $subject" >&2
     echo "  expected: <type>(<scope>)?!?: <description>, at most $MAX_SUBJECT_LENGTH characters" >&2
     echo "  allowed types: $ALLOWED_TYPES" >&2
-    echo "  subject-only commits; no body or trailers (including Co-Authored-By)" >&2
+    echo "  subject-only commits, with no body or trailers (including Co-Authored-By)" >&2
     exit 1
 }
 

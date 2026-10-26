@@ -248,12 +248,12 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
     def test_missing_line_warns(self) -> None:
         completed = self.check_with("")
         self.assert_ok(completed)
-        self.assertIn("declare project capabilities", completed.stdout)
+        self.assertIn("Declare project capabilities", completed.stdout)
 
     def test_key_is_case_sensitive(self) -> None:
         completed = self.check_with("capabilities: database\n")
         self.assert_ok(completed)
-        self.assertIn("declare project capabilities", completed.stdout)
+        self.assertIn("Declare project capabilities", completed.stdout)
 
     def test_invalid_values_are_errors(self) -> None:
         cases = [
@@ -315,7 +315,7 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         completed = self.pakem("project", "check", str(self.repo))
         self.assert_ok(completed)
         self.assertNotIn("telepathy", completed.stdout)
-        self.assertIn("declare project capabilities", completed.stdout)
+        self.assertIn("Declare project capabilities", completed.stdout)
 
     def test_unreadable_registry_is_an_error(self) -> None:
         registry = self.framework / "standards" / "capabilities.toml"

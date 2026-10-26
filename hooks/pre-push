@@ -99,7 +99,7 @@ check_message() {
     fi
     body=$(git log -1 --format=%b "$commit" | tr -d '[:space:]')
     if [ -n "$body" ]; then
-        reject "$short: subject-only commits; no body or trailers (including Co-Authored-By)"
+        reject "$short: subject-only commits, with no body or trailers (including Co-Authored-By)"
     fi
 }
 
@@ -126,7 +126,7 @@ check_docs_only() {
         case "$path" in
             *.md | docs/*) ;;
             *)
-                reject "$short changes $path; only *.md and docs/** may be pushed to $2 (protected branch; push a topic branch instead)"
+                reject "$short changes $path. Only *.md and docs/** may be pushed to $2 (protected branch, so push a topic branch instead)"
                 break
                 ;;
         esac

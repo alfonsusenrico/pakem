@@ -152,7 +152,7 @@ def _move_directory(legacy: Path, canonical: Path, migration: Migration) -> bool
         return False
     if canonical.exists() or canonical.is_symlink():
         migration.warn(
-            f"{display_path(legacy)} and {display_path(canonical)} both exist; "
+            f"{display_path(legacy)} and {display_path(canonical)} both exist. "
             f"{display_path(legacy)} was left in place (merge it by hand)"
         )
         return False
@@ -194,10 +194,10 @@ def _migrate_guard(framework: Framework, manifest: dict, share_done: bool, migra
     current = destination if destination.exists() else legacy_guard
     source_text = read_text(framework.enforcement_dir / "guard.py")
     if not current.is_file():
-        migration.warn(f"{display_path(destination)} is missing; run pakem enforce install for each host")
+        migration.warn(f"{display_path(destination)} is missing. Run pakem enforce install for each host")
         return True
     if sha256_file(current) != record.get("sha256"):
-        migration.warn(f"{display_path(destination)} was edited after install; not refreshed")
+        migration.warn(f"{display_path(destination)} was edited after install. Not refreshed")
         return True
     if read_text(current) != source_text:
         migration.step("refresh", f"{display_path(destination)} (this version's guard)")
@@ -233,7 +233,7 @@ def _migrate_json_host(host: str, manifest: dict, share_done: bool, migration: M
         parent = container_at(data, change["path"][:-1])
         if old_key != new_key and isinstance(parent, dict) and old_key in parent:
             if new_key in parent:
-                migration.warn(f"{display_path(target)}: '{new_key}' already exists; '{old_key}' left in place")
+                migration.warn(f"{display_path(target)}: '{new_key}' already exists, so '{old_key}' was left in place")
                 continue
             _rename_key(parent, old_key, new_key)
             migration.step("rename", f"{display_path(target)}: key '{old_key}' -> '{new_key}'")
@@ -263,11 +263,11 @@ def _migrate_codex(manifest: dict, migration: Migration) -> bool:
         return False
     destination = home_dir() / CODEX_RULES_DESTINATION
     if legacy.exists() and sha256_file(legacy) != record.get("sha256"):
-        migration.warn(f"{display_path(legacy)} was edited after install; left in place")
+        migration.warn(f"{display_path(legacy)} was edited after install. Left in place")
         return False
     if legacy.exists():
         if destination.exists() or destination.is_symlink():
-            migration.warn(f"{display_path(destination)} already exists; {display_path(legacy)} left in place")
+            migration.warn(f"{display_path(destination)} already exists, so {display_path(legacy)} was left in place")
             return False
         migration.step("move", f"{display_path(legacy)} -> {display_path(destination)}")
         if migration.apply:
@@ -285,7 +285,7 @@ def _migrate_schedule(
         return False
     legacy_plist = expand_user_path(record["plist"])
     if (legacy_plist.exists() or legacy_plist.is_symlink()) and not managed(record, legacy_plist):
-        migration.warn(f"{display_path(legacy_plist)} was edited after install; launchd job left as it is")
+        migration.warn(f"{display_path(legacy_plist)} was edited after install. The launchd job was left as it is")
         return False
     if context.platform != SUPPORTED_PLATFORM:
         migration.warn(f"launchd job {LEGACY_LAUNCHD_LABEL} is recorded, but launchd is not available here")
@@ -294,7 +294,7 @@ def _migrate_schedule(
     replace_job = LABEL not in manifest["schedule"]
     destination = plist_path()
     if replace_job and (destination.exists() or destination.is_symlink()):
-        migration.warn(f"{display_path(destination)} exists and was not installed by pakem; old job left as it is")
+        migration.warn(f"{display_path(destination)} exists and was not installed by pakem. Old job left as it is")
         return False
 
     migration.step("replace", f"launchd job {LEGACY_LAUNCHD_LABEL} -> {LABEL}")
@@ -320,8 +320,8 @@ def _migrate_schedule(
     if completed.returncode != 0:
         destination.unlink()
         migration.warn(
-            f"launchctl bootstrap exited {completed.returncode} ({completed.stderr.strip()}); the weekly "
-            "report is not scheduled; run pakem schedule install --apply"
+            f"launchctl bootstrap exited {completed.returncode} ({completed.stderr.strip()}). The weekly "
+            "report is not scheduled. Run pakem schedule install --apply"
         )
         return True
     manifest["schedule"][LABEL] = {
@@ -340,7 +340,7 @@ def legacy_report_config_notice() -> str | None:
     legacy = expand_user_path(LEGACY_REPORT_CONFIG)
     if legacy.is_file() and not expand_user_path(REPORT_CONFIG).exists():
         return (
-            f"{LEGACY_REPORT_CONFIG} is at the former path; move it to {REPORT_CONFIG} "
+            f"{LEGACY_REPORT_CONFIG} is at the former path. Move it to {REPORT_CONFIG} "
             "(pakem report reads the former path until then)"
         )
     return None

@@ -38,8 +38,8 @@ def repository_visibility(repository: str) -> str:
 
 def public_runner_refusal(repository: str) -> CommandRefused:
     return CommandRefused(
-        f"{repository} is public: a self-hosted runner would run any fork's pull request on your server; "
-        "its CI must use GitHub-hosted runners"
+        f"{repository} is public: a self-hosted runner would run any fork's pull request on your server. "
+        "Its CI must use GitHub-hosted runners"
     )
 
 

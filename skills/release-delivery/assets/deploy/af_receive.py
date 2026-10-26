@@ -286,7 +286,7 @@ def check_request(request: dict, device: str, projects: list[str]) -> None:
         raise ReceiveError(f"device {device} may not release {request['project']} here")
     age = -seconds_from_now(request["created"])
     if age > FRESH_SECONDS or age < -AHEAD_SECONDS:
-        raise ReceiveError("the request is not fresh; check the device clock and send it again")
+        raise ReceiveError("the request is not fresh. Check the device clock and send it again")
 
 
 def refuse_replay(host: af_engine.HostConfig, digest: str) -> None:
@@ -301,7 +301,7 @@ def refuse_replay(host: af_engine.HostConfig, digest: str) -> None:
             if stamp.replace(".", "", 1).isdigit() and now - float(stamp) <= FRESH_SECONDS + AHEAD_SECONDS:
                 seen[known] = stamp
     if digest in seen:
-        raise ReceiveError("this signed request already ran here; sign a new one")
+        raise ReceiveError("this signed request already ran here. Sign a new one")
     seen[digest] = f"{now:.0f}"
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
     with os.fdopen(os.open(path, flags, 0o600), "w", encoding="utf-8") as handle:
@@ -549,7 +549,7 @@ class Receiver:
             raise ReceiveError(f"device {self.device} may not release {project} here")
         hosts = direct_hosts(self.config_dir, project)
         if not hosts:
-            raise ReceiveError(f"{project} takes no direct releases on this host; run `pakem host allow-device`")
+            raise ReceiveError(f"{project} takes no direct releases on this host. Run `pakem host allow-device`")
         return hosts
 
     def report(self, kind: str, project: str) -> int:
@@ -712,7 +712,7 @@ class Receiver:
         target_schema = next((entry["schema_version"] for entry in reversed(history) if entry["commit"] == commit), None)
         if target_schema != current.get("schema_version") and not request["allow_schema"]:
             raise ReceiveError(
-                "the rollback crosses a schema change; restore the database from its backup first, then pass --allow-schema"
+                "the rollback crosses a schema change. Restore the database from its backup first, then pass --allow-schema"
             )
 
     @staticmethod
@@ -724,7 +724,7 @@ class Receiver:
         if host.environment != "staging" and staging is not None:
             if not any(entry["commit"] == request["commit"] and entry["result"] == "deployed"
                        for entry in deployments(staging)):
-                raise ReceiveError(f"{request['commit'][:12]} never deployed to staging here; publish it first")
+                raise ReceiveError(f"{request['commit'][:12]} never deployed to staging here. Publish it first")
 
 
 # -- administration (root) -----------------------------------------------------------------
@@ -856,7 +856,7 @@ def authorize(args, files: KeyFiles, config_dir: Path) -> int:
     existing = files.devices()
     for name, entry in existing.items():
         if name == args.device and entry.key != args.key:
-            raise ReceiveError(f"device {args.device} has another key here; revoke it first")
+            raise ReceiveError(f"device {args.device} has another key here. Revoke it first")
         if name != args.device and entry.key == args.key:
             raise ReceiveError(f"this key is already authorized as device {name}")
 
@@ -872,7 +872,7 @@ def authorize(args, files: KeyFiles, config_dir: Path) -> int:
             host = af_engine.HostConfig.load(path)
             if host.delivery == af_engine.DELIVERY_REGISTRY:
                 if not args.switch_from_registry:
-                    raise ReceiveError(f"{path} deploys from a registry; pass --switch-from-registry to move it to direct")
+                    raise ReceiveError(f"{path} deploys from a registry. Pass --switch-from-registry to move it to direct")
                 write_private(path, _registry_to_direct(text), 0o640, "root", DEPLOY_USER)
                 log(f"{args.project} {environment}: switched to direct delivery")
             base = host.base
@@ -913,14 +913,14 @@ def placement_names(path: Path) -> set[str]:
 def revoke(args, files: KeyFiles) -> int:
     existing = files.devices()
     if args.device not in existing:
-        raise ReceiveError(f"device {args.device} has no key here; nothing changed", EXIT_NOTHING_MATCHED)
+        raise ReceiveError(f"device {args.device} has no key here. Nothing changed", EXIT_NOTHING_MATCHED)
     entry = existing[args.device]
     if args.project is None:
         entry.projects = []
     elif args.project in entry.projects:
         entry.projects.remove(args.project)
     else:
-        raise ReceiveError(f"device {args.device} may not release {args.project} here anyway; nothing changed",
+        raise ReceiveError(f"device {args.device} may not release {args.project} here anyway. Nothing changed",
                            EXIT_NOTHING_MATCHED)
     files.write_keys(existing)
     if entry.projects:

@@ -484,7 +484,7 @@ class Engine:
         else:
             path.unlink(missing_ok=True)
         if not self.reload_proxy():
-            log("proxy reload failed while putting the previous routes back; check the proxy")
+            log("proxy reload failed while putting the previous routes back. Check the proxy")
 
     # -- releases on disk --------------------------------------------------------------
 
@@ -568,7 +568,7 @@ class Engine:
         except af_release.ReleaseError as error:
             raise EngineError(str(error), EXIT_REFUSED) from None
         if order == "unchanged":
-            log("this release already runs; nothing to do")
+            log("this release already runs. Nothing to do")
             return self._record("unchanged", EXIT_OK, fetched, previous, started, backup=None)
         log(f"deploying {fetched.record['commit'][:12]} ({fetched.record['version'] or 'unversioned'})")
         try:
@@ -694,7 +694,7 @@ class Engine:
                                      fetched, previous, started, backup)
         stale = [container for service in services for container in old[service]]
         if stale:
-            log("routes moved; stopping the previous containers")
+            log("routes moved. Stopping the previous containers")
             env = self._docker_env()
             self.runner(["docker", "stop", "--time", str(drain), *stale], env, None, COMMAND_TIMEOUT)
             self.runner(["docker", "rm", *stale], env, None, COMMAND_TIMEOUT)
@@ -733,17 +733,17 @@ class Engine:
         log(reason)
         self.compose(candidate, "stop")
         if previous is None:
-            log("first deployment failed; services stay stopped")
+            log("first deployment failed. Services stay stopped")
             return self._record("failed", EXIT_FAILED, fetched, previous, started, backup, reason)
         if candidate.record["schema_version"] != previous.record["schema_version"]:
-            log("the schema changed; services stay stopped for the owner (restore from the backup)")
+            log("the schema changed. Services stay stopped for the owner (restore from the backup)")
             return self._record("stopped", EXIT_STOPPED, fetched, previous, started, backup, reason)
         log("restoring the previous release")
         self.restore_routes()
         if self.compose(previous, "up", "--detach", "--no-build", "--remove-orphans") == 0 and self.healthy(previous):
             log("previous release restored")
             return self._record("restored", EXIT_RESTORED, fetched, previous, started, backup, reason)
-        log("restore failed; act manually")
+        log("restore failed. Act manually")
         return self._record("restore_failed", EXIT_RESTORE_FAILED, fetched, previous, started, backup, reason)
 
     def _record(

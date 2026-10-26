@@ -96,7 +96,7 @@ reload_systemd() {
   # started with the legacy NVIDIA device request (`deploy.devices` / `--gpus`); containers
   # on `runtime: nvidia` (toolkit 1.18+, CDI) keep it. NVIDIA Container Toolkit troubleshooting.
   if [[ -e /dev/nvidiactl ]]; then
-    say "warning: reloading systemd on a GPU host; GPU containers not on runtime: nvidia lose GPU access until recreated"
+    say "warning: reloading systemd on a GPU host. GPU containers not on runtime: nvidia lose GPU access until recreated"
   fi
   say "reloading systemd ($1)"
   systemctl daemon-reload
@@ -169,7 +169,7 @@ install_docker() {
     say "docker present: $(docker version --format '{{.Server.Version}}'), compose $(docker compose version --short)"
     return
   fi
-  command -v dockerd >/dev/null && die "docker is installed but not running with the compose plugin; fix it first"
+  command -v dockerd >/dev/null && die "docker is installed but not running with the compose plugin. Fix it first"
   say "installing Docker Engine from download.docker.com"
   add_apt_key "https://download.docker.com/linux/$OS_ID/gpg" "$DOCKER_KEY_FINGERPRINT" /etc/apt/keyrings/docker.gpg
   printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/%s %s stable\n' \
@@ -195,7 +195,7 @@ install_caddy() {
   for port in 80 443; do
     local owner
     owner=$(port_owner "$port")
-    [[ -z "$owner" ]] || die "port $port is used by $owner; free it or use --no-proxy"
+    [[ -z "$owner" ]] || die "port $port is used by $owner. Free it or use --no-proxy"
   done
   say "installing Caddy from the caddy/stable repository"
   add_apt_key "$CADDY_KEY_URL" "$CADDY_KEY_FINGERPRINT" /etc/apt/keyrings/caddy.gpg
@@ -229,7 +229,7 @@ configure_caddy() {
       install -m 0644 "$HERE/caddy/Caddyfile" /etc/caddy/Caddyfile
       changed=1
     else
-      die "/etc/caddy/Caddyfile was not written by this script; review it, then rerun with --replace-caddyfile"
+      die "/etc/caddy/Caddyfile was not written by this script. Review it, then rerun with --replace-caddyfile"
     fi
   fi
   install -d -m 0755 -o af -g caddy /etc/caddy/sites
@@ -346,7 +346,7 @@ sshd_keys_file() {
 }
 
 pin_deploy_keys() {
-  command -v sshd >/dev/null || { say "note: no OpenSSH server here; the deploy user's keys stay in ~af/.ssh"; return 0; }
+  command -v sshd >/dev/null || { say "note: no OpenSSH server here. The deploy user's keys stay in ~af/.ssh"; return 0; }
   if [[ -f "$DEPLOY_KEYS" && "$(sshd_keys_file 2>/dev/null)" == "$DEPLOY_KEYS" ]]; then
     say "deploy user keys in $DEPLOY_KEYS (root-owned)"
     return
@@ -372,7 +372,7 @@ pin_deploy_keys() {
   fi
   # sshd reads no drop-ins (or rejected this one): keep the keys where sshd reads them.
   rm -f "$KEYS_DROPIN" "$DEPLOY_KEYS"
-  say "note: sshd does not read /etc/ssh/sshd_config.d; the deploy user's keys stay in ~af/.ssh"
+  say "note: sshd does not read /etc/ssh/sshd_config.d. The deploy user's keys stay in ~af/.ssh"
 }
 
 configure_release_port() {
@@ -381,13 +381,13 @@ configure_release_port() {
   local before wanted saved="" port problem="" previous="" others
   [[ -n "$(system_sshd_pid)" ]] || die "no running ssh service found (ssh.service or ssh.socket)"
   others=$(foreign_holders "$RELEASE_PORT")
-  [[ -z "$others" ]] || die "port $RELEASE_PORT is already used by $(echo $others), not this host's ssh service; choose another --release-port (nothing changed)"
-  before=$(sshd_ports) || die "sshd -T could not read the current configuration; nothing changed"
+  [[ -z "$others" ]] || die "port $RELEASE_PORT is already used by $(echo $others), not this host's ssh service. Choose another --release-port (nothing changed)"
+  before=$(sshd_ports) || die "sshd -T could not read the current configuration. Nothing changed"
   [[ -f "$SSHD_DROPIN" ]] && previous=$(sed -n 's/^Match LocalPort \([0-9]*\)$/\1/p' "$SSHD_DROPIN")
   # On a port sshd already serves, `AllowUsers af` would lock everyone else out of it.
   for port in $before; do
     [[ "$port" != "$RELEASE_PORT" || "$port" == "$previous" ]] ||
-      die "port $RELEASE_PORT is one of sshd's own ports (${before//$'\n'/ }); as the release port only the deploy user could log in there; choose another --release-port (nothing changed)"
+      die "port $RELEASE_PORT is one of sshd's own ports (${before//$'\n'/ }). As the release port, only the deploy user could log in there. Choose another --release-port (nothing changed)"
   done
   wanted=$(release_port_text "$before" "$previous")
   if [[ -f "$SSHD_DROPIN" && "$(cat "$SSHD_DROPIN")" == "$wanted" ]]; then
@@ -401,7 +401,7 @@ configure_release_port() {
   if ! sshd -t; then
     problem="sshd rejected the release port settings"
   elif ! sshd_ports 2>/dev/null | grep -x "$RELEASE_PORT" >/dev/null; then
-    problem="sshd does not read /etc/ssh/sshd_config.d (no Include line); add the port by hand"
+    problem="sshd does not read /etc/ssh/sshd_config.d (no Include line). Add the port by hand"
   else
     for port in $before; do
       [[ "$port" == "$previous" ]] && continue
@@ -410,9 +410,9 @@ configure_release_port() {
   fi
   if [[ -n "$problem" ]]; then
     if [[ -n "$saved" ]]; then mv "$saved" "$SSHD_DROPIN"; else rm -f "$SSHD_DROPIN"; fi
-    die "$problem; sshd was left as it was"
+    die "$problem, so sshd was left as it was"
   fi
-  say "sshd: release port $RELEASE_PORT for the deploy user (keys only); other ports stay"
+  say "sshd: release port $RELEASE_PORT for the deploy user (keys only). Other ports stay"
   reload_sshd
   local attempt
   for attempt in 1 2 3 4 5; do
@@ -422,7 +422,7 @@ configure_release_port() {
   # sshd could not take the port on every address: put the old settings back.
   if [[ -n "$saved" ]]; then mv "$saved" "$SSHD_DROPIN"; else rm -f "$SSHD_DROPIN"; fi
   reload_sshd
-  die "the ssh service did not take port $RELEASE_PORT on every address ($(echo $(port_holders "$RELEASE_PORT"))); the old settings are back"
+  die "the ssh service did not take port $RELEASE_PORT on every address ($(echo $(port_holders "$RELEASE_PORT"))). The old settings are back"
 }
 
 # -- check ------------------------------------------------------------------------------
@@ -486,7 +486,7 @@ check() {
   fi
   if ((RELEASE_PORT)); then
     result "$(passes release_port_listening)" "release port" \
-      "only the ssh service listens on $RELEASE_PORT ($(echo $(port_holders "$RELEASE_PORT")); $SSHD_DROPIN)"
+      "only the ssh service listens on $RELEASE_PORT ($(echo $(port_holders "$RELEASE_PORT")), $SSHD_DROPIN)"
   fi
   if ((FAILURES)); then
     say "$FAILURES check(s) failed"
@@ -511,7 +511,7 @@ main() {
     install_units
     configure_release_port
     pin_deploy_keys
-    ((FRESH_DOCKER)) || say "note: an existing Docker keeps its daemon.json; add a log size limit there if 'container logs' fails"
+    ((FRESH_DOCKER)) || say "note: an existing Docker keeps its daemon.json. Add a log size limit there if 'container logs' fails"
   fi
   check
 }

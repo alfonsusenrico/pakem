@@ -241,7 +241,7 @@ class PromoteTests(ReleaseTestCase):
     def test_production_needs_the_flag(self) -> None:
         completed = self.release("promote", "v1.0.0", "--yes")
         self.assert_fails(completed, code=6)
-        self.assertIn("pass --production", completed.stderr)
+        self.assertIn("Pass --production", completed.stderr)
 
     def test_promote_sends_what_staging_runs_then_tags_it(self) -> None:
         completed = self.release("promote", "v1.0.0", "--production", "--yes")
@@ -327,7 +327,7 @@ class RollbackTests(ReleaseTestCase):
         self.history({"production": {"running": None, "kept": [], "deployments": []}})
         completed = self.release("rollback", "previous", "--environment", "production", "--yes")
         self.assert_fails(completed, code=6)
-        self.assertIn("pass --production", completed.stderr)
+        self.assertIn("Pass --production", completed.stderr)
         self.assertEqual(self.payloads(), [])
 
         older = self.main

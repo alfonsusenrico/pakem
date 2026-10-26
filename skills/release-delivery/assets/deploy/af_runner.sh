@@ -105,7 +105,7 @@ runner_repo() {
 
 read_token() {
   local token
-  [[ ! -t 0 ]] || die "pipe the token on standard input; never pass it as an argument"
+  [[ ! -t 0 ]] || die "pipe the token on standard input. Never pass it as an argument"
   IFS= read -r token || true
   [[ "$token" =~ ^[A-Za-z0-9_-]{20,200}$ ]] || die "standard input does not hold a runner token"
   printf '%s' "$token"
@@ -127,7 +127,7 @@ install_packages() {
   elif dpkg -s docker-ce >/dev/null 2>&1; then
     packages+=(docker-ce-rootless-extras)
   else
-    die "Docker is not installed; run af_bootstrap.sh install first"
+    die "Docker is not installed. Run af_bootstrap.sh install first"
   fi
   say "installing ${packages[*]}"
   apt-get update -qq
@@ -149,7 +149,7 @@ create_user() {
   local member
   for member in sudo docker af adm; do
     if id -nG "$RUNNER_USER" | tr ' ' '\n' | grep -qx "$member"; then
-      die "$RUNNER_USER is in the $member group; remove it before installing"
+      die "$RUNNER_USER is in the $member group. Remove it before installing"
     fi
   done
   if ! grep -q "^$RUNNER_USER:" /etc/subuid || ! grep -q "^$RUNNER_USER:" /etc/subgid; then
@@ -176,7 +176,7 @@ ensure_ip_tables() {
   if grep -q '^ip_tables ' /proc/modules || grep -qs ip_tables "/lib/modules/$(uname -r)/modules.builtin"; then
     return
   fi
-  modprobe ip_tables 2>/dev/null || die "the ip_tables kernel module is not available; load it, then rerun"
+  modprobe ip_tables 2>/dev/null || die "the ip_tables kernel module is not available. Load it, then rerun"
   echo ip_tables > /etc/modules-load.d/ci-runner.conf
   say "loaded ip_tables and kept it loaded after reboots (/etc/modules-load.d/ci-runner.conf)"
 }
@@ -279,7 +279,7 @@ install_command() {
   limit_resources
   download_runner
   install_hooks_and_unit
-  say "installed; register repositories with: af_runner.sh add-repo <owner>/<repo>"
+  say "installed. Register repositories with: af_runner.sh add-repo <owner>/<repo>"
 }
 
 add_repo() {
@@ -288,8 +288,8 @@ add_repo() {
   slug=$(repo_slug "$repo")
   case "$(repo_visibility "$repo")" in
     private) ;;
-    public) die "$repo is public: its pull requests could run any fork's code on this host; use GitHub-hosted runners" ;;
-    *) die "could not confirm with GitHub that $repo is private; nothing changed" ;;
+    public) die "$repo is public: its pull requests could run any fork's code on this host. Use GitHub-hosted runners" ;;
+    *) die "could not confirm with GitHub that $repo is private. Nothing changed" ;;
   esac
   token=$(read_token)
   id "$RUNNER_USER" >/dev/null 2>&1 || die "run af_runner.sh install first"

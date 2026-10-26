@@ -94,7 +94,7 @@ def create(comment: str, passphrase: bool) -> None:
     """Create the key pair; with a passphrase, ssh-keygen asks for it on this terminal."""
     private = private_path()
     if private.exists() or public_path().exists():
-        raise PakemError(f"{private} or its .pub already exists; pakem never replaces a device key")
+        raise PakemError(f"{private} or its .pub already exists. Pakem never replaces a device key")
     if shutil.which("ssh-keygen") is None:
         raise PakemError("ssh-keygen is not installed")
     private.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

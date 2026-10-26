@@ -220,7 +220,7 @@ class SkillTreeChecker:
                 continue
             if in_references and resolved.suffix == ".md" and resolved.is_relative_to(references_dir):
                 self.report.warn(
-                    f"{label}:{number}: reference links to another reference ({target}); keep references one level deep"
+                    f"{label}:{number}: reference links to another reference ({target}). Keep references one level deep"
                 )
 
 
@@ -484,8 +484,8 @@ class Linter:
         if bullets:
             self.report.error(
                 f"CHANGELOG.md line {bullets[0]}: bullet entry under {UNRELEASED_HEADING} "
-                f"({len(bullets)} in total); record changes as fragments in changes/; "
-                "only `pakem changelog --release` edits CHANGELOG.md"
+                f"({len(bullets)} in total). Record changes as fragments in changes/. "
+                "Only `pakem changelog --release` edits CHANGELOG.md"
             )
 
     def check_change_fragments(self) -> None:
@@ -622,7 +622,7 @@ class ProfileLinter:
                 continue
             if stripped in kernel_lines:
                 self.report.warn(
-                    f"{label}:{number}: repeats a kernel/KERNEL.md line; profiles must not restate the kernel"
+                    f"{label}:{number}: repeats a kernel/KERNEL.md line. Profiles must not restate the kernel"
                 )
 
     def check_skills(self) -> None:

@@ -314,7 +314,7 @@ class MigrationTests(LegacyDeviceTestCase):
         write(config, "repos_dirs = []\n")
         migration = self.migrate(apply=True)
         self.assertEqual(migration.steps, [])
-        self.assertIn("move it to ~/.config/pakem/report.toml", migration.warnings[0])
+        self.assertIn("Move it to ~/.config/pakem/report.toml", migration.warnings[0])
         self.assertEqual(config.read_text(), "repos_dirs = []\n")
 
 

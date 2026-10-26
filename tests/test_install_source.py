@@ -32,14 +32,14 @@ class FrameworkSourceTests(IsolatedTestCase):
         completed = self.pakem("install", "--apply")
         self.assert_ok(completed)
         self.assertIn("Source: framework main @ ", completed.stdout)
-        self.assertIn("no origin remote; merge state not checked", completed.stdout)
+        self.assertIn("no origin remote. Merge state not checked", completed.stdout)
         self.assertTrue(self.installed())
 
     def test_main_matching_origin_installs(self) -> None:
         self.add_origin()
         completed = self.pakem("install", "--apply")
         self.assert_ok(completed)
-        self.assertIn("matches origin/main as of the last fetch; fetch to refresh", completed.stdout)
+        self.assertIn("matches origin/main as of the last fetch. Fetch to refresh", completed.stdout)
         self.assertNotIn("WARNING", completed.stdout)
 
     def test_feature_branch_refuses_apply_and_warns_in_dry_run(self) -> None:
@@ -99,7 +99,7 @@ class FrameworkSourceTests(IsolatedTestCase):
         refused = self.pakem("install", "--apply")
         self.assert_fails(refused, code=2)
         self.assertIn("differs from origin/main", refused.stderr)
-        self.assertIn("1 ahead, 0 behind as of the last fetch; fetch to refresh", refused.stderr)
+        self.assertIn("1 ahead, 0 behind as of the last fetch. Fetch to refresh", refused.stderr)
         self.assert_ok(self.pakem("install", "--apply", "--allow-unmerged"))
 
     def test_main_behind_origin_refuses_apply(self) -> None:
@@ -115,7 +115,7 @@ class FrameworkSourceTests(IsolatedTestCase):
         refused = self.pakem("install", "--apply")
         self.assert_fails(refused, code=2)
         self.assertIn("origin/main is not known locally", refused.stderr)
-        self.assertIn("fetch to refresh", refused.stderr)
+        self.assertIn("Fetch to refresh", refused.stderr)
         self.assert_ok(self.pakem("install", "--apply", "--allow-unmerged"))
 
     def test_dirty_feature_branch_needs_both_waivers(self) -> None:

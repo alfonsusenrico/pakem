@@ -94,8 +94,8 @@ class Proposal:
             "## Replaces or makes obsolete", "", self.replaces or "nothing", "",
             "## Could a check enforce it instead?", "", self.enforcement or "no", "",
             "## Review", "",
-            "The change is this pull request (lint and unit tests passed on its branch). Merge to accept; "
-            "ask for changes in the session that proposed it (`pakem propose revise`); or reject with the "
+            "The change is this pull request (lint and unit tests passed on its branch). Merge to accept, "
+            "ask for changes in the session that proposed it (`pakem propose revise`), or reject with the "
             "reason (`pakem propose reject`). After a merge, `pakem update` is due on each device.",
         ]) + "\n"
 
@@ -158,7 +158,7 @@ def refuse_private_text(proposal: Proposal) -> None:
                 places.append(f"change line {number}: {', '.join(kinds)}")
     if places:
         raise CommandRefused(
-            "the proposal would publish private text to the public framework repository; rewrite it in generic "
+            "the proposal would publish private text to the public framework repository. Rewrite it in generic "
             "terms (\"a client project\", \"the server\"):\n  " + "\n  ".join(places)
         )
 
@@ -208,12 +208,12 @@ class Worktree:
 
     def __enter__(self) -> Path:
         if self.path.exists():
-            raise CommandRefused(f"{self.path} already exists; remove it or finish the proposal there")
+            raise CommandRefused(f"{self.path} already exists. Remove it or finish the proposal there")
         return self.path
 
     def __exit__(self, kind, error, trace) -> None:
         if isinstance(error, CheckFailed):
-            print(f"The branch stays in {self.path} for a look; remove it with `git worktree remove {self.path}`.")
+            print(f"The branch stays in {self.path} for a look. Remove it with `git worktree remove {self.path}`.")
         elif self.path.exists():
             run_git(self.framework.root, "worktree", "remove", "--force", str(self.path))
 
@@ -240,7 +240,7 @@ def run_propose_new(args) -> int:
             finally:
                 run_git(framework.root, "worktree", "remove", "--force", str(check))
         print(proposal.body())
-        print(f"Plan only: the change applies to main; branch {proposal.branch} and the pull request were not made.")
+        print(f"Plan only: the change applies to main. Branch {proposal.branch} and the pull request were not made.")
         return EXIT_DONE
     print(proposal.body())
     print(f"Pushes branch {proposal.branch} to the public repository {repository} and opens this pull request.")
@@ -340,7 +340,7 @@ def run_propose_reject(args) -> int:
     gh("pr", "comment", str(args.number), "--repo", repository, "--body", f"Rejected by the owner: {args.reason}")
     gh("pr", "edit", str(args.number), "--repo", repository, "--add-label", "proposal:rejected")
     gh("pr", "close", str(args.number), "--repo", repository, "--delete-branch")
-    print(f"Proposal #{args.number} rejected and closed; the reason is on the pull request.")
+    print(f"Proposal #{args.number} rejected and closed. The reason is on the pull request.")
     return EXIT_DONE
 
 
@@ -365,7 +365,7 @@ def add_parser(commands) -> None:
                                                "(default: \"a project\")")
         parser.add_argument("--type", choices=COMMIT_TYPES,
                             help="commit type (default: feat for tooling, else docs)")
-        parser.add_argument("--plan", action="store_true", help="check the change and print the text; send nothing")
+        parser.add_argument("--plan", action="store_true", help="check the change and print the text. Send nothing")
         parser.add_argument("--yes", action="store_true", help="push without asking (after the owner saw the text)")
         parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
         if name == "new":

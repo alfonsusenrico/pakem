@@ -71,7 +71,8 @@ def framework_line(status: FrameworkStatus) -> str:
     if status.state == NOT_INSTALLED:
         return "Pakem is not installed on this device (pakem install)."
     if status.state == UNTRACKED_SOURCE:
-        return f"Pakem {version} installed; update check off: {'; '.join(status.notes)}."
+        notes = ". ".join(note[:1].upper() + note[1:] for note in status.notes)
+        return f"Pakem {version} installed. Update check off: {notes}."
     if status.state == UP_TO_DATE:
         installed = _labelled(version, status.installed_commit)
         return f"Pakem {installed} is up to date with {status.target.ref} ({_checked(status.fetch)})."
@@ -84,7 +85,7 @@ def framework_line(status: FrameworkStatus) -> str:
             line += f" (changes: {', '.join(status.changed)})"
         return line + "."
     reason = "; ".join(status.notes) or "no target known"
-    return f"Pakem {version} installed; update state unknown: {reason} ({_checked(status.fetch)})."
+    return f"Pakem {version} installed. Update state unknown: {reason} ({_checked(status.fetch)})."
 
 
 def _labelled(version: str | None, commit: str | None) -> str:
@@ -107,7 +108,7 @@ def update_advice(status: FrameworkStatus, for_agent: bool) -> str | None:
     if _setting("update") == UPDATE_APPLY:
         return "The owner allows agents to update: run `pakem update --yes`, then re-read the files it lists."
     return (
-        "Tell the owner an update is available; do not install it yourself "
+        "Tell the owner an update is available. Do not install it yourself "
         "(`pakem config set update apply` would allow that)."
     )
 
@@ -153,7 +154,7 @@ def project_status(framework: Framework, manifest: dict, cwd: Path) -> dict | No
         return result
     result["check"] = {"errors": len(report.errors), "warnings": len(report.warnings)}
     if report.errors:
-        result["problems"].append(f"project check: {len(report.errors)} error(s); run `pakem project check`")
+        result["problems"].append(f"project check: {len(report.errors)} error(s). Run `pakem project check`")
     try:
         result["decisions"] = project_decisions(repo)
     except PakemError as exc:
@@ -357,7 +358,7 @@ def run_hook(framework: Framework, hook: str, host: str) -> int:
     except Exception as exc:  # noqa: BLE001 - a hook must never break the agent session
         lines = []
         if hook == HOOK_SESSION_START:
-            lines = [f"Pakem status could not run ({type(exc).__name__}: {exc}); run `pakem status`."]
+            lines = [f"Pakem status could not run ({type(exc).__name__}: {exc}). Run `pakem status`."]
     _emit(host, lines)
     return 0
 

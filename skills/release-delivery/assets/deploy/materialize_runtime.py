@@ -331,7 +331,7 @@ def main(argv: list[str] | None = None, environ: dict[str, str] | None = None) -
     if result.errors:
         for message in result.errors:
             print(f"materialize_runtime: ERROR: {message}", file=sys.stderr)
-        print(f"materialize_runtime: {len(result.errors)} problem(s); no runtime file written", file=sys.stderr)
+        print(f"materialize_runtime: {len(result.errors)} problem(s). No runtime file written", file=sys.stderr)
         return 1
     write_runtime(Path(args.output), result.entries, manifest.host_generated, args.environment)
     print(

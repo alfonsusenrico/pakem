@@ -153,7 +153,7 @@ HOSTS: dict[str, HostSpec] = {
         "claude",
         "Claude Code",
         "claude",
-        f"one live session billed to the logged-in Claude account; capped at ${CLAUDE_MAX_BUDGET_USD} "
+        f"one live session billed to the logged-in Claude account. Capped at ${CLAUDE_MAX_BUDGET_USD} "
         "by --max-budget-usd",
         _claude_command,
     ),
@@ -161,14 +161,14 @@ HOSTS: dict[str, HostSpec] = {
         "codex",
         "Codex",
         "codex",
-        "one live session billed to the logged-in Codex account; no per-run spend flag, bounded by the timeout",
+        "one live session billed to the logged-in Codex account. No per-run spend flag, bounded by the timeout",
         _codex_command,
     ),
     "antigravity": HostSpec(
         "antigravity",
         "Antigravity CLI",
         "agy",
-        "one live session billed to the logged-in Antigravity account; no per-run spend flag, bounded by "
+        "one live session billed to the logged-in Antigravity account. No per-run spend flag, bounded by "
         "the timeout",
         _antigravity_command,
     ),
@@ -1052,7 +1052,7 @@ def print_plan(host: HostSpec, scenarios: list[Scenario], repeat: int, timeout_o
     total = len(scenarios) * repeat
     print(f"pakem eval run (dry-run) host={host.host_id} scenarios={len(scenarios)} repeat={repeat} runs={total}")
     if binary_path is None:
-        print(f"WARNING: {host.binary} not found on PATH; --apply would fail")
+        print(f"WARNING: {host.binary} not found on PATH, so --apply would fail")
     index = 0
     for scenario in scenarios:
         for repeat_number in range(1, repeat + 1):

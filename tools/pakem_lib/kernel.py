@@ -26,7 +26,7 @@ def size_violations(rendered: str, host: HostTarget) -> list[str]:
     char_count = len(rendered)
     byte_count = len(rendered.encode("utf-8"))
     if host.max_chars is not None and char_count > host.max_chars:
-        violations.append(f"rendered kernel is {char_count} chars; {host.host_id} allows {host.max_chars}")
+        violations.append(f"rendered kernel is {char_count} chars, but {host.host_id} allows {host.max_chars}")
     if host.max_bytes is not None and byte_count > host.max_bytes:
-        violations.append(f"rendered kernel is {byte_count} bytes; {host.host_id} allows {host.max_bytes}")
+        violations.append(f"rendered kernel is {byte_count} bytes, but {host.host_id} allows {host.max_bytes}")
     return violations

@@ -50,7 +50,7 @@ class InstallTransactionTests(IsolatedTestCase):
             after = self.snapshot(self.home)
         self.assert_fails(completed, code=2)
         self.assertIn("install failed while writing ~/.gemini/GEMINI.md (PermissionError)", completed.stderr)
-        self.assertIn("manifest unchanged", completed.stderr)
+        self.assertIn("Manifest unchanged", completed.stderr)
         self.assertIn("removed ~/.claude/CLAUDE.md (created in this run)", completed.stdout)
         self.assertIn("removed directory ~/.claude (created in this run)", completed.stdout)
         self.assertIn("removed ~/.codex/AGENTS.md (created in this run)", completed.stdout)

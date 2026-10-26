@@ -106,7 +106,7 @@ def github_repository(project: Project) -> str:
     match = GITHUB_REMOTE.match(remote)
     if not match:
         raise CommandRefused(
-            "release checks are read from GitHub for now; GitLab comes with its own area "
+            "release checks are read from GitHub for now. GitLab comes with its own area "
             f"(origin is {remote or 'missing'})"
         )
     return f"{match[1]}/{match[2]}"
@@ -161,7 +161,7 @@ def require_checks(project: Project, commit: str) -> str:
     if other:
         raise CheckFailed(f"checks of {commit[:12]} have not passed: {', '.join(other)}")
     if not passed:
-        raise CheckFailed(f"{commit[:12]} has no checks; a release needs the project's CI to pass first")
+        raise CheckFailed(f"{commit[:12]} has no checks. A release needs the project's CI to pass first")
     return f"checks passed: {', '.join(passed)}"
 
 
@@ -338,14 +338,14 @@ def _prepare(args, needs: tuple[str, ...]) -> tuple[Project, HostRecord]:
 
 def _require_production(args, environment: str) -> None:
     if environment == PRODUCTION and not args.production:
-        raise CommandRefused("this changes production; pass --production (agents: only on the owner's instruction)")
+        raise CommandRefused("this changes production. Pass --production (agents: only on the owner's instruction)")
 
 
 def run_release_publish(args) -> int:
     project, record = _prepare(args, SERVICE_NEEDS + CHECK_NEEDS)
     if not project.has_staging:
         raise CommandRefused(
-            f"{project.name} declares no staging; release it with `pakem release promote vX.Y.Z --production`"
+            f"{project.name} declares no staging. Release it with `pakem release promote vX.Y.Z --production`"
         )
     commit = main_commit(project)
     plan = Plan("publish", STAGING, commit, steps=[f"{MAIN} is {commit[:12]}", require_checks(project, commit)])
@@ -386,7 +386,7 @@ def run_release_promote(args) -> int:
     elif project.has_staging:
         commit = running_of(history["environments"].get(STAGING, {}))
         if commit is None:
-            raise CommandRefused("nothing runs in staging; publish a commit first")
+            raise CommandRefused("nothing runs in staging. Publish a commit first")
         steps.append(f"staging runs {commit[:12]}")
     else:
         commit = main_commit(project)
@@ -411,7 +411,7 @@ def run_release_promote(args) -> int:
         pushed = run_git(project.root, "push", "--quiet", "origin", f"refs/tags/{args.version}", check=False)
         if pushed.returncode != 0:
             raise OwnerActionRequired(
-                f"OWNER ACTION REQUIRED: {args.version} is live but its tag was not pushed; run "
+                f"OWNER ACTION REQUIRED: {args.version} is live but its tag was not pushed. Run "
                 f"`git -C {shlex.quote(str(project.root))} push origin {args.version}`"
             )
         done.append(f"tagged {args.version} and pushed the tag")
@@ -489,7 +489,7 @@ def run_release_report(args) -> int:
 def _require_receiver(remote: Remote, record: HostRecord) -> None:
     if remote.run(f"test -f {INSTALLED_RECEIVER}").returncode != 0:
         raise CheckFailed(
-            f"{record.name} runs an engine without direct delivery; update it with `{setup_host_command(record)}`"
+            f"{record.name} runs an engine without direct delivery. Update it with `{setup_host_command(record)}`"
         )
 
 
@@ -546,7 +546,7 @@ def builder_public_key(args, project) -> str | None:
     decision 8), so its name is `builder-<project>`."""
     if args.key is None:
         if args.device is not None:
-            raise PakemError("--device names a shared builder's key; pass its public key with --key FILE")
+            raise PakemError("--device names a shared builder's key. Pass its public key with --key FILE")
         return None
     expected = f"builder-{project.name}"
     if args.device != expected:

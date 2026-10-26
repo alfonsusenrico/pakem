@@ -123,7 +123,7 @@ class StatusTests(StatusUpdateTestCase):
         git(self.framework, "checkout", "-q", "-b", "feat/topic", home=self.home)
         completed = self.pakem("status", "--brief")
         self.assert_ok(completed)
-        self.assertIn("update check off: the framework checkout is on branch feat/topic", completed.stdout)
+        self.assertIn("Update check off: The framework checkout is on branch feat/topic", completed.stdout)
 
     def test_not_installed(self) -> None:
         self.assertEqual(self.status_json()["status"], "not-installed")
@@ -167,7 +167,7 @@ class UpdateTests(StatusUpdateTestCase):
 
         again = self.pakem("update", "--yes")
         self.assert_ok(again)
-        self.assertIn("nothing to do", again.stdout)
+        self.assertIn("Nothing to do", again.stdout)
 
     def test_a_failed_fetch_is_a_failed_check(self) -> None:
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
@@ -189,7 +189,7 @@ class UpdateTests(StatusUpdateTestCase):
         git(self.framework, "commit", "-q", "-am", "feat: try", home=self.home)
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude", "--allow-unmerged"))
         line = self.pakem("status", "--offline").stdout.splitlines()[0]
-        self.assertIn("update check off", line)
+        self.assertIn("Update check off", line)
         self.assertIn("is not on origin/main (an unmerged branch)", line)
 
     def test_update_refreshes_recorded_guardrails(self) -> None:
@@ -265,7 +265,7 @@ class ConfigTests(StatusUpdateTestCase):
         self.push_upstream()
         self.pakem("status", "--refresh")
         notify = self.hook("session-start", {"session_id": "s1", "cwd": str(self.base)})
-        self.assertIn("do not install it yourself", notify.stdout)
+        self.assertIn("Do not install it yourself", notify.stdout)
         self.assert_ok(self.pakem("config", "set", "update", "apply"))
         apply = self.hook("session-start", {"session_id": "s2", "cwd": str(self.base)})
         self.assertIn("run `pakem update --yes`", apply.stdout)

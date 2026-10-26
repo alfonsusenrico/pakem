@@ -110,7 +110,7 @@ class Agent:
             record = self.engine(host, registry=registry, trigger="pull", actor="agent").deploy()
         except (af_engine.EngineError, af_settings.SettingsError) as error:
             if getattr(error, "exit_code", None) == af_engine.EXIT_BUSY:
-                log(f"{label}: another deployment holds the lock; next poll retries")
+                log(f"{label}: another deployment holds the lock. Next poll retries")
                 return af_engine.EXIT_OK
             log(f"{label}: refused: {error}")
             if state.get("refused") != digest:

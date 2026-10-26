@@ -120,7 +120,7 @@ class SetupDeviceMacTests(SetupTestCase):
     def test_agent_run_installs_and_leaves_the_owner_only_steps(self) -> None:
         check = self.run_setup("check")
         self.assert_fails(check, code=3)
-        self.assertIn("FAIL  gh: missing; pakem installs package gh", check.stdout)
+        self.assertIn("FAIL  gh: missing. Pakem installs package gh", check.stdout)
         self.assertEqual(self.calls(), [], "setup check changes nothing")
 
         planned = self.run_setup("device", "--plan")
@@ -196,7 +196,7 @@ class SetupKeyTests(SetupTestCase):
         write(self.key().with_name("pakem_device_ed25519.pub"), "ssh-ed25519 AAAA test\n")
         completed = self.run_setup("device", "--yes")
         self.assert_fails(completed, code=6)
-        self.assertIn("move it away", completed.stderr)
+        self.assertIn("Move it away", completed.stderr)
         self.assertFalse(self.key().exists())
 
     def test_no_passphrase_is_the_owners_choice(self) -> None:
