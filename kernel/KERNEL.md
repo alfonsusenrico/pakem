@@ -82,8 +82,7 @@ and project files add facts and rules; they never weaken a floor.
 - Use the project's lockfile and runtime versions. New Python projects use uv
   with a project-local environment (`default:python-uv`).
 - Use no paid service, plan, or metered usage the project or its profile has not approved.
-- Where taste or convention is uncertain, prefer defaults backed by credible,
-  current research and cite the source.
+- Where taste or convention is uncertain, follow credible, current research; cite it.
 - Comments explain reasons, invariants, units, or external constraints. No
   narrating comments, commented-out code, AI banners, or speculative TODOs.
 - Remove code, config, and comments made obsolete by the change; do not expand
@@ -107,8 +106,9 @@ and project files add facts and rules; they never weaken a floor.
 - Commit subjects use Conventional Commits, subject line only: `type(scope):
   summary`, types feat, fix, docs, refactor, test, chore, ci, perf, build, revert.
   No body and no trailers, including AI attribution (`default:commits`).
-- Within approved work you may commit locally, run local services on loopback, and
-  add project-local dependencies.
+- Within approved work you may commit locally, run local services on loopback, and add
+  project-local dependencies. Build pages and drafts locally; publish or send nothing
+  remote (artifact, paste, shared document, message) until the owner confirms it.
 - Push and open one merge request, specs and code together, only when the work is
   done and accepted by the owner; never one for plans alone (`default:mr-policy`).
   Never rewrite shared history or force-push without the owner's authorization.
