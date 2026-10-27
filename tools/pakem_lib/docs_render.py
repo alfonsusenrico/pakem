@@ -262,7 +262,8 @@ def list_html(items: list[str]) -> str:
 def table(heading: str | None, columns: list[str], rows: list[list[str]], numeric: set[int] = frozenset(),
           total: list[str] | None = None) -> str:
     def cells(values: list[str], tag: str) -> str:
-        return "".join(f'<{tag}{" class=\"num\"" if index in numeric else ""}>{e(value)}</{tag}>'
+        numeric_class = ' class="num"'
+        return "".join(f"<{tag}{numeric_class if index in numeric else ''}>{e(value)}</{tag}>"
                        for index, value in enumerate(values))
     head = f"<h2>{e(heading)}</h2>" if heading else ""
     body = "".join(f"<tr>{cells(row, 'td')}</tr>" for row in rows)
