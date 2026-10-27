@@ -125,10 +125,10 @@ class ProfileContractTests(ProfileLintTestCase):
 class ProfileDigestTests(ProfileLintTestCase):
     def test_digest_size_thresholds(self) -> None:
         digest = self.profile / "DIGEST.md"
-        digest.write_text("# Acme\n\n" + "x" * 1_450 + "\n")
-        self.assert_lint_warning("DIGEST.md is 1459 chars (warning above 1400)")
-        digest.write_text("# Acme\n\n" + "x" * 1_650 + "\n")
-        self.assert_lint_error("DIGEST.md is 1659 chars (limit 1600)")
+        digest.write_text("# Acme\n\n" + "x" * 1_850 + "\n")
+        self.assert_lint_warning("DIGEST.md is 1859 chars (warning above 1800)")
+        digest.write_text("# Acme\n\n" + "x" * 2_050 + "\n")
+        self.assert_lint_error("DIGEST.md is 2059 chars (limit 2000)")
 
     def test_digest_lines_repeating_the_kernel_warn(self) -> None:
         digest = self.profile / "DIGEST.md"
