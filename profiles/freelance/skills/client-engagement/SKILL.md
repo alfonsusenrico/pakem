@@ -16,7 +16,10 @@ Record in the project `AGENTS.md` (kept private):
 
 - the engagement role: sole developer, or one workstream in the client's team, and
   which modules, tables, and APIs belong to other workstreams;
-- who decides (client PM, owner) and who builds and deploys;
+- who decides (client PM, owner), who reviews and merges, and who builds and deploys;
+  release and server work is the owner's only when the engagement assigns it;
+- whether client code and data may reach AI providers (coding agents and the project's
+  model calls), and whose account pays for each service;
 - the sources of truth and their order (section 2);
 - the integration branch, the merge path, and the deploy path;
 - client conventions that differ from owner defaults (section 4);

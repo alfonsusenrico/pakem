@@ -1,0 +1,6 @@
+# Freelance profile for Pakem: client engagements (contract: tools/pakem_lib/profiles.py).
+name = "freelance"
+version = "1.0.0"
+requires_framework = ">=2.0,<3.0"
+digest = "digest.md"
+skills_dir = "skills"
