@@ -45,7 +45,7 @@ for one to remove.
 
 ## 3. Budgets
 
-- Kernel at most 9,500 characters; profile digests at most 1,600.
+- Kernel at most 9,500 characters; profile digests at most 2,000.
 - Project `AGENTS.md` under 12,000 characters including pinned blocks (project
   content under 8,000).
 - Skill description at most 350 characters, trigger first; skill body under 500

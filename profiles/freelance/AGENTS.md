@@ -15,7 +15,7 @@ weakens them.
 - Reference core content instead of copying it: client-repository privacy and hooks
   (`project-bootstrap`), handover (`release-delivery`, `references/handover.md`),
   planning (`change-planning`).
-- `digest.md` stays under 1,600 characters and must not repeat kernel lines; it is
+- `digest.md` stays under 2,000 characters and must not repeat kernel lines; it is
   rendered into client repositories' `AGENTS.md` by
   `pakem project sync <repo> --profile <this directory>`.
 - Skills follow the framework's Agent Skills rules (trigger-first description of at

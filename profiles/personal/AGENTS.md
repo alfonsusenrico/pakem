@@ -11,7 +11,7 @@ the framework kernel and skills. It never repeats or weakens them.
   organization platforms in their own profile repositories, and project business rules
   in each project.
 - Personal projects may be named; never write a client's name, data, or price here.
-- `digest.md` stays under 1,600 characters and must not repeat kernel lines; it is
+- `digest.md` stays under 2,000 characters and must not repeat kernel lines; it is
   rendered into personal repositories' `AGENTS.md` by
   `pakem project sync <repo> --profile <this directory>`.
 - `workspace/AGENTS.md` stays under 800 characters; it is rendered by hand to the

@@ -128,8 +128,8 @@ Considered and rejected:
   the `gateway.profile` gap are removed. The gap asks only which gateway the project uses.
 - Profile work, after this ADR: the `personal` and `freelance` digests, synced into the
   owner's personal and client repositories, and the work profile's new lines in its own
-  repository. The profile digest budget (1,600 characters) is open: the work profile's
-  digest is already near it.
+  repository. The profile digest budget rose from 1,600 to 2,000 characters (owner,
+  2026-10-27), because the work profile's new lines did not fit.
 - Text to update with it: README ("Free by default"), ADR 0011 decision 5,
   `docs/pakem-command-map.md`, `release-delivery` (SKILL.md, the runner policy in
   `references/ci.md`, the credential split), `instruction-maintenance` (the admission

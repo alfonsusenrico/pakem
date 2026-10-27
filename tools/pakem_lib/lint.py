@@ -44,8 +44,9 @@ EXCLUDED_DIR_NAMES = {".git", "__pycache__", "node_modules"}
 BANNED_SCAN_SUFFIXES = {".md", ".toml", ".json", ".py", ".sh", ".tmpl", ".rules"}
 BANNED_EXEMPT_TOP_LEVEL = {"archive", "tests"}
 PROFILE_BANNED_SCAN_SUFFIXES = BANNED_SCAN_SUFFIXES | {".yml", ".yaml"}
-PROFILE_DIGEST_WARN_CHARS = 1_400
-PROFILE_DIGEST_ERROR_CHARS = 1_600
+# Raised from 1,600 when rules moved from the kernel into profiles (ADR 0012).
+PROFILE_DIGEST_WARN_CHARS = 1_800
+PROFILE_DIGEST_ERROR_CHARS = 2_000
 ALPHANUMERIC = re.compile(r"[A-Za-z0-9]")
 
 INLINE_LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'(][^)]*)?\)")
