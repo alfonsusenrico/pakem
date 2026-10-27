@@ -1,6 +1,6 @@
 ---
 name: release-delivery
-description: Use when setting up or changing CI pipelines, preparing a release, tag, or deployment, writing rollback or runbook notes, verifying a deployed revision, packaging a deployment for a client, preparing a client handover, or reviewing documentation after a release.
+description: Use when setting up or changing CI pipelines, releasing a project or learning its release protocol, preparing a tag or deployment, writing rollback or runbook notes, verifying a deployed revision, packaging a deployment for a client, preparing a client handover, or reviewing documentation after a release.
 ---
 
 # Release and Delivery
@@ -53,8 +53,15 @@ uncommitted work.
 
 ## 3. Releases
 
-- Production releases are tagged `vMAJOR.MINOR.PATCH` on `main`; staging deploys from
-  `main`.
+Each project keeps its release protocol in a `## Release` section of its `AGENTS.md`.
+Follow [release protocol](references/release-protocol.md): on a release, read the section
+and run it; without one, learn the protocol from the repository (or interview the owner
+when the method is undecided) and record it with the first release. The owner's go covers
+the whole protocol, production included; stop only for a merge, waiting for the owner,
+and on failure.
+
+- Production releases are tagged `vMAJOR.MINOR.PATCH` on `main`, with any pre-release
+  suffix the project's scheme uses; staging deploys from `main`.
 - Each release has notes (CHANGELOG entry or release description): changes, migrations,
   configuration changes, rollback notes, known limits.
 - Evidence (deployed revision, health, smoke results) is tied to the exact commit and

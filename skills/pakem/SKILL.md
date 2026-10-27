@@ -78,12 +78,16 @@ an agent never connects as the owner. Instead:
 
 ## 6. Releases (services)
 
+These commands are steps of a service's release protocol (`release-delivery`, the
+project's `## Release` section); the protocol decides when they run.
+
 - `pakem release publish` sends `origin/main` to staging; `pakem release promote vX.Y.Z
   --production` deploys to production and tags the commit afterwards; `pakem release
   rollback previous|<tag or commit> [--production]` returns to an earlier release.
 - Before a production release: CI passed on the exact commit (`pakem` refuses otherwise),
   the version matches the project's files (a release-prep pull request first), the owner
-  said to release in this session, and `--plan` was shown to the owner.
+  said to release in this session (which covers the whole protocol), and the `--plan`
+  output is shown to the owner as information, not as a second approval.
 - A release whose health check fails restores the previous one; report the engine's lines
   and the result. Rolling back across a schema change needs a restored backup first and
   `--allow-schema`, on the owner's instruction.
