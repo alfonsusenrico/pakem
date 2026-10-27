@@ -22,6 +22,10 @@ workspace map, freelance delivery lifecycle, client engagement rules) lives insi
 this repository under `profiles/personal/`, because it travels with the owner like
 the core. Organization and client profiles still live in separate repositories.
 
+Amended by ADR 0012: the core also stays free of the owner's personal preferences. A
+kernel rule must hold in personal, work, and client repositories alike, and
+`profiles/personal` splits into `personal` and `freelance`.
+
 ## Consequences
 
 The core can follow the owner across employers and clients. Each profile needs its

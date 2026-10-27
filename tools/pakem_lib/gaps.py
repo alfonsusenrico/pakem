@@ -242,10 +242,7 @@ def _check_migrations(repo: Path) -> str | None:
 def _check_gateway(repo: Path) -> str | None:
     text = _own_agents_text(repo)
     if not re.search(r"gateway", text, re.IGNORECASE):
-        return "AGENTS.md names no AI gateway profile"
-    overrides = re.search(r"^## Overrides$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
-    if overrides is None or "default:no-billed" not in overrides[1]:
-        return "AGENTS.md ## Overrides has no `default:no-billed` billing approval"
+        return "AGENTS.md names no AI gateway"
     return None
 
 
@@ -339,10 +336,11 @@ def catalogue(facts: Facts) -> list[Gap]:
     if "llm" in facts.capabilities:
         gaps.append(
             Gap(
-                "gateway.profile", True, "Which AI gateway profile and budget does it use?",
-                "Paid model calls are approved only within a gateway's grants (default:no-billed).",
-                ("<profile> within <budget>",), None, "AGENTS.md project rules + ## Overrides",
-                "AGENTS.md names the profile and the billing approval", ("release",), _check_gateway,
+                "gateway.profile", True, "Which AI gateway and gateway profile does it use?",
+                "Model calls go through a gateway that holds the provider keys. Spending approval comes from "
+                "the project's profile or the project.",
+                ("<gateway> profile <name>",), None, "AGENTS.md project rules",
+                "AGENTS.md names the gateway", ("release",), _check_gateway,
             )
         )
     return gaps

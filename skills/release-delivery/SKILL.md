@@ -36,7 +36,9 @@ as revised by ADR 0010 (accepted 2026-10-21):
   a hosted CI.
 - Checks run on every push, merge request, and tag on a free runner, separately from
   releases; a release refuses a commit whose checks did not pass.
-- Nothing billed unless the project approves it (`default:no-billed`).
+- Nothing paid unless the project or its profile approves it (ADR 0012).
+- Each of the owner's devices has one dedicated key that connects and signs releases;
+  a shared builder (a CI runner, a client platform) gets one key per project.
 - Direct delivery is `pakem release` (stage `stable` for services): the owner's device sends
   signed source and the host builds it ([contracts §13](references/deployment-contracts.md#13-direct-delivery)).
   The registry mode in the contracts is valid only where its CI minutes and registry

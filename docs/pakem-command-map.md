@@ -16,7 +16,7 @@ owner actions it may report, and what `pakem project check` verifies afterwards.
 | Owner actions | Steps only the owner can do (browser login, first server password, secret values, accounts outside our control) are printed as `OWNER ACTION REQUIRED` with the exact instruction and verified on the next run |
 | Production | Any production change needs `--production` and, for agents, the owner's instruction in the session |
 | Secrets | Read from hidden input or a file, written straight to their store; never printed, logged, or put in arguments |
-| Billing | Only free services and tiers unless the project approves a billed one (`default:no-billed`) |
+| Billing | No paid service, plan, or metered usage the project or its profile has not approved (ADR 0012) |
 | Requirements | Each command declares what it needs (tools, runtime, device key, logins) and prepares what is missing in its own plan; the owner's instruction in the session to run it approves the installs it lists (ADR 0011, decision 8) |
 | Output | Short status lines; `--json` gives `{status, done[], owner_actions[], gaps[], checks[]}` |
 | Location facts | Host addresses and device paths live in device-local `~/.config/pakem/`, never in repositories |
@@ -230,7 +230,7 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   | `backup.restore` | database | release | `deploy/hooks/backup` is the project's own, executable |
   | `migrations.rule` | database | release | `AGENTS.md` (the project's own text) states the migration rule |
   | `data.moves` | no (none), database | release | - |
-  | `gateway.profile` | llm | release | `AGENTS.md` names the gateway, and `## Overrides` has the `default:no-billed` approval |
+  | `gateway.profile` | llm | release | `AGENTS.md` names the gateway |
 
 - **Decisions:** `pakem decide <gap> <answer> [--reason]`,
   `--provisional <assumption> --revisit <trigger>`, or
@@ -243,7 +243,7 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   decisions and raises due ones (also at session start); `pakem release` refuses while a
   required gap that blocks release is open or pending (exit `4`).
 - **Check:** `pakem project check` (`AGENTS.md`: blocks, size, overrides, capabilities,
-  `Delivery:`, billing approvals, home paths; `PROJECT_STATE.md` size, `research/`, the git
+  `Delivery:`, a pinned profile, retired override labels, home paths; `PROJECT_STATE.md` size, `research/`, the git
   hooks, starter stubs; a warning for each `docker image prune` or `docker system prune`
   without a label filter in CI pipelines and deploy scripts; exit `6` when a public GitHub repository has self-hosted jobs; in a
   public repository, a warning for each tracked line naming a host or port from

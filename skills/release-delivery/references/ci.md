@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-10-23
+Last reviewed: 2026-10-27
 Review by: 2027-04-07
 Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard Profile section 10
 
@@ -40,7 +40,7 @@ GitLab CI hidden jobs, project examples, `README.md` for adoption, and `PINS.md`
 pinned versions). The deploy jobs drive the scripts in `assets/deploy/` (design and
 deviations: `assets/ci/DEPLOY_DESIGN.md`).
 
-**Where jobs run (free only, `default:no-billed`):** public repositories use GitHub's
+**Where jobs run (no paid minutes unless the project or its profile approves them):** public repositories use GitHub's
 hosted runners (`runs-on: ubuntu-latest`), which are free. Private repositories use a
 self-hosted runner on a host we control (`runs-on: [self-hosted, linux, x64, pakem]`;
 setup in the deployment contracts §11 step 8), never metered hosted minutes unless the

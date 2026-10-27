@@ -6,7 +6,7 @@ import json
 import os
 import unittest
 
-from support import IsolatedTestCase, activate_hooks, init_repo, git, targets_toml, write
+from support import IsolatedTestCase, activate_hooks, context_profile, init_repo, git, targets_toml, write
 
 INSTALL = ("install", "--allow-dirty")
 
@@ -225,7 +225,8 @@ class DoctorTests(IsolatedTestCase):
         good = activate_hooks(init_repo(projects / "good", self.home), self.home)
         (good / "research").mkdir()
         init_repo(projects / "bare-notes", self.home)
-        self.assert_ok(self.pakem("project", "sync", str(good), "--apply"))
+        profile = context_profile(self.base / "context-profile")
+        self.assert_ok(self.pakem("project", "sync", str(good), "--profile", str(profile), "--apply"))
         completed = self.pakem("doctor", "--repos", str(projects))
         self.assert_fails(completed)
         self.assertIn("ok        " + str(good), completed.stdout)

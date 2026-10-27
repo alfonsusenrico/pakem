@@ -12,9 +12,10 @@ and backed by mechanical checks where possible.
 
 | Content | Home |
 | --- | --- |
-| Universal agent behaviour | framework kernel (installed globally) |
+| Universal agent behaviour, true in personal, work, and client repositories alike | framework kernel (installed globally) |
+| Rules for one context: personal, freelance, or an organization's work | that context's profile digest, pinned by each project |
 | Procedures for a kind of work | a framework skill |
-| Organization or client platform how-tos | a profile repository |
+| Organization or client platform how-tos | that organization's or client's profile |
 | Project facts an agent cannot discover from code | project `AGENTS.md` |
 | Behaviour requirements | OpenSpec specs |
 | Decisions with trade-offs | ADRs |
@@ -35,7 +36,8 @@ read the tree. Never restate the kernel or a skill in a project file.
 
 ## 2. Rule admission
 
-A rule enters an always-loaded file only if it is: universal for that scope; not
+A rule enters an always-loaded file only if it is: universal for that scope (for the
+kernel: right in personal, work, and client repositories, or else a profile rule); not
 discoverable from the code; not better enforced by a hook, lint, test, or
 permission (if it is, enforce it and keep at most one line); tied to a real or
 plausible failure; and does not contradict another rule. When adding a rule, look
@@ -57,8 +59,11 @@ framework tool is available.
 
 - When two instructions conflict, stop and report both with their sources; do not
   pick silently.
-- A project deviates from a labelled default only through `## Overrides`, one bullet
-  naming the label and the reason. Floors cannot be overridden.
+- A profile, then a project, may change a labelled default: the profile in its digest,
+  the project in `## Overrides`, each as one bullet naming the label and the reason. A
+  profile may define labels of its own. Floors cannot be overridden.
+- Retire a label instead of deleting it: `project check` warns on a retired label
+  (`RETIRED_LABELS` in `tools/pakem_lib/project.py`) so existing projects keep passing.
 
 ## 5. Writing style for instructions
 
