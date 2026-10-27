@@ -1,6 +1,7 @@
 # 0010. Project-chosen builders and triggers; no billed services
 
-- Status: Accepted (owner, 2026-10-21); amended 2026-10-21 (decision 8: one key per device)
+- Status: Accepted (owner, 2026-10-21); amended 2026-10-21 (decision 8: one key per device);
+  decision 1 superseded by ADR 0012 (spending follows the project's profile)
 - Date: 2026-10-21
 
 ## Context

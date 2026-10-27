@@ -474,7 +474,7 @@ class AdoptTests(ProjectTestCase):
         (self.state / "rulesets-paid").touch()
         completed = self.adopt("--yes")
         self.assertNotIn("self-hosted runner", completed.stdout)
-        self.assertNotIn("protect release tags", completed.stdout, "rulesets need a paid plan here (no-billed)")
+        self.assertNotIn("protect release tags", completed.stdout, "rulesets need a paid plan here (not approved)")
         self.assertIn("then OWNER ACTION REQUIRED: run `pakem setup host <name>`", completed.stdout)
         write(self.home / ".config" / "pakem" / "hosts.toml",
               '[hosts.prod]\ntarget = "admin@203.0.113.7"\nprojects = ["demo"]\n')

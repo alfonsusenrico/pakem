@@ -42,7 +42,14 @@ INSTRUCTION_DOC_NAMES = ("AGENTS.md", "CLAUDE.md", "GEMINI.md")
 CAPABILITIES_LINE_PATTERN = re.compile(r"^(?:[-*+]\s+)?Capabilities:(.*)$")
 DELIVERY_LINE_PATTERN = re.compile(r"^(?:[-*+]\s+)?Delivery:(.*)$")
 DELIVERY_VALUES = ("us", "others", "nobody")
-NO_BILLED_LABEL = "no-billed"
+# Labels the kernel no longer defines (ADR 0012). A project that still records one gets a
+# warning instead of an unknown-label error, so existing projects keep passing.
+RETIRED_LABELS = {
+    "no-billed": (
+        "`default:no-billed` is retired (ADR 0012). Keep the bullet until the project's profile "
+        "covers spending, then move it to that profile's label or delete it"
+    ),
+}
 NO_CAPABILITIES = "none"
 PROJECT_STATE_FILE = "PROJECT_STATE.md"
 PROJECT_STATE_WARN_CHARS = 8_000
@@ -206,9 +213,11 @@ def run_sync(args) -> int:
     return 0
 
 
-def override_labels(framework: Framework) -> set[str]:
-    labels = OVERRIDE_LABEL_PATTERN.findall(read_text(framework.kernel_path))
-    return {label.removeprefix("default:") for label in labels}
+def override_labels(framework: Framework, document) -> set[str]:
+    """Labels a project may override: the kernel's and those its pinned profiles define."""
+    texts = [read_text(framework.kernel_path)]
+    texts += [block.body for block in document.blocks if block.kind == PROFILE_KIND]
+    return {label.removeprefix("default:") for text in texts for label in OVERRIDE_LABEL_PATTERN.findall(text)}
 
 
 def _lines_outside_blocks(document) -> list[tuple[int, str]]:
@@ -232,11 +241,21 @@ def _check_overrides(document, labels: set[str], report: Report) -> None:
         prefix = OVERRIDE_PREFIX_PATTERN.match(bullet.group(1))
         if prefix is None:
             report.error(f"AGENTS.md line {index + 1}: override bullet must start with `default:<label>`")
+        elif prefix.group(1) in RETIRED_LABELS and prefix.group(1) not in labels:
+            report.warn(f"AGENTS.md line {index + 1}: {RETIRED_LABELS[prefix.group(1)]}")
         elif prefix.group(1) not in labels:
             report.error(
                 f"AGENTS.md line {index + 1}: unknown override label 'default:{prefix.group(1)}' "
-                "(not defined in kernel/KERNEL.md)"
+                "(not defined in kernel/KERNEL.md or a pinned profile)"
             )
+
+
+def _check_profile_pinned(document, report: Report) -> None:
+    if not any(block.kind == PROFILE_KIND for block in document.blocks):
+        report.warn(
+            "AGENTS.md pins no profile. Pin the project's context profile with "
+            "`pakem project sync <repo> --profile <dir> --apply`"
+        )
 
 
 def _instruction_docs(repo: Path) -> list[Path]:
@@ -368,24 +387,6 @@ def _check_delivery(document, report: Report) -> None:
             )
 
 
-def _check_billing(document, report: Report) -> None:
-    """An `llm` project records which paid services it may use, or that it uses none."""
-    capabilities = {value for _, values in declared_capabilities(document) for value in values}
-    if "llm" not in capabilities:
-        return
-    labels = set()
-    for _, line in _lines_outside_blocks(document):
-        bullet = OVERRIDE_BULLET_PATTERN.match(line)
-        prefix = OVERRIDE_PREFIX_PATTERN.match(bullet.group(1)) if bullet else None
-        if prefix is not None:
-            labels.add(prefix.group(1))
-    if NO_BILLED_LABEL not in labels:
-        report.warn(
-            "capability 'llm' without a `default:no-billed` override. Record the paid services "
-            "this project may use and their budget there, or that it uses none (local models only)"
-        )
-
-
 def _check_project_files(repo: Path, report: Report) -> None:
     state_path = repo / PROJECT_STATE_FILE
     if state_path.is_file():
@@ -487,10 +488,10 @@ def check_repo(framework: Framework, repo: Path) -> Report:
         report.warn(f"AGENTS.md is {char_count} chars (warning above {AGENTS_WARN_CHARS})")
 
     _check_home_paths(repo, report)
-    _check_overrides(document, override_labels(framework), report)
+    _check_profile_pinned(document, report)
+    _check_overrides(document, override_labels(framework, document), report)
     _check_capabilities(framework, document, report)
     _check_delivery(document, report)
-    _check_billing(document, report)
     _check_project_files(repo, report)
     _check_hooks(repo, report)
     _check_starters(repo, report)

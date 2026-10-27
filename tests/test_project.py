@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import unittest
 
-from support import CHECK_SCRIPT, IsolatedTestCase, activate_hooks, git, init_repo, isolated_env, write
+from support import CHECK_SCRIPT, IsolatedTestCase, activate_hooks, context_profile, git, init_repo, isolated_env, write
 
 LEGACY_TEXT = "# App\n\n<!-- owner-baseline:start -->\nold baseline\n<!-- owner-baseline:end -->\n\nNotes.\n"
 
@@ -63,7 +63,8 @@ class ProjectSyncTests(IsolatedTestCase):
         self.assertIn("removed the framework digest block", synced.stdout)
         self.assertEqual(self.agents(), "# Existing\n\nCapabilities: database\nDelivery: us\n")
         clean = self.pakem("project", "check", str(self.repo))
-        self.assertIn("0 error(s), 0 warning(s)", clean.stdout)
+        self.assertIn("AGENTS.md pins no profile", clean.stdout)
+        self.assertIn("0 error(s), 1 warning(s)", clean.stdout)
 
     def test_profile_block_inserted_after_h1_and_refreshed(self) -> None:
         write(self.repo / "AGENTS.md", "# Existing\n\nKeep this paragraph.\n")
@@ -225,7 +226,8 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         super().setUp()
         self.repo = activate_hooks(init_repo(self.base / "app", self.home), self.home)
         (self.repo / "research").mkdir()
-        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--apply"))
+        profile = context_profile(self.base / "context-profile")
+        self.assert_ok(self.pakem("project", "sync", str(self.repo), "--profile", str(profile), "--apply"))
         self.agents_path = self.repo / "AGENTS.md"
         self.synced = self.agents_path.read_text().replace("Capabilities: none\n", "")
 
@@ -287,16 +289,20 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
                 (self.assert_ok if passes else self.assert_fails)(completed)
                 self.assertIn(needle, completed.stdout)
 
-    def test_llm_projects_record_billing(self) -> None:
-        # The fixture's capability registry lacks `llm`, so only the billing warning is asserted.
-        missing = self.check_with("Capabilities: llm\n")
-        self.assertIn("without a `default:no-billed` override", missing.stdout)
-        recorded = self.check_with(
-            "Capabilities: llm\n\n## Overrides\n\n- `default:no-billed`: paid replies, USD 2 a month.\n"
-        )
-        self.assertNotIn("default:no-billed` override", recorded.stdout)
-        unrelated = self.check_with("Capabilities: database\n")
-        self.assertNotIn("default:no-billed` override", unrelated.stdout)
+    def test_override_labels_come_from_kernel_and_pinned_profiles(self) -> None:
+        overrides = "Capabilities: database\n\n## Overrides\n\n"
+        profile_label = self.check_with(overrides + "- `default:free-first`: a paid model, USD 2 a month.\n")
+        self.assert_ok(profile_label)
+        self.assertIn("0 error(s), 0 warning(s)", profile_label.stdout)
+        unknown = self.check_with(overrides + "- `default:made-up`: no such default.\n")
+        self.assert_fails(unknown)
+        self.assertIn("not defined in kernel/KERNEL.md or a pinned profile", unknown.stdout)
+
+    def test_retired_label_warns_instead_of_failing(self) -> None:
+        completed = self.check_with("Capabilities: database\n\n## Overrides\n\n- `default:no-billed`: paid replies.\n")
+        self.assert_ok(completed)
+        self.assertIn("`default:no-billed` is retired (ADR 0012)", completed.stdout)
+        self.assertIn("0 error(s), 1 warning(s)", completed.stdout)
 
     def test_duplicate_capability_warns(self) -> None:
         completed = self.check_with("Capabilities: database, database\n")

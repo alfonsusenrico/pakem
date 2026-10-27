@@ -1,7 +1,8 @@
 # 0011. `pakem`: a standard core with adaptive edges
 
 - Status: Accepted (owner, 2026-10-21); amended 2026-10-22 (the command is `pakem`, after
-  the 2.0.0 rename; decision 8: commands prepare what they need, approved per session)
+  the 2.0.0 rename; decision 8: commands prepare what they need, approved per session);
+  amended 2026-10-27 (decision 5: spending follows the project's profile, ADR 0012)
 - Date: 2026-10-21
 
 ## Context
@@ -69,7 +70,7 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
    - owner-only steps reported as "owner action required" and verified afterwards;
    - production actions need an explicit flag and the owner's instruction;
    - secrets are never printed;
-   - only free services unless the project approves a billed one (`default:no-billed`).
+   - no paid service unless the project or its profile approves it (ADR 0012).
 6. **Decisions that wait on the outside world.** Each gap declares the stages it blocks
    (for example deploy setup and release, but not code or CI), so `pakem status` shows how
    far a project can go now.

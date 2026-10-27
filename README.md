@@ -46,8 +46,9 @@ same way.
 - **Floors that never bend.** Secrets are never printed, production changes only on
   your word, nothing the agent did not create is deleted without asking, and an agent
   never merges its own work.
-- **Free by default.** Agents use only free services and tiers; a project approves any
-  paid service, with its budget, in its own `AGENTS.md`.
+- **No spending without approval.** Agents use no paid service, plan, or metered usage
+  that the project or its profile has not approved. The personal profile prefers free
+  options and proposes a paid one with its cost.
 - **Skills for real work.** Debugging, planning, backend, UI, GenAI, releases, reviews,
   handoffs, sensitive operations. Each is loaded only when the task needs it.
 - **Plans you agree on first.** Specs are written with you, approved in the session, and

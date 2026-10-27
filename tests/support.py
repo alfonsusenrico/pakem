@@ -167,6 +167,16 @@ def git(
     return completed
 
 
+def context_profile(directory: Path) -> Path:
+    """A minimal profile, so a synced fixture project pins one as `project check` expects."""
+    write(
+        directory / "profile.toml",
+        'name = "personal"\nversion = "1.0.0"\nrequires_framework = ">=0.1"\ndigest = "D.md"\n',
+    )
+    write(directory / "D.md", "Prefer free services (`default:free-first`).\n")
+    return directory
+
+
 def init_repo(path: Path, home: Path, branch: str = "main") -> Path:
     path.mkdir(parents=True, exist_ok=True)
     git(path, "init", "-q", "-b", branch, home=home)

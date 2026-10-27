@@ -535,7 +535,7 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
                 "`pakem setup host <target> --runner`, then `pakem host runner add <host> "
                 f"{facts.repository}`"
             )
-    # Rulesets on a private repository need a paid plan (default:no-billed): then only the
+    # Rulesets on a private repository need a paid plan, which needs approval: then only the
     # owner's own pushes create tags, and nothing is asked.
     # Only releases we tag need protected tags; others' and unreleased projects are not asked.
     if facts.kind != "none" and facts.delivery == "us" and tag_protection(facts.repository) == "unprotected":
