@@ -363,6 +363,42 @@ place and the owner's merge is the acceptance).
   and deletes its branch. **`list [--state]`** and **`show <n>`** read them.
 - **Needs:** git, gh, a GitHub login (prepared on demand).
 
+### 8. Documents: `pakem docs`
+
+Stage: `experimental` (built 2026-10-27, ADR 0014; owner decisions the same day: the
+agent writes freelance documents from the owner's answers, layout D, short approval
+documents, records outside every repository). It becomes `stable` once a real engagement
+has gone through it.
+
+- **Store:** one private directory named in `~/.config/pakem/documents.toml` (`root`, and
+  an optional `browser`), refused inside a git work tree. It holds `config.toml` (issuers,
+  numbering), `wording/<type>.<lang>.md` (the owner's approved fixed text), and a folder
+  per engagement: `engagement.toml` (owner facts), `state.toml` (stage, counters),
+  `records.toml` (append-only approvals, payments, handover, voids, renders), and one
+  folder per document with `v<n>.toml` content and its rendered `.html` and `.pdf`.
+- **Commands:** `init --store DIR --last-project PRJ-YYYY-NNN`; `engagement new --client
+  --name --kind fixed|workstream --lang id|en --currency IDR|USD [--issuer]
+  [--representative]`; `new <type> <PRJ>` (14 types, `pakem docs new --help`);
+  `revise <code>`; `check <code>` (exit `5` on errors); `render <code>`; `approve <code>
+  --by --method --evidence --date [--role]`; `pay <invoice> --amount --date --method
+  --evidence`; `handover <PRJ> --date --to --evidence`; `void <code> --reason`; `status
+  [<PRJ>]`; `close <PRJ>`; `browser [--yes]` (installs the PDF renderer after one
+  confirmation). Every command takes `--plan` and `--json`.
+- **Guards:** a fixed engagement's documents after the offer need an approved proposal or
+  quotation; an approved proposal or final report is frozen; a rendered version must not
+  change; approval needs a rendered version; payments never exceed the outstanding
+  amount; a receipt never exceeds recorded payments; closing needs the final report (for
+  a proposal), every invoice paid or void, and a handover (a signed BAST or `handover`).
+- **Rendering:** HTML in layout D with the running header and page numbers as `@page`
+  margin boxes, printed to PDF by chrome-headless-shell with a throwaway profile, the
+  closing section kept on one page with its signatures. Desktop browsers are never picked
+  automatically on macOS: started from a terminal they ask for camera, microphone, and
+  input monitoring and hang. Without a renderer, exit `3` names `pakem docs browser`. A
+  stuck print ends with all its helper processes after 120 seconds. Amounts in words
+  (Indonesian and English) are generated.
+- **Needs:** chrome-headless-shell (`pakem docs browser`, about 100 MB, from Chrome for
+  Testing). Nothing else.
+
 ## Gap protocol (for coding agents)
 
 A gap is a project- or case-specific decision an `pakem` command leaves open. `pakem project

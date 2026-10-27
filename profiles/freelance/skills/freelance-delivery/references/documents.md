@@ -1,65 +1,48 @@
 # Engagement Documents
 
 Status: Active
-Applies to: proposals, final reports, and invoices drafted for freelance clients
-Last reviewed: 2026-10-08
-Review by: 2027-04-08
-Sources: owner's proposal_generator (templates/proposal.html, final_project_report.html, invoice.html structure; reference/proposal_visual_spec.md); owner Working Standard Profile sections 3 and 12
+Applies to: every document `pakem docs` writes for a freelance engagement
+Last reviewed: 2026-10-27
+Review by: 2027-04-27
+Sources: owner decisions 2026-10-27 (framework ADR 0014: catalogue, layout D, wording); owner Working Standard Profile sections 3 and 12
 
-Section titles below follow the owner's templates. Values and narrative follow the
-client's language. Fixed wording comes from the template, never from the agent.
+Every document is a short approval document in layout D: the classic header (issuer and
+code in the running header, centred title) over ruled content, A4, in the engagement's
+language. `pakem docs new <type>` writes the fields to fill. Fixed wording comes from the
+store's `wording/<type>.<lang>.md` (`## <section>` blocks, `{{fact}}` placeholders filled
+from `engagement.toml` and the document), never from the agent.
 
-## Proposal
+## The catalogue
 
-| Section | Content |
-| --- | --- |
-| Header | engagement title, client, developer, fee `[OWNER]`, estimated timeline |
-| 1. Project Summary | objective in a few sentences, faithful to the brief |
-| 2. Project Scope | agreed in-scope items, each testable at acceptance |
-| 3. Out of Scope | explicit non-goals, including likely assumptions the client may hold |
-| 4. Development Timeline | milestones with checkpoints; each milestone names what the client reviews |
-| 5. Fees and Payment | total, down payment, final payment, notes: all `[OWNER]` until supplied |
-| 6. Prerequisites | access, content, accounts, and decisions the client must provide, with dates |
-| 7. Deliverables | handover items per the `release-delivery` handover standard |
-| 8. Terms and Conditions | template-owned (acceptance window, payment deadline, warranty, portfolio permission) |
-| 9. Agreement | signature table for client and developer |
+| Type (`pakem docs new`) | Code | Content the agent fills | Fixed wording sections |
+| --- | --- | --- | --- |
+| `proposal` | PROP | date, validity, timeline, summary, scope, out of scope, assumptions, prerequisites, fee, milestone rows (name, delivered, date, payment), deliverables | `acceptance`, `terms`, `agreement` |
+| `quotation` (small jobs) | QUO | date, validity, work, item rows (item, qty, price), optional terms | `note` |
+| `brief` | PRJ | date, source, background, needs, open questions | `note` |
+| `nda` | NDA | date, purpose, term | `clauses` |
+| `agreement` (only when asked) | AGR | date, client representative | `clauses` |
+| `change` | CR-NN | date, requested by, category, change, cost, timeline impact, other scope | `note` |
+| `milestone` (with UAT) | MSR-NN | milestone, test window, environment, scenario rows | `note` |
+| `minutes` | MOM-NN | date, place, attendees, agenda, decision rows | none |
+| `invoice` | INV-NN | date, due date, item rows (description, amount) | `payment_note`, `payment_terms` |
+| `receipt` | KW-NN | invoice, date, method, amount, description | `statement` |
+| `final` | FINAL | period, summary, result rows, adjustments, added-scope rows, log rows, deliverable rows | `terms`, `agreement` |
+| `bast` (per engagement) | BAST | date, client representative and title, item rows | `statement` |
+| `warranty` | WAR | date, reporting channel, response rows | `terms` |
+| `workreport` | WR-NN | role, period, entry rows (date, work, hours) | `note` |
 
-Before presenting a draft, list for the owner: confirmed facts, applied defaults,
-placeholders, and assumptions the proposal relies on.
+## The proposal's sections
 
-## Final report
+1. Project Summary 2. Project Scope 3. Out of Scope 4. Assumptions 5. Client
+Prerequisites 6. Timeline and Payments (milestone table, payments adding up to the fee)
+7. Acceptance (UAT) 8. Deliverables 9. Terms and Conditions 10. Agreement, with the
+signature table. The total fee sits in the facts at the top.
 
-| Section | Content |
-| --- | --- |
-| Header | engagement number, document number, start, completion, and finalization dates, status |
-| 1. Project Summary | what was delivered |
-| 2. Proposal Overview | approved proposal number, approval date, approver, engagement value |
-| 3. Project Scope | each approved scope item with result and status |
-| 4. Out of Scope | as approved |
-| 5. Scope Adjustment | original item and the approved revision |
-| 6. Added Scope | approved added items with description and price `[OWNER]` |
-| 7. Development Logs | dated log entries |
-| 8. Deliverables | handover items and where each was delivered |
-| 9. Terms and Conditions | template-owned |
-| 10. Agreement | signature table |
+## Before the owner sends anything
 
-Every row cites a record: an approved scope item, an approved scope change, or a log
-entry. Nothing appears that has no record.
-
-## Invoice
-
-| Section | Content |
-| --- | --- |
-| Header | invoice number, billed to, issued by, invoice date, due date, payment status |
-| 1. Payment Details | items with amounts; added-scope items name their scope change |
-| 2. Payment History | recorded payments and their status |
-| 3. Payment Instructions | owner's configured bank details, read from configuration only |
-| 4. Fees and Payment | template-owned payment terms |
-
-## Checks before the owner sends anything
-
-- Every number and date matches its record; totals recompute.
-- No placeholder remains, and no internal version, note, or evidence link leaks into
-  the client copy.
-- The document is the exact version the owner reviewed (HTML and PDF from the same
-  version when both exist).
+- `pakem docs check` passes: no `[FILL]` or `[OWNER: ...]` left, totals recompute,
+  referenced documents exist and are approved where they must be.
+- The PDF is the version the owner reviewed. A later change is a new version
+  (`pakem docs revise`), or after approval a change request.
+- A receipt above Rp5,000,000 carries a Rp10,000 *meterai* (the box prints
+  automatically). Agreements and the NDA carry one too.

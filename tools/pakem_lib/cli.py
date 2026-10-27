@@ -11,6 +11,8 @@ from pathlib import Path
 from .changelog import run_changelog
 from .common import Framework, PakemError, eprint
 from .device_config import SETTINGS, run_config
+from .docs import add_parser as add_docs_parser
+from .docs import run_docs
 from .doctor import run_doctor
 from .drift_report import DEFAULT_CONFIG, DEFAULT_KEEP, run_report
 from .enforce import ENFORCE_HOSTS, run_enforce
@@ -51,6 +53,7 @@ AREAS = (
     ("project", "experimental", "project init, project adopt, project check --gaps, decide"),
     ("secrets", "draft", "secret"),
     ("proposals", "experimental", "propose new|revise|list|show|reject"),
+    ("documents", "experimental", "docs init|engagement new|new|revise|check|render|approve|pay|handover|void|status|close"),
     ("release", "stable", "release publish|promote|rollback|history|status, host allow-device|revoke-device"),
     (
         "framework and agents",
@@ -355,6 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
         starting.add_argument("--json", action="store_true", help="machine-readable result")
 
     add_propose_parser(commands)
+    add_docs_parser(commands)
 
     decide = commands.add_parser("decide", help="record a decision on one of the project's gaps")
     decide.add_argument("gap", help="gap id, such as health.proof (see `pakem project check --gaps`)")
@@ -543,6 +547,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_project_adopt(args)
     if args.command == "decide":
         return run_decide(args)
+    if args.command == "docs":
+        return run_docs(args)
     if args.command == "propose":
         return run_propose(args)
     if args.command == "report":

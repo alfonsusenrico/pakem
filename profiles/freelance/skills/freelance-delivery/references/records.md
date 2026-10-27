@@ -2,9 +2,9 @@
 
 Status: Active
 Applies to: briefs, approvals, scope changes, logs, invoices, payments, handovers, and closures of freelance engagements
-Last reviewed: 2026-10-12
-Review by: 2027-04-08
-Sources: owner's proposal_generator (skill/freelance-document-workflow/field_schema.md, workflow_stages.md, system_prompt.md); rules audit 2026-10-12 (principles only)
+Last reviewed: 2026-10-27
+Review by: 2027-04-27
+Sources: framework ADR 0014 (`pakem docs`); rules audit 2026-10-12 (principles only)
 
 ## Evidence levels
 
@@ -32,16 +32,16 @@ commitments.
 
 ## Records
 
-The record kinds are brief, approval, scope change, development log entry, invoice,
-payment, handover, and closure. Their fields and statuses follow the proposal
-generator's contract (`skill/freelance-document-workflow/field_schema.md` in that
-repository); without it, keep them as Markdown in the engagement folder. Every record
-that affects scope, money, approval, payment, or closure names its evidence.
+Documents are version files in the `pakem docs` store. Owner facts (approvals,
+payments, handover, voids) are entries in the engagement's append-only
+`records.toml`, written only by `pakem docs approve|pay|handover|void`, each with its
+method and evidence. The development log feeds the final report's `log` rows.
 
 ## Immutability
 
-- A document version is immutable once generated; a revision creates the next
-  internal version. The public document number never carries the version.
+- A version is immutable once rendered (`pakem docs check` reports any change); a
+  revision is the next version file. The public document number never carries the
+  version.
 - An approval locks the version it names. Later changes become scope-change records.
 - A scope change counts in the final report only when its status and evidence meet
   the owner's instruction.
@@ -50,6 +50,6 @@ that affects scope, money, approval, payment, or closure names its evidence.
 
 ## Numbering
 
-Document numbers come from one allocator (the proposal generator, or a ledger the
-owner keeps), are assigned once, and are never reused, even for a voided invoice. The
-format belongs to that allocator.
+`pakem docs` allocates every number once and never reuses it, even for a voided
+invoice: `PRJ-YYYY-NNN` per engagement, every document sharing it (`PROP-2026-007`),
+and a running suffix for repeating documents (`INV-2026-007-01`).

@@ -3,6 +3,13 @@
 All notable changes to the `personal` profile. Versions follow semantic versioning;
 `VERSION` and `profile.toml` change together.
 
+## [1.0.1] - 2026-10-27
+
+### Changed
+
+- Workspace map: commercial records stay in the `pakem docs` store, which replaces the
+  proposal generator.
+
 ## [1.0.0] - 2026-10-27
 
 ### Changed

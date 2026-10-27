@@ -3,6 +3,19 @@
 All notable changes to the `freelance` profile. Versions follow semantic versioning;
 `VERSION` and `profile.toml` change together.
 
+## [1.1.0] - 2026-10-27
+
+### Changed
+
+- `freelance-delivery` writes every document with `pakem docs` (framework ADR 0014):
+  simpler stages (fixed scope `discovery` to `closed`, workstream `active` to
+  `closed`), numbering and records kept by `pakem docs`, fixed wording from the
+  store's approved `wording/` files, and the full document catalogue in layout D.
+
+### Removed
+
+- The proposal generator section and its contract references.
+
 ## [1.0.0] - 2026-10-27
 
 ### Added
