@@ -1,6 +1,5 @@
-# Personal and freelance profile for Pakem (contract: tools/pakem_lib/profiles.py).
+# Personal profile for Pakem: the owner's own projects (contract: tools/pakem_lib/profiles.py).
 name = "personal"
-version = "0.3.0"
+version = "1.0.0"
 requires_framework = ">=2.0,<3.0"
 digest = "digest.md"
-skills_dir = "skills"

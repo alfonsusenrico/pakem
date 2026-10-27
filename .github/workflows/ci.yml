@@ -34,6 +34,8 @@ jobs:
       - name: Python ${{ matrix.python }}
         run: uv python install "${{ matrix.python }}"
       - name: Lint
-        run: uv run --no-project --python "${{ matrix.python }}" python tools/pakem lint
+        run: >-
+          uv run --no-project --python "${{ matrix.python }}" python tools/pakem lint
+          --profile profiles/personal --profile profiles/freelance
       - name: Unit tests
         run: uv run --no-project --python "${{ matrix.python }}" python -m unittest discover -s tests

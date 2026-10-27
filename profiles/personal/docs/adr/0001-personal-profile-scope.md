@@ -1,6 +1,6 @@
 # 0001. Personal profile scope and location
 
-- Status: Accepted (owner, 2026-10-08)
+- Status: Superseded by 0002 (the freelance part moved to `profiles/freelance`)
 - Date: 2026-10-08
 
 ## Context

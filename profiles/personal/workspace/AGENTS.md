@@ -1,11 +1,11 @@
 # Personal workspace
 
-The owner's framework kernel and `personal` profile are installed globally; this
-file only maps this workspace.
+The owner's framework kernel is installed globally, and each project pins its profile;
+this file only maps this workspace.
 
-- `enrico/` holds personal projects. `freelance/` and the client folders hold client
-  work: follow `client-engagement` and `freelance-delivery` there. Archived client
-  folders (development held by the client) are read-only reference.
+- `enrico/` holds personal projects (profile `personal`). `freelance/` and the client
+  folders hold client work (profile `freelance`). Archived client folders (development
+  held by the client) are read-only reference.
 - `private/` and `tests/` are outdated: never use them as references or templates.
 - A sibling named `<repo>-<topic>` may be a worktree of `<repo>`; work only in the
   checkout you were given.

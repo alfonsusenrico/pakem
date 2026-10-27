@@ -3,6 +3,26 @@
 All notable changes to the `personal` profile. Versions follow semantic versioning;
 `VERSION` and `profile.toml` change together.
 
+## [1.0.0] - 2026-10-27
+
+### Changed
+
+- The profile covers the owner's own projects only (ADR 0002, framework ADR 0012). New
+  digest: free first weighed against quality (`default:free-first`), AI calls through
+  the owner's gateway, GitHub and runners, per-project hosts and environments, English,
+  the personal email, the owner merges.
+
+### Removed
+
+- The `freelance-delivery` and `client-engagement` skills and the client-repository
+  digest lines, now in `profiles/freelance`.
+
+## [0.3.0] - 2026-10-21
+
+### Changed
+
+- Renamed with the framework (Pakem 2.0.0). This entry was added later.
+
 ## [0.2.0] - 2026-10-12
 
 ### Changed
