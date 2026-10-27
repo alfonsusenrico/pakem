@@ -113,6 +113,7 @@ acting, and take `--plan` to preview and `--yes` to skip the question.
 | `pakem project adopt` | Bring an existing repository to the standard: adds what is missing, lists the rest |
 | `pakem decide` | Record a project decision (answered, provisional, or pending) on one of its gaps |
 | `pakem propose` | Turn a case from any project into a framework change: a pull request you merge (accept) or close (reject) |
+| `pakem docs` | Freelance engagement documents: the agent writes them from your answers, checks them, renders the PDF, and records approvals and payments, all in a private store outside every repository |
 | `pakem config` | Device settings, such as whether agents may run `pakem update` themselves |
 | `pakem install` | Install the kernel and skills into every supported agent on this device |
 | `pakem uninstall` | Remove what Pakem installed and restore any files it replaced |

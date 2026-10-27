@@ -20,16 +20,17 @@ skills apply inside the development stage.
 | Propose stage transitions with the guard evidence | Perform a stage transition, reopen a closed engagement |
 
 Never fill an unknown commercial, legal, approval, or payment fact; write
-`[OWNER: <fact>]` and list it as a question. Never calculate or reuse a document
-number by hand when a numbering service exists.
+`[OWNER: <fact>]` and list it as a question (`pakem docs check` refuses to render
+it). Never number a document by hand: `pakem docs new` allocates every number.
 
 ## 2. Stages
 
-`discovery` -> `proposal` (drafts and revisions) -> `proposal approved` ->
-`development` -> `final report` (drafts and reviews) -> `final report approved` ->
-`invoiced` -> `paid` -> `closed`, with the handover recorded before closure. Follow
-[lifecycle](references/lifecycle.md) for each stage's work, owner gate, forbidden
-actions, and exit guard.
+A fixed-scope engagement runs `discovery` -> `proposal` -> `development` ->
+`finishing` -> `closed`; a workstream inside a client's team runs `active` ->
+`closed`. `pakem docs` keeps the stage: an approved proposal or quotation opens
+development, an approved final report starts finishing, and `pakem docs close`
+checks the closing guards. Follow [lifecycle](references/lifecycle.md) for each
+stage's work, owner gate, and guard.
 
 ## 3. Records
 
@@ -46,15 +47,19 @@ Follow [records](references/records.md):
 - Closure requires an approved final report, every issued invoice settled or voided
   with payment evidence, and a recorded handover.
 
-Document numbers come from one allocator and are never reused; record fields follow
-the proposal generator's contract (records reference).
+`pakem docs` allocates every number, never reused, and keeps every record
+(`approve`, `pay`, `handover`, `void`) in the engagement's append-only
+`records.toml`.
 
 ## 4. Documents
 
-Draft documents with the section structures in [documents](references/documents.md).
-Fixed wording (terms and conditions, payment confirmation, section titles) belongs
-to the owner's template; populate fields only. Client-facing values and narrative
-follow the client's language.
+Write every document with `pakem docs`, as in [documents](references/documents.md):
+`pakem docs new <type> <PRJ>` writes the version file with every field to fill, the
+agent fills it from the owner's answers, and `check` then `render` produce the PDF in
+the approved layout. Fixed wording comes only from the store's `wording/` files,
+which the owner approved; agents never edit them. Client-facing text follows the
+engagement's language. The documents are short approval documents: keep them
+simple.
 
 ## 5. Development
 
@@ -75,17 +80,23 @@ Treat the approved proposal as the contract for planning:
 ## 6. Where records live
 
 - Commercial records (brief, proposal, approvals, scope changes, final report,
-  invoices, payments, handover) live outside the code repository: in the proposal
-  generator or a private engagement folder the owner names.
+  invoices, payments, handover) live in the `pakem docs` store: one private
+  directory outside every repository, named in `~/.config/pakem/documents.toml`.
 - The repository's private `research/notes/` may hold the technical brief and
   meeting notes; never commit prices, bank details, or payment evidence there.
 - `PROJECT_STATE.md` tracks the current stage and the next owner gate.
 
-## 7. Proposal generator (optional)
+## 7. A document, step by step
 
-The owner's `proposal_generator` project implements this lifecycle with stage
-guards, numbering, immutable HTML and PDF artifacts, and approval, scope-change,
-payment, and handover records. When the owner uses it, call its tools under its own
-contract (`skill/freelance-document-workflow/` in that repository) and do not
-duplicate its records by hand. Without it, keep the same records as Markdown in the
-engagement folder.
+1. `pakem docs engagement new --client ... --name ... --kind fixed|workstream --lang
+   id|en --currency IDR|USD` once per engagement, then fill `engagement.toml`
+   (representative and the facts the wording needs) from the owner.
+2. `pakem docs new <type> <PRJ>`, fill the version file, `pakem docs check <code>`
+   until it passes, then `pakem docs render <code>`.
+3. The owner reviews and sends the PDF. A change before approval is
+   `pakem docs revise <code>` (a new version), never an edit of a rendered one.
+4. Record what the owner reports, with its evidence: `pakem docs approve`, `pay`,
+   `handover`, or `void`. `pakem docs status <PRJ>` shows what is left before closing.
+
+When `pakem docs` lacks something a real engagement needs, report it and fix `pakem`;
+never keep a parallel record by hand.

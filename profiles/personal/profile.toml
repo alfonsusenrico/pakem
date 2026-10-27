@@ -1,5 +1,5 @@
 # Personal profile for Pakem: the owner's own projects (contract: tools/pakem_lib/profiles.py).
 name = "personal"
-version = "1.0.0"
+version = "1.0.1"
 requires_framework = ">=2.0,<3.0"
 digest = "digest.md"
