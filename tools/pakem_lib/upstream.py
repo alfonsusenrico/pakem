@@ -168,9 +168,12 @@ def _fetch(root: Path) -> str | None:
     env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
     # An SSH remote must fail fast instead of asking for a passphrase inside a hook.
     env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes -o ConnectTimeout=10")
+    # --prune drops tracking refs of branches already deleted on origin (a forge deletes a
+    # merged branch itself), so branch pruning never plans one that is gone. Tags fetched
+    # with --tags are never pruned by it.
     try:
         completed = subprocess.run(
-            ["git", "-C", str(root), "fetch", "--quiet", "--tags", REMOTE],
+            ["git", "-C", str(root), "fetch", "--quiet", "--prune", "--tags", REMOTE],
             capture_output=True,
             text=True,
             env=env,

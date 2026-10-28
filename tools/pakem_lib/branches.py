@@ -105,9 +105,11 @@ def plan_prune(repo: Path) -> PrunePlan:
     return plan
 
 
-def apply_prune(repo: Path, plan: PrunePlan) -> list[str]:
-    """Delete the planned branches. A remote refusal (no push rights, a protected branch) is
-    a warning: pruning tidies up and never fails the command that runs it."""
+def apply_prune(repo: Path, plan: PrunePlan) -> tuple[PrunePlan, list[str]]:
+    """Delete the planned branches; returns what is gone and the warnings. A remote refusal
+    (no push rights, a protected branch) is a warning: pruning tidies up and never fails the
+    command that runs it."""
+    done = PrunePlan(local=list(plan.local))
     warnings = []
     if plan.local:
         # -D, not -d: -d compares with HEAD, which on a release checkout lags the default
@@ -115,8 +117,13 @@ def apply_prune(repo: Path, plan: PrunePlan) -> list[str]:
         run_git(repo, "branch", "-D", *plan.local)
     if plan.remote:
         completed = run_git(repo, "push", "--quiet", REMOTE, "--delete", *plan.remote, check=False)
-        if completed.returncode != 0:
-            detail = (completed.stderr or completed.stdout).strip().splitlines()[-1:] or ["no output"]
-            warnings.append(f"could not delete every merged branch on {REMOTE}: {detail[0]}")
         run_git(repo, "fetch", "--quiet", "--prune", REMOTE, check=False)
-    return warnings
+        # Report what origin no longer has, not what the push meant to do.
+        remaining = [name for name in plan.remote
+                     if run_git(repo, "rev-parse", "--verify", "--quiet", f"refs/remotes/{REMOTE}/{name}",
+                                check=False).returncode == 0]
+        done.remote = [name for name in plan.remote if name not in remaining]
+        if remaining:
+            detail = (completed.stderr or completed.stdout).strip().splitlines()[-1:] or ["no output"]
+            warnings.append(f"could not delete {', '.join(remaining)} on {REMOTE}: {detail[0]}")
+    return done, warnings

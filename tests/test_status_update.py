@@ -318,6 +318,30 @@ class PruneTests(StatusUpdateTestCase):
         self.assertIn("prune merged branches: 1 local (chore/old), 1 on origin (chore/old)", result["done"])
         self.assertEqual(self.branches(), ({"main"}, {"main"}))
 
+    def test_a_branch_the_forge_already_deleted_is_not_pruned_again(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        git(self.framework, "branch", "chore/old", "main", home=self.home)
+        git(self.framework, "push", "-q", "origin", "chore/old", home=self.home)
+        git(self.framework, "fetch", "-q", "origin", home=self.home)
+        # The forge deletes the head branch on merge; this checkout still has its tracking ref.
+        git(self.base, "--git-dir", str(self.origin), "branch", "-D", "chore/old", home=self.home)
+        updated = self.pakem("update", "--yes")
+        self.assert_ok(updated)
+        self.assertIn("Pruned 1 local (chore/old).", updated.stdout)
+        self.assertNotIn("WARNING", updated.stdout)
+        self.assertEqual(self.branches(), ({"main"}, {"main"}))
+
+    def test_a_refused_remote_deletion_is_a_warning_and_not_reported_as_pruned(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        git(self.framework, "branch", "chore/old", "main", home=self.home)
+        git(self.framework, "push", "-q", "origin", "chore/old", home=self.home)
+        git(self.base, "--git-dir", str(self.origin), "config", "receive.denyDeletes", "true", home=self.home)
+        updated = self.pakem("update", "--yes")
+        self.assert_ok(updated)
+        self.assertIn("Pruned 1 local (chore/old).", updated.stdout)
+        self.assertIn("WARNING: could not delete chore/old on origin", updated.stdout)
+        self.assertEqual(self.branches(), ({"main"}, {"main", "chore/old"}))
+
     def test_a_project_can_opt_out(self) -> None:
         self.keep_rules("# Fixture\n\n## Overrides\n\n- `default:prune-merged`: branches are kept for audits.\n")
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))

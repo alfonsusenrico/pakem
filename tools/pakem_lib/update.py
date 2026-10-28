@@ -219,9 +219,10 @@ def run_update(args) -> int:
         lines = [f"Updated to {after.get('framework_version')} ({target.commit[:12]})."] if steps else [
             f"Pakem is up to date with {target.ref} ({target.commit[:12]})."]
         if prune:
-            result["checks"] = apply_prune(framework.root, prune)
-            result["done"].append(prune.describe())
-            lines.append(f"Pruned {prune.describe().removeprefix('prune merged branches: ')}.")
+            pruned, result["checks"] = apply_prune(framework.root, prune)
+            if pruned:
+                result["done"].append(pruned.describe())
+                lines.append(f"Pruned {pruned.describe().removeprefix('prune merged branches: ')}.")
             lines += [f"WARNING: {warning}" for warning in result["checks"]]
         if before.get("framework_commit"):
             groups = summarize_changes(changed_paths(framework.root, before["framework_commit"], target.commit))
