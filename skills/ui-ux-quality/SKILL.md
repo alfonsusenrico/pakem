@@ -44,6 +44,10 @@ shared primitives, size limits, purpose-built phone composition, formatter.
 - Copy in the audience's language; engineering identifiers stay in English.
 - Light and dark themes; the choice is persisted and follows the operating-system
   preference until the user changes it. Check contrast in both.
+- Design each theme for its own background: choose and check a light theme on light
+  surfaces, never by inverting or reusing the dark one. Check every text, icon, mark and
+  divider against the surface it sits on, in every theme, including content drawn by other
+  programs (an embedded terminal, a third-party widget). Brand marks keep their colours.
 - Meaning is never carried by colour alone.
 - Phone layouts are designed for the phone, not stacked desktop columns.
 
