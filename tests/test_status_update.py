@@ -252,6 +252,82 @@ class UpdateTests(StatusUpdateTestCase):
         self.assertIn("work", completed.stderr)
 
 
+class PruneTests(StatusUpdateTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        # Several pushes in a row can start git's detached auto-gc in the bare origin, which
+        # races the clone below ("unable to read tree"). The test needs no repacking.
+        git(self.base, "--git-dir", str(self.origin), "config", "gc.auto", "0", home=self.home)
+        git(self.base, "--git-dir", str(self.origin), "config", "receive.autogc", "false", home=self.home)
+
+    def branches(self) -> tuple[set[str], set[str]]:
+        local = git(self.framework, "for-each-ref", "--format=%(refname:short)", "refs/heads", home=self.home)
+        remote = git(self.base, "--git-dir", str(self.origin), "for-each-ref", "--format=%(refname:short)",
+                     "refs/heads", home=self.home)
+        return set(local.stdout.split()), set(remote.stdout.split())
+
+    def branch_with_commit(self, name: str) -> None:
+        git(self.framework, "switch", "-q", "-c", name, "main", home=self.home)
+        write(self.framework / "notes" / f"{name.replace('/', '-')}.md", f"{name}\n")
+        self.commit(self.framework, f"docs: {name}")
+        git(self.framework, "push", "-q", "origin", name, home=self.home)
+        git(self.framework, "switch", "-q", "main", home=self.home)
+
+    def merge_on_origin(self, name: str) -> None:
+        """Merge a branch into origin/main from another clone, as a merged pull request would."""
+        clone = self.base / "upstream"
+        if not clone.exists():
+            git(self.base, "clone", "-q", str(self.origin), str(clone), home=self.home)
+            git(clone, "config", "commit.gpgsign", "false", home=self.home)
+        git(clone, "pull", "-q", "origin", "main", home=self.home)
+        git(clone, "fetch", "-q", "origin", name, home=self.home)
+        git(clone, "merge", "-q", "--no-ff", "-m", f"Merge {name}", "FETCH_HEAD", home=self.home)
+        git(clone, "push", "-q", "origin", "main", home=self.home)
+
+    def keep_rules(self, text: str) -> None:
+        write(self.framework / "AGENTS.md", text)
+        self.commit(self.framework, "docs: branch rules")
+        git(self.framework, "push", "-q", "origin", "main", home=self.home)
+
+    def test_update_prunes_merged_branches_and_keeps_the_rest(self) -> None:
+        self.keep_rules("# Fixture\n\nKeep branches: `release/*`\n")
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        for name in ("feat/done", "feat/open", "release/1.x"):
+            self.branch_with_commit(name)
+        self.merge_on_origin("feat/done")
+        self.merge_on_origin("release/1.x")
+
+        planned = self.pakem("update", "--plan")
+        self.assert_ok(planned)
+        self.assertIn("prune merged branches: 1 local (feat/done), 1 on origin (feat/done)", planned.stdout)
+        self.assertIn("feat/done", self.branches()[0], "--plan deletes nothing")
+
+        updated = self.pakem("update", "--yes")
+        self.assert_ok(updated)
+        self.assertIn("Pruned 1 local (feat/done), 1 on origin (feat/done).", updated.stdout)
+        local, remote = self.branches()
+        self.assertEqual(local, {"main", "feat/open", "release/1.x"}, "unmerged and kept branches stay")
+        self.assertEqual(remote, {"main", "feat/open", "release/1.x"})
+
+    def test_pruning_runs_when_the_install_is_current(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        git(self.framework, "branch", "chore/old", "main", home=self.home)
+        git(self.framework, "push", "-q", "origin", "chore/old", home=self.home)
+        result = json.loads(self.pakem("update", "--yes", "--json").stdout)
+        self.assertEqual(result["status"], "up-to-date")
+        self.assertIn("prune merged branches: 1 local (chore/old), 1 on origin (chore/old)", result["done"])
+        self.assertEqual(self.branches(), ({"main"}, {"main"}))
+
+    def test_a_project_can_opt_out(self) -> None:
+        self.keep_rules("# Fixture\n\n## Overrides\n\n- `default:prune-merged`: branches are kept for audits.\n")
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        git(self.framework, "branch", "chore/old", "main", home=self.home)
+        updated = self.pakem("update", "--yes")
+        self.assert_ok(updated)
+        self.assertIn("Nothing to do", updated.stdout)
+        self.assertIn("chore/old", self.branches()[0])
+
+
 class ConfigTests(StatusUpdateTestCase):
     def test_set_get_and_refuse_unknown_values(self) -> None:
         self.assertEqual(self.pakem("config", "get", "update").stdout.strip(), "notify")

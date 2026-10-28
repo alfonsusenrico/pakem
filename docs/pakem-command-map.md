@@ -49,6 +49,12 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
     `origin/main` lacks; an install made before options were recorded that used profiles
     needs one `pakem install --apply --profile ...` first (`3`); busy (`75`) while
     another update runs.
+  - prunes the checkout's merged branches, locally and on `origin` (`default:prune-merged`),
+    even when nothing else changed: a branch whose tip is part of `origin/main`, never
+    `main`, the current branch, a branch checked out in a worktree, or one the
+    repository keeps (`Keep branches:` in `AGENTS.md`, or a `default:prune-merged`
+    override). A squash-merged branch is kept. A remote deletion that fails is a
+    warning, never a failed update.
 - `pakem config set update notify|apply`: `notify` (default) only tells the owner; `apply`
   is the owner's standing approval for agents to update.
 - Hooks (`pakem enforce install --host <host>`), on every supported agent host:

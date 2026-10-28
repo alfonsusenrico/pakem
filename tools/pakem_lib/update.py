@@ -7,7 +7,9 @@ Steps, each skipped when already done, so a re-run continues where one stopped:
    checkout to origin/main, or check out the newest release on main;
 3. run `pakem install --apply` with the options the last install recorded;
 4. refresh the guardrails of every host `pakem enforce` was installed for;
-5. list the installed kernel and skill files that changed, for agents to re-read.
+5. list the installed kernel and skill files that changed, for agents to re-read;
+6. prune the checkout's merged branches, locally and on origin (`default:prune-merged`,
+   branches.py), even when nothing else changed.
 
 Steps 3 and 4 run the checkout's own tool in a subprocess, so an update that changes the
 installer installs with the new installer. The update is refused (exit 6, nothing
@@ -24,6 +26,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
+from .branches import apply_prune, plan_prune
 from .common import (
     CheckFailed,
     CommandBusy,
@@ -184,13 +187,16 @@ def run_update(args) -> int:
     with update_lock():
         before = load_manifest()
         steps, target = plan_update(framework, before)
+        prune = plan_prune(framework.root)
         result = {"status": "up-to-date", "done": [], "owner_actions": [], "gaps": [], "checks": [], "reread": []}
-        if not steps:
+        if not steps and not prune:
             return _finish(args, result, [f"Pakem is up to date with {target.ref} ({target.commit[:12]}). Nothing to do."])
         if not args.json:
             print(f"pakem update: {before.get('framework_version')} -> {target.version} ({target.ref})")
             for description, _ in steps:
                 print(f"  {description}")
+            if prune:
+                print(f"  {prune.describe()}")
             if before.get("framework_commit"):
                 # What the install will change, before the owner confirms it.
                 groups = summarize_changes(changed_paths(framework.root, before["framework_commit"], target.commit))
@@ -198,7 +204,7 @@ def run_update(args) -> int:
                     print(f"  changes: {', '.join(groups)}")
         if args.plan:
             result["status"] = "planned"
-            result["done"] = [description for description, _ in steps]
+            result["done"] = [description for description, _ in steps] + ([prune.describe()] if prune else [])
             return _finish(args, result, ["Plan only: nothing changed."])
         confirm_steps(args.yes, "pakem update")
         for description, arguments in steps:
@@ -208,9 +214,15 @@ def run_update(args) -> int:
                 _run_tool(framework, arguments, capture=args.json)
             result["done"].append(description)
         after = load_manifest()
-        result["status"] = "updated"
+        result["status"] = "updated" if steps else "up-to-date"
         result["reread"] = _reread(before, after)
-        lines = [f"Updated to {after.get('framework_version')} ({target.commit[:12]})."]
+        lines = [f"Updated to {after.get('framework_version')} ({target.commit[:12]})."] if steps else [
+            f"Pakem is up to date with {target.ref} ({target.commit[:12]})."]
+        if prune:
+            result["checks"] = apply_prune(framework.root, prune)
+            result["done"].append(prune.describe())
+            lines.append(f"Pruned {prune.describe().removeprefix('prune merged branches: ')}.")
+            lines += [f"WARNING: {warning}" for warning in result["checks"]]
         if before.get("framework_commit"):
             groups = summarize_changes(changed_paths(framework.root, before["framework_commit"], target.commit))
             if groups:

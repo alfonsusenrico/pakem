@@ -85,8 +85,7 @@ and project files add facts and rules; they never weaken a floor.
 - Where taste or convention is uncertain, follow credible, current research; cite it.
 - Comments explain reasons, invariants, units, or external constraints. No
   narrating comments, commented-out code, AI banners, or speculative TODOs.
-- Remove code, config, and comments made obsolete by the change; do not expand
-  into unrelated cleanup.
+- Remove code, config, and comments the change made obsolete; no unrelated cleanup.
 
 ## 5. Verification and delivery
 
@@ -111,6 +110,7 @@ and project files add facts and rules; they never weaken a floor.
   remote (artifact, paste, shared document, message) until the owner confirms it.
 - Push and open one merge request, specs and code together, only when the work is
   done and accepted by the owner; never one for plans alone (`default:mr-policy`).
+  Once it merges, delete its branch locally and on the remote (`default:prune-merged`).
   Never rewrite shared history or force-push without the owner's authorization.
 
 ## 7. Continuity

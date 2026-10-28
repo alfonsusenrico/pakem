@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-10-07
+Last reviewed: 2026-10-28
 Review by: 2027-04-07
 Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Conventional Commits 1.0.0
 
@@ -31,6 +31,18 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
   force-pushing or deleting `main`, `master`, and `development`.
 - Never rewrite shared history. Ask the owner before any force push, including on
   your own topic branch.
+- Once a merge request merges, delete its branch locally and on the remote
+  (`default:prune-merged`). A branch counts as merged only when its tip is part of the
+  default branch on origin: check with `git merge-base --is-ancestor <branch>
+  origin/main`, then `git branch -D <branch>` and `git push origin --delete <branch>`.
+  A squash-merged branch never passes that check, so ask the owner before deleting it.
+  Never delete the default branch, a protected branch, or a branch checked out in a
+  worktree. A project keeps single branches with a line in its `AGENTS.md`, for example
+  `Keep branches: release/*, demo`, and opts out entirely with a `default:prune-merged`
+  bullet in `## Overrides`. The owner can also keep one in the session. On the forge,
+  turn on deleting head branches after a merge (GitHub: `delete_branch_on_merge`) so the
+  remote side happens by itself. `pakem update` prunes the framework checkout the same
+  way.
 - Releases are tagged `vMAJOR.MINOR.PATCH` on `main` when the project ships versions.
 - Hooks (`commit-msg`, `pre-push`) live in `.githooks/` and are enabled with
   `git config core.hooksPath .githooks`; never bypass them. The owner override for a
