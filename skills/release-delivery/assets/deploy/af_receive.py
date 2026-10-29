@@ -6,7 +6,7 @@
 
             restrict,command="/usr/bin/python3 /opt/af/af_receive.py serve --device laptop --project example" ssh-ed25519 AAAA... pakem-device laptop
 
-        SSH_ORIGINAL_COMMAND may only be `release`, `history <project>`, or
+        SSH_ORIGINAL_COMMAND may only be `release`, `settings`, `history <project>`, or
         `status <project>`. `release` reads one line of request JSON, one line with its
         signature (`ssh-keygen -Y sign -n pakem-release`, base64), and then, when the
         request names one, the `git archive` tar of its commit. The request must be fresh,
@@ -14,6 +14,9 @@
         (/etc/af/allowed_signers, principals = projects). A new commit is built here once,
         for this host, with CPU and memory limits and one build at a time; promotion and
         rollback reuse the images a kept release already has. Then the engine deploys it.
+        `settings` (ADR 0015) reads a signed settings request the same way, then the value
+        it names by digest, and writes the environment's secrets or placement.env as the
+        deploy user, or lists which are set. Replies name settings, never secret values.
 
     af_receive.py authorize --device NAME --key "ssh-ed25519 AAAA..." --project P
                             --environment E [...] --deploy-root D [--proxy]
@@ -54,6 +57,7 @@ import af_engine
 import af_notify
 import af_publish
 import af_release
+import af_settings
 import contracts
 
 NAMESPACE = "pakem-release"
@@ -276,8 +280,8 @@ def verify_signature(signers: Path, device: str, project: str, request: bytes, s
         raise ReceiveError(f"the request is not signed by device {device}'s key for {project}")
 
 
-def check_request(request: dict, device: str, projects: list[str]) -> None:
-    problems = contracts.validate_release_request(request)
+def check_request(request: dict, device: str, projects: list[str], validate=contracts.validate_release_request) -> None:
+    problems = validate(request)
     if problems:
         raise ReceiveError("; ".join(problems))
     if request["device"] != device:
@@ -287,6 +291,17 @@ def check_request(request: dict, device: str, projects: list[str]) -> None:
     age = -seconds_from_now(request["created"])
     if age > FRESH_SECONDS or age < -AHEAD_SECONDS:
         raise ReceiveError("the request is not fresh. Check the device clock and send it again")
+
+
+def read_signed(stream: io.BufferedReader) -> tuple[bytes, bytes, dict]:
+    """The request line, its decoded signature, and the parsed request."""
+    request_bytes = read_line(stream, "request")
+    try:
+        signature = base64.b64decode(read_line(stream, "signature"), validate=True)
+        request = json.loads(request_bytes)
+    except (binascii.Error, ValueError):
+        raise ReceiveError("the request or its signature is malformed") from None
+    return request_bytes, signature, request
 
 
 def refuse_replay(host: af_engine.HostConfig, digest: str) -> None:
@@ -533,9 +548,15 @@ class Receiver:
         try:
             if words == ["release"]:
                 return self.release(stream)
+            if words == ["settings"]:
+                return self.settings(stream)
             if len(words) == 2 and words[0] in ("history", "status"):
                 return self.report(words[0], words[1])
-            raise ReceiveError("expected `release`, `history <project>`, or `status <project>`")
+            raise ReceiveError("expected `release`, `settings`, `history <project>`, or `status <project>`")
+        except af_settings.SettingsError as error:
+            # Settings errors name settings and line numbers, never values.
+            log(f"refused: {error}")
+            return af_engine.EXIT_REFUSED
         except (ReceiveError, af_engine.EngineError) as error:
             log(f"refused: {error}" if error.exit_code == af_engine.EXIT_REFUSED else str(error))
             return error.exit_code
@@ -569,12 +590,7 @@ class Receiver:
         return af_engine.EXIT_OK
 
     def release(self, stream: io.BufferedReader) -> int:
-        request_bytes = read_line(stream, "request")
-        try:
-            signature = base64.b64decode(read_line(stream, "signature"), validate=True)
-            request = json.loads(request_bytes)
-        except (binascii.Error, ValueError):
-            raise ReceiveError("the request or its signature is malformed") from None
+        request_bytes, signature, request = read_signed(stream)
         check_request(request, self.device, self.projects)
         verify_signature(self.signers, self.device, request["project"], request_bytes, signature)
         hosts = self._hosts(request["project"])
@@ -614,6 +630,37 @@ class Receiver:
             os.close(lock)
         log(f"result {record['result']} {record['commit'][:12]} {record['version'] or ''}".rstrip())
         return int(record["exit_code"])
+
+    def settings(self, stream: io.BufferedReader) -> int:
+        """One signed settings request (ADR 0015): the same checks as a release, then the
+        value whose digest it signs. The reply is one JSON document on standard output."""
+        request_bytes, signature, request = read_signed(stream)
+        check_request(request, self.device, self.projects, contracts.validate_settings_request)
+        verify_signature(self.signers, self.device, request["project"], request_bytes, signature)
+        hosts = self._hosts(request["project"])
+        environment = request["environment"]
+        if environment not in hosts:
+            raise ReceiveError(f"{request['project']} has no direct {environment} environment on this host")
+        host = hosts[environment]
+        af_engine.check_private_directory(host.base, "base")
+        value = read_value(stream)
+        if f"sha256:{hashlib.sha256(value).hexdigest()}" != request["digest"]:
+            raise ReceiveError("the value does not match the signed request")
+        action = request["action"]
+        if action == "list":
+            reply = list_settings(host, request["names"], request["with_values"])
+        else:
+            # Writes take the environment's lock, so a deployment never reads a half-made
+            # change, and each signed write runs once.
+            lock = af_engine.acquire_lock(host.base, 0)
+            try:
+                refuse_replay(host, f"sha256:{hashlib.sha256(request_bytes).hexdigest()}")
+                reply = write_settings(host, request, value)
+            finally:
+                os.close(lock)
+        reply.update({"project": request["project"], "environment": environment, "action": action})
+        print(json.dumps(reply, sort_keys=True), flush=True)
+        return af_engine.EXIT_OK
 
     def notify_failure(self, host: af_engine.HostConfig, request: dict, reason: str) -> None:
         """A release that fails before the engine runs (a build) has no deployment record;
@@ -725,6 +772,80 @@ class Receiver:
             if not any(entry["commit"] == request["commit"] and entry["result"] == "deployed"
                        for entry in deployments(staging)):
                 raise ReceiveError(f"{request['commit'][:12]} never deployed to staging here. Publish it first")
+
+
+# -- settings (ADR 0015) -------------------------------------------------------------------
+
+
+def read_value(stream: io.BufferedReader) -> bytes:
+    """The value after the signed header, within the largest a secret may be."""
+    value = stream.read(af_settings.MAX_SECRET_BYTES + 1)
+    if len(value) > af_settings.MAX_SECRET_BYTES:
+        raise ReceiveError("the value is larger than a setting may be")
+    return value
+
+
+def list_settings(host: af_engine.HostConfig, names: list[str], with_values: bool) -> dict:
+    """Which of the names are set, as secrets and as placement; secret values are never read."""
+    now = time.time()
+    placement = af_settings.read_placement(host.base / "placement.env")
+    secrets_dir = host.base / "secrets"
+    reply: dict = {"secrets": {}, "placement": {}}
+    for name in names:
+        age = af_settings.secret_age(secrets_dir, name, now)
+        reply["secrets"][name] = {"set": age is not None, "age_seconds": age}
+        entry: dict = {"set": bool(placement.get(name))}
+        if with_values and entry["set"]:
+            entry["value"] = placement[name]
+        reply["placement"][name] = entry
+    return reply
+
+
+def create_deploy_key(host: af_engine.HostConfig, name: str, comment: str) -> str:
+    """An ed25519 pair made here: the private key becomes the secret, and only the public
+    key leaves the host. The pair is made in a private directory removed afterwards."""
+    work = Path(tempfile.mkdtemp(prefix=".deploy-key-", dir=host.base))
+    try:
+        key = work / "key"
+        made = subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", comment, "-f", str(key)],
+            stdin=subprocess.DEVNULL, capture_output=True, check=False,
+        )
+        if made.returncode != 0:
+            raise ReceiveError("ssh-keygen could not create the deploy key", af_engine.EXIT_FAILED)
+        public = key.with_suffix(".pub").read_text(encoding="utf-8").strip()
+        if not PUBLIC_KEY.match(public):
+            raise ReceiveError("ssh-keygen wrote no ed25519 public key", af_engine.EXIT_FAILED)
+        af_settings.set_secret(host.base / "secrets", name, key.read_bytes())
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return public
+
+
+def write_settings(host: af_engine.HostConfig, request: dict, value: bytes) -> dict:
+    action, names = request["action"], request["names"]
+    secrets_dir = host.base / "secrets"
+    if action == "placement-set":
+        try:
+            text = value.decode("utf-8")
+        except UnicodeDecodeError:
+            raise ReceiveError("placement values must be UTF-8 text") from None
+        values = af_settings.parse_env_text(text, "request")
+        if sorted(values) != sorted(names):
+            raise ReceiveError("the placement values do not name the signed settings")
+        af_settings.set_placement(host.base / "placement.env", values)
+        return {"stored": names}
+    af_settings.ensure_secrets_directory(secrets_dir)
+    [name] = names
+    if action == "secret-set":
+        af_settings.set_secret(secrets_dir, name, value)
+        return {"stored": names}
+    if action == "secret-generate":
+        size = contracts.token_bytes(request["kind"])
+        af_settings.set_secret(secrets_dir, name, af_settings.generate_token(size).encode())
+        return {"generated": names}
+    comment = f"{request['project']}-{request['environment']}-{name}"
+    return {"generated": names, "public_key": create_deploy_key(host, name, comment)}
 
 
 # -- administration (root) -----------------------------------------------------------------

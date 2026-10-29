@@ -2,9 +2,9 @@
 
 Status: Draft (ADR 0009; becomes Active with deployment standard v1.0)
 Applies to: projects with the `deployed` capability on hosts we or our pipeline control
-Last reviewed: 2026-10-22
+Last reviewed: 2026-10-29
 Review by: 2027-04-19
-Sources: ADR 0009; owner pipeline study 2026-10-07; deployment research 2026-10-19
+Sources: ADR 0009, 0010, 0015; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
 ADR 0010 (accepted 2026-10-21) revises the builder side: the builder and trigger are each
 project's choice, nothing billed is used without the project's approval, images default
@@ -105,6 +105,19 @@ secret values never enter the runtime env file, images, logs, or (in pull mode) 
 Compose mounts file secrets with the host file's owner and mode, so every service that
 reads secrets declares `group_add: ["${AF_SECRETS_GID}"]` (the engine sets it to the deploy
 user's group) and then reads them as any container user, without root.
+
+Two optional tables serve `pakem` only (ADR 0015); the engine ignores them once they are
+well formed (`contracts.py settings` checks them):
+
+- `[descriptions]`: a declared name to one line saying what it is and where to find it,
+  shown by `pakem settings status`, interviews, and the secret dialogs.
+- `[generate]`: a `secrets` name to what `pakem secret set --generate` creates on the host:
+  `token:<bytes>` (16 to 1024 random bytes, URL-safe base64), or `deploy-key:read` /
+  `deploy-key:write` (an ed25519 pair: the OpenSSH private key is the secret, and only the
+  public key leaves the host, registered on the repository). OpenSSH refuses a private key
+  its own user's group can read, so a service running as the deploy user's uid copies it
+  to a 0600 file before handing it to `ssh`. `host_generated` with `[generators]` stays
+  for secrets the engine creates itself at deploy.
 
 ## 5. Engine interface
 
@@ -236,7 +249,8 @@ or Ubuntu (amd64, arm64): run `sudo ./af_bootstrap.sh install [--trigger push]
 Docker and its containers untouched, refuses a foreign Caddyfile unless
 `--replace-caddyfile` (which keeps a backup), and ends with `check`, which can be rerun at
 any time. For direct delivery, `pakem host allow-device` does the per-project parts of
-step 3 and the keys (section 13); placement values, secrets, and channels stay manual.
+step 3 and the keys, and `pakem placement set` and `pakem secret set` write placement
+values and secrets (section 13, Settings); channels stay manual.
 For a registry, the per-project parts (step 3, keys, host configs, placement, secrets,
 channels, authorized keys) stay manual.
 
@@ -374,8 +388,8 @@ device key:
 | `allow_schema` | true only for a rollback the owner confirmed across a schema change |
 
 `SSH_ORIGINAL_COMMAND` is `release` (standard input: the request on one line, its
-signature base64-encoded on the next, then the archive if named), `history <project>`,
-or `status <project>` (JSON per environment: `current` deployment record, `running`
+signature base64-encoded on the next, then the archive if named), `settings` (below),
+`history <project>`, or `status <project>` (JSON per environment: `current` deployment record, `running`
 commit, and for history every deployment and the `kept` commits). Anything else is
 refused. The receiver checks, before reading the archive's content: the schema; the
 device and project against its forced command; freshness; the signature against only
@@ -385,6 +399,36 @@ release for it is `busy`, exit 75, before anything is built), that this exact re
 not run here while fresh (each signed request runs once), and the archive's digest
 against the request. A build that fails, or takes longer than its timeout, sends a
 `failed` notice; it writes no deployment record, since nothing was released.
+
+**Settings** (ADR 0015). The same connection writes a direct environment's settings
+(section 4). A settings request is signed like a release request:
+
+| Field | Rule |
+| --- | --- |
+| `schema` | `pakem.settings-request/v1` |
+| `action` | `secret-set`, `secret-generate`, `deploy-key`, `placement-set`, or `list` |
+| `project`, `environment`, `created`, `device` | as in a release request |
+| `names` | distinct UPPER_CASE names, at most 256: exactly one for the three secret actions, at least one for `placement-set` |
+| `kind` | `token:<bytes>` (16 to 1024) for `secret-generate`, `read` or `write` for `deploy-key`, else null |
+| `with_values` | true only for a `list` that returns placement values |
+| `digest` | `sha256:<64 hex>` of the value that follows; the empty value's for actions without one |
+
+Standard input holds the request line, its signature line, then the value: a secret's
+bytes (at most 64 KiB) or `NAME=value` lines for `placement-set`. The receiver checks the
+schema, device, project, freshness, and signature as for a release, then the value's
+digest. Writes take the environment's lock (`busy`, exit 75, while a deployment runs) and
+run once each. `secret-set` writes `<base>/secrets/<NAME>` (0640) with `af_settings`,
+making a missing `secrets/` (0700); `secret-generate` creates the token there;
+`deploy-key` runs `ssh-keygen -t ed25519` in a private directory under the base, keeps
+the private key as the secret, removes the directory, and replies with the public key
+(comment `<project>-<environment>-<NAME>`); `placement-set` merges the pairs into
+`placement.env` (0600, written atomically, other lines kept) and refuses a value the
+engine could not read. `list` replies per name with `secrets.<NAME>` (`set`,
+`age_seconds`) and `placement.<NAME>` (`set`, and `value` only with `with_values`). The
+reply is one JSON object on standard output; neither it nor any message carries a secret
+value. The device refuses a name its `deploy/settings.toml` does not declare with that
+kind before it sends anything; the host adds no check of its own, since a key that may
+release the project can already deploy code that reads its secrets.
 
 **Build.** A commit no environment of the project keeps is unpacked (files,
 directories, and symlinks that stay inside; size and entry limits), its deploy files

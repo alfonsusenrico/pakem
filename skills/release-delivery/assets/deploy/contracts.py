@@ -9,6 +9,7 @@ name fields, never values, so they are safe to print.
     python3 contracts.py promotion STAGING_FILE PRODUCTION_FILE
     python3 contracts.py deployment-record FILE
     python3 contracts.py release-request FILE
+    python3 contracts.py settings-request FILE
     python3 contracts.py direct-record FILE
     python3 contracts.py project-config deploy/release.toml
     python3 contracts.py settings deploy/settings.toml
@@ -16,6 +17,7 @@ name fields, never values, so they are safe to print.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -28,6 +30,18 @@ DEPLOYMENT_SCHEMA = "af.deployment/v1"
 REQUEST_SCHEMA = "pakem.release-request/v1"
 DIRECT_SCHEMA = "af.direct-release/v1"
 REQUEST_ACTIONS = {"publish", "promote", "rollback"}
+# Settings through the release receiver (ADR 0015): signed like a release request, the value
+# follows the signed header on standard input and only its digest is signed.
+SETTINGS_REQUEST_SCHEMA = "pakem.settings-request/v1"
+SETTINGS_ACTIONS = {"secret-set", "secret-generate", "deploy-key", "placement-set", "list"}
+# Actions that send a value after the header; the others send none and sign the empty digest.
+VALUE_ACTIONS = {"secret-set", "placement-set"}
+SINGLE_NAME_ACTIONS = {"secret-set", "secret-generate", "deploy-key"}
+EMPTY_DIGEST = f"sha256:{hashlib.sha256(b'').hexdigest()}"
+MAX_REQUEST_NAMES = 256
+# A generated token has at least 128 random bits.
+TOKEN_BYTES = range(16, 1025)
+DEPLOY_KEY_ACCESS = {"read", "write"}
 STANDARD = 1
 
 PROJECT = re.compile(r"[a-z][a-z0-9-]{0,62}")
@@ -46,6 +60,9 @@ STAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}")
 ENVIRONMENT = re.compile(r"[a-z][a-z0-9-]{0,31}")
 SCHEMA_VERSION = re.compile(r"[A-Za-z0-9._-]{1,128}")
 GENERATOR = re.compile(r"(token_urlsafe|token_hex):([1-9][0-9]{0,3})")
+# What `pakem secret set --generate` creates ([generate] in settings.toml).
+GENERATE_KIND = re.compile(r"token:([1-9][0-9]{0,3})|deploy-key:(read|write)")
+MAX_DESCRIPTION = 500
 
 RELEASE_FIELDS = {
     "schema",
@@ -72,6 +89,18 @@ REQUEST_FIELDS = {
     "device",
     "source",
     "allow_schema",
+}
+SETTINGS_REQUEST_FIELDS = {
+    "schema",
+    "action",
+    "project",
+    "environment",
+    "names",
+    "kind",
+    "with_values",
+    "created",
+    "device",
+    "digest",
 }
 DIRECT_FIELDS = {
     "schema",
@@ -213,6 +242,61 @@ def validate_release_request(request: object) -> list[str]:
     if action == "publish":
         checks.append((request["archive"] is not None, "a publish sends its source archive"))
         checks.append((request["environment"] != "production", "production takes a promotion, never a publish"))
+    return problems + [f"{label}: {message}" for ok, message in checks if not ok]
+
+
+def token_bytes(kind: object) -> int | None:
+    """The size of a `token:<bytes>` kind within its limits, else None."""
+    match = GENERATE_KIND.fullmatch(kind) if isinstance(kind, str) else None
+    if match is None or match[1] is None or int(match[1]) not in TOKEN_BYTES:
+        return None
+    return int(match[1])
+
+
+def generate_kind_ok(kind: object) -> bool:
+    if not isinstance(kind, str) or GENERATE_KIND.fullmatch(kind) is None:
+        return False
+    return kind.startswith("deploy-key:") or token_bytes(kind) is not None
+
+
+def validate_settings_request(request: object) -> list[str]:
+    """What a device signs to write or list a direct-delivery service's settings."""
+    label = "settings request"
+    problems = _exact_fields(request, SETTINGS_REQUEST_FIELDS, label)
+    if problems or not isinstance(request, dict):
+        return problems
+    action, names, kind = request["action"], request["names"], request["kind"]
+    names_ok = (
+        isinstance(names, list)
+        and len(names) <= MAX_REQUEST_NAMES
+        and all(_match(SETTING, name) for name in names)
+        and len(set(names)) == len(names)
+    )
+    checks = [
+        (request["schema"] == SETTINGS_REQUEST_SCHEMA, f"schema must be {SETTINGS_REQUEST_SCHEMA}"),
+        (action in SETTINGS_ACTIONS, "action must be secret-set, secret-generate, deploy-key, placement-set, or list"),
+        (_match(PROJECT, request["project"]), "project is invalid"),
+        (_match(ENVIRONMENT, request["environment"]), "environment is invalid"),
+        (names_ok, f"names must list at most {MAX_REQUEST_NAMES} distinct UPPER_CASE names"),
+        (_match(TIME, request["created"]), "created must be UTC YYYY-MM-DDTHH:MM:SSZ"),
+        (_match(DEVICE, request["device"]), "device is invalid"),
+        (_match(DIGEST, request["digest"]), "digest must be sha256:<64 hex>"),
+        (isinstance(request["with_values"], bool), "with_values must be true or false"),
+    ]
+    if names_ok and action in SINGLE_NAME_ACTIONS:
+        checks.append((len(names) == 1, f"{action} names exactly one secret"))
+    if names_ok and action == "placement-set":
+        checks.append((len(names) >= 1, "placement-set names at least one setting"))
+    if action == "secret-generate":
+        checks.append((token_bytes(kind) is not None, "secret-generate needs kind token:<bytes>, 16 to 1024 bytes"))
+    elif action == "deploy-key":
+        checks.append((kind in DEPLOY_KEY_ACCESS, "deploy-key needs kind read or write"))
+    else:
+        checks.append((kind is None, f"{action} takes no kind"))
+    if action != "list":
+        checks.append((request["with_values"] is False, "only list returns placement values"))
+    if action in SETTINGS_ACTIONS - VALUE_ACTIONS:
+        checks.append((request["digest"] == EMPTY_DIGEST, f"{action} sends no value"))
     return problems + [f"{label}: {message}" for ok, message in checks if not ok]
 
 
@@ -401,6 +485,33 @@ def validate_settings_manifest(manifest: dict) -> list[str]:
     defaults = manifest.get("defaults", {})
     if not isinstance(defaults, dict) or not all(_match(ENVIRONMENT, k) and isinstance(v, str) for k, v in defaults.items()):
         problems.append(f"{label}: defaults maps environment names to committed env files")
+    problems += _manifest_descriptions(manifest, set(names), label)
+    return problems
+
+
+def _manifest_descriptions(manifest: dict, declared: set[str], label: str) -> list[str]:
+    """[descriptions] and [generate] serve `pakem` interviews and prompts; the engine ignores
+    them once they are well formed (ADR 0015, decision 3)."""
+    problems = []
+    descriptions = manifest.get("descriptions", {})
+    if not isinstance(descriptions, dict):
+        problems.append(f"{label}: descriptions maps names to one line of text")
+        descriptions = {}
+    for name, text in descriptions.items():
+        if name not in declared:
+            problems.append(f"{label}: descriptions.{name} names no declared setting")
+        if not isinstance(text, str) or not text.strip() or "\n" in text or len(text) > MAX_DESCRIPTION:
+            problems.append(f"{label}: descriptions.{name} must be one line of at most {MAX_DESCRIPTION} characters")
+    generate = manifest.get("generate", {})
+    if not isinstance(generate, dict):
+        problems.append(f"{label}: generate maps secret names to what pakem creates")
+        generate = {}
+    secrets = manifest.get("secrets", [])
+    for name, kind in generate.items():
+        if not isinstance(secrets, list) or name not in secrets:
+            problems.append(f"{label}: generate.{name} is not in secrets ([generate] is only for secrets)")
+        if not generate_kind_ok(kind):
+            problems.append(f"{label}: generate.{name} must be token:<bytes> (16 to 1024), deploy-key:read, or deploy-key:write")
     return problems
 
 
@@ -434,6 +545,7 @@ def main(argv: list[str]) -> int:
         "release-record": validate_release_record,
         "deployment-record": validate_deployment_record,
         "release-request": validate_release_request,
+        "settings-request": validate_settings_request,
         "direct-record": validate_direct_record,
         "project-config": validate_project_config,
         "settings": validate_settings_manifest,

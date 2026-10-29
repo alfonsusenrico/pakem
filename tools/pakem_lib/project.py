@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import tomllib
 from pathlib import Path
 
 from .capabilities import ALWAYS, declarable_names, load_capabilities
@@ -463,6 +464,25 @@ def _check_image_cleanup(repo: Path, report: Report) -> None:
                             "images by tag, or prune with `--filter label=...` on a label its images carry")
 
 
+def _check_setting_descriptions(repo: Path, report: Report) -> None:
+    """Interviews and secret dialogs show each name's description (ADR 0015, decision 3)."""
+    path = repo / "deploy" / "settings.toml"
+    if not path.is_file():
+        return
+    try:
+        manifest = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return
+    descriptions = manifest.get("descriptions")
+    described = set(descriptions) if isinstance(descriptions, dict) else set()
+    names = [name for key in ("placement", "secrets") if isinstance(manifest.get(key), list)
+             for name in manifest[key] if isinstance(name, str)]
+    undescribed = [name for name in names if name not in described]
+    if undescribed:
+        report.warn(f"deploy/settings.toml has no [descriptions] entry for {', '.join(undescribed)}. Say what each "
+                    "is and where to find it, for `pakem settings status` and the secret dialogs")
+
+
 def check_repo(framework: Framework, repo: Path) -> Report:
     report = Report()
     agents_path = repo / AGENTS_FILE
@@ -496,6 +516,7 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     _check_hooks(repo, report)
     _check_starters(repo, report)
     _check_image_cleanup(repo, report)
+    _check_setting_descriptions(repo, report)
     return report
 
 

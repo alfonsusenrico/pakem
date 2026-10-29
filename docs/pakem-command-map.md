@@ -257,14 +257,48 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
   from a flag or a prompt.
 
-### 4. Secrets: `pakem secret`
+### 4. Settings: `pakem secret`, `pakem placement`
 
-- `pakem secret set <project> <env> <NAME>`: hidden input, or `--from-file`, or
-  `--generate <kind>`. Stored in the host's secret store or the forge's protected
-  variables, depending on where the project needs it.
-- `pakem secret list <project> <env>`: names and ages only.
-- **Owner actions:** typing values only the owner knows.
-- **Check:** every secret named in `deploy/settings.toml` exists.
+Stage: `draft` (ADR 0015 accepted and built 2026-10-29). Direct-delivery hosts only; registry
+and forge-variable setups stay manual until a project needs them.
+
+- `pakem secret set NAME [--environment E]`: hidden input on a terminal, or
+  `--from-file F`, or `--generate KIND`:
+  - `token:<bytes>`: a random value created on the host;
+  - `deploy-key:read` / `deploy-key:write`: an ed25519 key pair created on the host, the
+    private key kept as the secret, the public key registered on the project's GitHub
+    repository (`gh repo deploy-key add`, write access only for `:write`, title
+    `<project>-<environment>-<name>`).
+- `pakem secret list [--environment E]`: each declared secret with its age, or `missing`;
+  never values.
+- `pakem placement set NAME=VALUE ... [--environment E]`, `pakem placement list
+  [--values]`: writes `placement.env` (0600, deploy user); `list` prints names and whether
+  each is set, values only with `--values`.
+- **Transport:** a signed `pakem.settings-request/v1` over the release connection
+  (contracts §13); the receiver checks the signature, age (ten minutes), and the value's
+  digest, then writes with `af_settings` as the deploy user. Values never enter
+  arguments, logs, records, or replies.
+- **Refusals (exit `6`):** a name not declared in `deploy/settings.toml` or declared as
+  another kind; a project this device may not release on that host.
+- `pakem settings status [--environment E] [--json]`: every declared name with its kind,
+  set or missing, its description (`[descriptions]` in `deploy/settings.toml`), and whether
+  `pakem` can generate it (`[generate]`); never values.
+- `pakem secret set --missing [--dialog]`, `pakem secret set --generate-missing`: work
+  through every declared secret that is not set; `--dialog` opens one hidden-input dialog
+  per secret on the owner's desktop (macOS `osascript`, Linux `zenity`/`kdialog`), falling
+  back to hidden terminal prompts, then to one owner action.
+- **Agent flow** (the owner's instruction in the session; ADR 0015, decision 3): read
+  `settings status --json`; interview the owner for placement values and run `placement set`;
+  run `--generate-missing`; run `--missing --dialog` for secrets only the owner knows. Secret
+  values never pass through the agent: never asked in chat, written to files, or passed as
+  arguments; a secret pasted into the chat is reported for rotation and not used.
+- **Owner actions:** filling the dialogs (or, without a desktop, one `pakem secret set
+  --missing` in the terminal); re-running `pakem setup host <name>` once so the host has the
+  receiver that accepts settings requests.
+- **Check:** `pakem release` reports required settings missing on the host before sending;
+  `pakem settings status` lists every missing name and warns about the required ones
+  (`pakem project check` stays offline, so it has no `--host` yet); `pakem project check`
+  warns about declared names without a description.
 
 ### 5. Release: `pakem release`
 
@@ -318,8 +352,8 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
 - **`pakem host revoke-device <host> [--device NAME] [--project P]`:** removes a device's
   lines, or one project from them; a lost device is revoked from another device by name.
   When the host has no such line it says so (exit `6`) instead of reporting success.
-- **Owner actions:** `setup host --project-dir` (or `allow-device`) and `revoke-device` on a terminal; placement values
-  and secrets on the host until `pakem secret` exists (area 4); pushing the tag if the
+- **Owner actions:** `setup host --project-dir` (or `allow-device`) and `revoke-device` on a terminal; secret values
+  that only the owner knows (area 4); pushing the tag if the
   push fails.
 - **Gaps:** none at release time; all are settled at init. A release refuses a project
   whose `AGENTS.md` says `Delivery: others` or `nobody`, and while a required gap that

@@ -7,4 +7,13 @@ placement = ["HTTP_PORT"]
 secrets = []
 host_generated = []
 
+# Optional, read only by pakem (settings status, interviews, hidden-input dialogs):
+# [descriptions] says what each placement and secret name is and where to find it;
+# [generate] names secrets pakem creates on the host: "token:<bytes>", "deploy-key:read",
+# or "deploy-key:write" (ADR 0015).
+[descriptions]
+HTTP_PORT = "A free loopback port on the host for the service"
+
+[generate]
+
 [defaults]

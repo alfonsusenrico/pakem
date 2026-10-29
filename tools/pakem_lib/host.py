@@ -616,6 +616,23 @@ class DeviceLink:
         except ValueError as exc:
             raise PakemError(f"{self.record.name} answered `{remote}` with something other than JSON") from exc
 
+    def exchange(self, remote: str, data: bytes) -> dict:
+        """Send a signed request on standard input and read the host's one JSON reply. The
+        data never reaches arguments or output; the reply names settings, not secret values."""
+        completed = subprocess.run(self.command(remote), input=data, capture_output=True)
+        stdout = completed.stdout.decode("utf-8", errors="replace")
+        if completed.returncode != HOST_OK:
+            detail = (stdout + completed.stderr.decode("utf-8", errors="replace")).strip()
+            raise self.failure(completed.returncode, detail, remote)
+        lines = stdout.strip().splitlines()
+        try:
+            reply = json.loads(lines[-1]) if lines else None
+        except ValueError:
+            reply = None
+        if not isinstance(reply, dict):
+            raise PakemError(f"{self.record.name} answered `{remote}` with something other than a JSON object")
+        return reply
+
     def send(self, payload: Path, quiet: bool) -> int:
         """Send a signed request; the host's progress goes to this terminal (stderr with --json)."""
         with payload.open("rb") as stdin:

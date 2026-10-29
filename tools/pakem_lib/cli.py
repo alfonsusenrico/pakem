@@ -36,6 +36,7 @@ from .release import (
     run_release_report,
     run_release_rollback,
 )
+from .settings import run_placement_list, run_placement_set, run_secret_list, run_secret_set, run_settings_status
 from .schedule import DEFAULT_HOUR, DEFAULT_MINUTE, DEFAULT_WEEKDAY, default_context, run_schedule
 from .setup_device import run_setup_check, run_setup_device, run_setup_key
 from .status import HOOK_PROMPT, HOOK_SESSION_START, run_status
@@ -51,7 +52,7 @@ AREAS = (
     ("device", "stable", "setup device, setup key, setup check"),
     ("host", "stable", "host add, setup host, setup check --host, host runner add|remove"),
     ("project", "experimental", "project init, project adopt, project check --gaps, decide"),
-    ("secrets", "draft", "secret"),
+    ("settings", "draft", "secret set|list, placement set|list, settings status"),
     ("proposals", "experimental", "propose new|revise|list|show|reject"),
     ("documents", "experimental", "docs init|engagement new|new|revise|check|render|approve|pay|handover|void|status|close"),
     ("release", "stable", "release publish|promote|rollback|history|status, host allow-device|revoke-device"),
@@ -109,6 +110,47 @@ def areas_text() -> str:
     lines = ["areas (stage: commands, see docs/pakem-command-map.md):"]
     lines += [f"  {name.ljust(width)}  {stage}: {commands}" for name, stage, commands in AREAS]
     return "\n".join(lines)
+
+
+def _add_settings_parsers(commands) -> None:
+    """Area 4 (ADR 0015): a direct-delivery service's secrets and placement on its host."""
+    secret = commands.add_parser("secret", help="a service's secrets on its host, through the release receiver")
+    secret_commands = secret.add_subparsers(dest="secret_command", required=True)
+    secret_set = secret_commands.add_parser(
+        "set", help="store a secret: hidden input, a file, a desktop dialog, or created on the host"
+    )
+    secret_set.add_argument("name", nargs="?", help="a secret declared in deploy/settings.toml")
+    source = secret_set.add_mutually_exclusive_group()
+    source.add_argument("--from-file", metavar="FILE", help="read the value from this file")
+    source.add_argument(
+        "--generate", metavar="KIND", help="create it on the host: token:<bytes>, deploy-key:read, or deploy-key:write"
+    )
+    source.add_argument("--missing", action="store_true", help="ask for every declared secret that is not set")
+    source.add_argument(
+        "--generate-missing", action="store_true", help="create every missing secret deploy/settings.toml [generate] names"
+    )
+    secret_set.add_argument("--dialog", action="store_true", help="ask in a hidden-input dialog on this desktop")
+    secret_list = secret_commands.add_parser("list", help="each declared secret with its age, or missing; never values")
+    placement = commands.add_parser("placement", help="a service's placement values (host facts) on its host")
+    placement_commands = placement.add_subparsers(dest="placement_command", required=True)
+    placement_set = placement_commands.add_parser("set", help="merge NAME=VALUE pairs into the host's placement.env")
+    placement_set.add_argument("pairs", nargs="+", metavar="NAME=VALUE")
+    placement_list = placement_commands.add_parser("list", help="each declared placement name, set or missing")
+    placement_list.add_argument("--values", action="store_true", help="also print the values")
+    settings = commands.add_parser("settings", help="a service's declared settings and their state on its host")
+    settings_commands = settings.add_subparsers(dest="settings_command", required=True)
+    status = settings_commands.add_parser("status", help="every declared name: kind, set or missing, description")
+    for writing in (secret_set, placement_set):
+        writing.add_argument("--production", action="store_true", help="confirm a production change")
+        writing.add_argument("--plan", action="store_true", help="print the steps without doing them")
+        writing.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    for reading in (secret_list, placement_list, status):
+        reading.add_argument("--plan", action="store_true", help=argparse.SUPPRESS)
+        reading.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    for parser in (secret_set, secret_list, placement_set, placement_list, status):
+        parser.add_argument("--environment", help="default: staging when the project has it, else production")
+        parser.add_argument("--project-dir", default=".", help="the project's repository (default: here)")
+        parser.add_argument("--json", action="store_true", help="machine-readable result")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -252,6 +294,8 @@ def build_parser() -> argparse.ArgumentParser:
     for release_parser in release_commands.choices.values():
         release_parser.add_argument("--project-dir", default=".", help="the project's repository (default: here)")
         release_parser.add_argument("--json", action="store_true", help="machine-readable result")
+
+    _add_settings_parsers(commands)
 
     config = commands.add_parser("config", help="device settings in ~/.config/pakem/config.toml")
     config_commands = config.add_subparsers(dest="config_command", required=True)
@@ -525,6 +569,12 @@ def dispatch(args: argparse.Namespace) -> int:
             "status": run_release_report,
         }
         return commands[args.release_command](args)
+    if args.command == "secret":
+        return run_secret_set(args) if args.secret_command == "set" else run_secret_list(args)
+    if args.command == "placement":
+        return run_placement_set(args) if args.placement_command == "set" else run_placement_list(args)
+    if args.command == "settings":
+        return run_settings_status(args)
     if args.command == "install":
         return run_install(args)
     if args.command == "uninstall":

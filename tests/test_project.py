@@ -330,6 +330,15 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
         self.assert_fails(completed)
         self.assertIn("cannot check declared capabilities", completed.stdout)
 
+    def test_settings_without_descriptions_warn(self) -> None:
+        self.agents_path.write_text(self.synced + "Capabilities: none\n")
+        write(self.repo / "deploy" / "settings.toml", 'af_standard = 1\nplacement = ["PUBLIC_HOST"]\n'
+              'secrets = ["API_TOKEN", "MAIL_PASSWORD"]\n\n[descriptions]\nAPI_TOKEN = "From the dashboard"\n')
+        completed = self.pakem("project", "check", str(self.repo))
+        self.assert_ok(completed)
+        self.assertIn("deploy/settings.toml has no [descriptions] entry for PUBLIC_HOST, MAIL_PASSWORD", completed.stdout)
+        self.assertIn("0 error(s), 1 warning(s)", completed.stdout)
+
     def test_project_state_size_limits(self) -> None:
         self.agents_path.write_text(self.synced + "Capabilities: none\n")
         state = self.repo / "PROJECT_STATE.md"
