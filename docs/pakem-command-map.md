@@ -257,14 +257,37 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
   from a flag or a prompt.
 
-### 4. Secrets: `pakem secret`
+### 4. Settings: `pakem secret`, `pakem placement`
 
-- `pakem secret set <project> <env> <NAME>`: hidden input, or `--from-file`, or
-  `--generate <kind>`. Stored in the host's secret store or the forge's protected
-  variables, depending on where the project needs it.
-- `pakem secret list <project> <env>`: names and ages only.
-- **Owner actions:** typing values only the owner knows.
-- **Check:** every secret named in `deploy/settings.toml` exists.
+Stage: `draft` (design proposed 2026-10-29, ADR 0015). Direct-delivery hosts only; registry
+and forge-variable setups stay manual until a project needs them.
+
+- `pakem secret set NAME [--environment E]`: hidden input on a terminal, or
+  `--from-file F`, or `--generate KIND`:
+  - `token:<bytes>`: a random value created on the host;
+  - `deploy-key:read` / `deploy-key:write`: an ed25519 key pair created on the host, the
+    private key kept as the secret, the public key registered on the project's GitHub
+    repository (`gh repo deploy-key add`, write access only for `:write`, title
+    `<project>-<environment>-<name>`).
+- `pakem secret list [--environment E]`: each declared secret with its age, or `missing`;
+  never values.
+- `pakem placement set NAME=VALUE ... [--environment E]`, `pakem placement list
+  [--values]`: writes `placement.env` (0600, deploy user); `list` prints names and whether
+  each is set, values only with `--values`.
+- **Transport:** a signed `pakem.settings-request/v1` over the release connection
+  (contracts §13); the receiver checks the signature, age (ten minutes), and the value's
+  digest, then writes with `af_settings` as the deploy user. Values never enter
+  arguments, logs, records, or replies.
+- **Refusals (exit `6`):** a name not declared in `deploy/settings.toml` or declared as
+  another kind; a project this device may not release on that host.
+- **Owner actions:** typing values only the owner knows (`OWNER ACTION REQUIRED: run
+  pakem secret set NAME in your terminal`); re-running `pakem setup host <name>` once so
+  the host has the receiver that accepts settings requests.
+- **Agents** (on the owner's instruction in the session): `--generate`, `--from-file` with a
+  file the owner named, `list`, and `placement set` for values the owner gave or the
+  repository proves.
+- **Check:** `pakem release` reports missing declared settings before sending;
+  `pakem project check --host` lists them.
 
 ### 5. Release: `pakem release`
 
