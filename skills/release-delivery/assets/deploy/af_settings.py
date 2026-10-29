@@ -146,6 +146,64 @@ def set_secret(secrets_dir: Path, name: str, value: bytes) -> None:
     _write_private(secrets_dir / name, value, SECRET_MODE)
 
 
+def ensure_secrets_directory(secrets_dir: Path) -> None:
+    """The secrets directory the deploy user owns (0700); made when a host predates it."""
+    if not os.path.lexists(secrets_dir):
+        secrets_dir.mkdir(mode=0o700)
+    _private_directory(secrets_dir, "secrets directory")
+
+
+def secret_age(secrets_dir: Path, name: str, now: float) -> int | None:
+    """Seconds since a secret was last written, or None when it is not set."""
+    path = secrets_dir / name
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if not stat.S_ISREG(info.st_mode) or info.st_size == 0:
+        return None
+    return max(0, int(now - info.st_mtime))
+
+
+def generate_token(size: int) -> str:
+    return secrets.token_urlsafe(size)
+
+
+def read_placement(path: Path) -> dict[str, str]:
+    """The host's placement values, as the engine reads them; empty when there is no file."""
+    if not os.path.lexists(path):
+        return {}
+    _private_file(path, "placement.env")
+    return parse_env_text(path.read_text(encoding="utf-8"), "placement.env")
+
+
+def set_placement(path: Path, values: dict[str, str]) -> None:
+    """Merge NAME=value pairs into placement.env (0600, written atomically). Other lines,
+    comments included, stay as they are; the result must read as the engine reads it."""
+    for name, value in values.items():
+        if not NAME.fullmatch(name):
+            raise SettingsError("placement names are UPPER_CASE")
+        issue = "must not be empty" if not value else value_problem(value)
+        if issue:
+            raise SettingsError(f"{name}: {issue}")
+    remaining = dict(values)
+    lines: list[str] = []
+    if os.path.lexists(path):
+        _private_file(path, "placement.env")
+        current = path.read_text(encoding="utf-8")
+        parse_env_text(current, "placement.env")
+        for line in current.splitlines():
+            name, separator, _ = line.partition("=")
+            if separator and name in remaining:
+                lines.append(f"{name}={remaining.pop(name)}")
+            else:
+                lines.append(line)
+    lines += [f"{name}={value}" for name, value in remaining.items()]
+    text = "\n".join(lines) + "\n"
+    parse_env_text(text, "placement.env")
+    _write_private(path, text.encode("utf-8"), 0o600)
+
+
 def build_runtime(
     bundle: Path,
     environment: str,
