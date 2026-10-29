@@ -8,5 +8,5 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY . .
 RUN uv sync --locked --no-dev
-USER nobody
+USER 65534:65534
 CMD ["sh", "-c", "echo 'replace the CMD in Dockerfile with the service entry point' >&2; exit 1"]
