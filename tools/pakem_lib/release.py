@@ -243,15 +243,21 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def build_payload(work: Path, request: dict, archive: Path | None) -> Path:
-    """Request line, signature line, then the archive: what the receiver reads."""
+def signed_header(work: Path, request: dict) -> bytes:
+    """The request line and its signature line, signed with the device key; release and
+    settings requests share it (contracts §13)."""
     request_file = work / "request.json"
     request_file.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":")).encode())
     signature = device_key.sign(request_file, NAMESPACE)
+    return request_file.read_bytes() + b"\n" + base64.b64encode(signature) + b"\n"
+
+
+def build_payload(work: Path, request: dict, archive: Path | None) -> Path:
+    """Request line, signature line, then the archive: what the receiver reads."""
+    header = signed_header(work, request)
     payload = work / "payload"
     with payload.open("wb") as output:
-        output.write(request_file.read_bytes() + b"\n")
-        output.write(base64.b64encode(signature) + b"\n")
+        output.write(header)
         if archive is not None:
             with archive.open("rb") as source:
                 while chunk := source.read(1024 * 1024):
@@ -336,7 +342,7 @@ def _prepare(args, needs: tuple[str, ...]) -> tuple[Project, HostRecord]:
     return project, host_for(project)
 
 
-def _require_production(args, environment: str) -> None:
+def require_production(args, environment: str) -> None:
     if environment == PRODUCTION and not args.production:
         raise CommandRefused("this changes production. Pass --production (agents: only on the owner's instruction)")
 
@@ -374,7 +380,7 @@ def newest_version(project: Project) -> str | None:
 def run_release_promote(args) -> int:
     if not VERSION.match(args.version):
         raise PakemError(f"version must look like v1.2.3, not {args.version!r}")
-    _require_production(args, PRODUCTION)
+    require_production(args, PRODUCTION)
     project, record = _prepare(args, SERVICE_NEEDS + CHECK_NEEDS)
     if PRODUCTION not in project.environments:
         raise CommandRefused(f"{project.name} declares no [environments.production]")
@@ -423,7 +429,7 @@ def run_release_rollback(args) -> int:
     environment = args.environment or (STAGING if project.has_staging else PRODUCTION)
     if environment not in project.environments:
         raise CommandRefused(f"{project.name} declares no [environments.{environment}]")
-    _require_production(args, environment)
+    require_production(args, environment)
     history = DeviceLink(record).query(f"history {project.name}")
     entry = history["environments"].get(environment)
     if entry is None:
