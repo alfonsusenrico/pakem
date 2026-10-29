@@ -280,14 +280,24 @@ and forge-variable setups stay manual until a project needs them.
   arguments, logs, records, or replies.
 - **Refusals (exit `6`):** a name not declared in `deploy/settings.toml` or declared as
   another kind; a project this device may not release on that host.
-- **Owner actions:** typing values only the owner knows (`OWNER ACTION REQUIRED: run
-  pakem secret set NAME in your terminal`); re-running `pakem setup host <name>` once so
-  the host has the receiver that accepts settings requests.
-- **Agents** (on the owner's instruction in the session): `--generate`, `--from-file` with a
-  file the owner named, `list`, and `placement set` for values the owner gave or the
-  repository proves.
+- `pakem settings status [--environment E] [--json]`: every declared name with its kind,
+  set or missing, its description (`[descriptions]` in `deploy/settings.toml`), and whether
+  `pakem` can generate it (`[generate]`); never values.
+- `pakem secret set --missing [--dialog]`, `pakem secret set --generate-missing`: work
+  through every declared secret that is not set; `--dialog` opens one hidden-input dialog
+  per secret on the owner's desktop (macOS `osascript`, Linux `zenity`/`kdialog`), falling
+  back to hidden terminal prompts, then to one owner action.
+- **Agent flow** (the owner's instruction in the session; ADR 0015, decision 3): read
+  `settings status --json`; interview the owner for placement values and run `placement set`;
+  run `--generate-missing`; run `--missing --dialog` for secrets only the owner knows. Secret
+  values never pass through the agent: never asked in chat, written to files, or passed as
+  arguments; a secret pasted into the chat is reported for rotation and not used.
+- **Owner actions:** filling the dialogs (or, without a desktop, one `pakem secret set
+  --missing` in the terminal); re-running `pakem setup host <name>` once so the host has the
+  receiver that accepts settings requests.
 - **Check:** `pakem release` reports missing declared settings before sending;
-  `pakem project check --host` lists them.
+  `pakem project check --host` lists them; `pakem project check` warns about declared
+  names without a description.
 
 ### 5. Release: `pakem release`
 
