@@ -310,6 +310,23 @@ def deliver(args, project: Project, record: HostRecord, plan: Plan, history: dic
         raise link.failure(code)
 
 
+def report_missing_settings(project: Project, record: HostRecord, environment: str) -> None:
+    """Name the required settings the host has no value for before a release is sent; the
+    engine still refuses the deploy itself (ADR 0015, decision 4)."""
+    from . import settings  # settings builds on this module's signed requests
+
+    try:
+        missing = settings.missing_required(settings.Target(project, record, environment),
+                                            settings.read_manifest(project))
+    except PakemError as error:
+        print(f"WARNING: could not check the settings on {record.name}: {error}", file=sys.stderr, flush=True)
+        return
+    if missing:
+        print(f"WARNING: {record.name} has no {environment} value for required settings: {', '.join(missing)}. "
+              "The engine refuses the deploy until they are set (`pakem settings status`)",
+              file=sys.stderr, flush=True)
+
+
 def print_plan(args, project: Project, record: HostRecord, plan: Plan) -> None:
     title = f"pakem release {plan.action} {project.name} {plan.environment} {plan.commit[:12]}"
     if plan.version:
@@ -359,6 +376,7 @@ def run_release_publish(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
+    report_missing_settings(project, record, plan.environment)
     confirm_steps(args.yes, "pakem release publish")
     history = DeviceLink(record).query(f"history {project.name}")
     deliver(args, project, record, plan, history)
@@ -409,6 +427,7 @@ def run_release_promote(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
+    report_missing_settings(project, record, plan.environment)
     confirm_steps(args.yes, "pakem release promote")
     deliver(args, project, record, plan, history)
     done = [f"promoted {commit} to production as {args.version}"]
@@ -449,6 +468,7 @@ def run_release_rollback(args) -> int:
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
+    report_missing_settings(project, record, plan.environment)
     confirm_steps(args.yes, "pakem release rollback")
     deliver(args, project, record, plan, history)
     return finish(args, plan, project, record, [f"rolled {environment} back to {commit}"])

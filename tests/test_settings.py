@@ -391,6 +391,18 @@ class ReadAndPlacementTests(SettingsTestCase):
         self.assert_never_shown(status)
         self.assert_never_shown(text)
 
+    def test_a_release_names_required_settings_the_host_lacks(self) -> None:
+        origin = self.base / "origin.git"
+        git(self.base, "init", "-q", "--bare", str(origin), home=self.home)
+        git(self.project, "config", f"url.{origin}.insteadOf", "https://github.com/me/example.git", home=self.home)
+        git(self.project, "push", "-q", "origin", "main", home=self.home)
+        completed = self.pakem_in_project("release", "publish", "--yes")
+        self.assert_ok(completed)
+        self.assertIn("WARNING: prod has no staging value for required settings: PUBLIC_HOST, API_TOKEN, "
+                      "SESSION_TOKEN. The engine refuses the deploy until they are set", completed.stderr)
+        calls = self.calls("ssh")
+        self.assertLess(calls.index("ssh af@203.0.113.7 settings"), calls.index("ssh af@203.0.113.7 release"))
+
 
 class HostChoiceTests(SettingsTestCase):
     def test_the_host_must_be_known_and_unambiguous(self) -> None:
