@@ -32,6 +32,7 @@ never work around it. `pakem help` shows each area's stage.
 | Device | stable | `setup device`, `setup key` (owner), `setup check` |
 | Host | stable | `host add`, `setup host` (owner), `setup check --host`, `host runner` |
 | Release (services) | stable | `release publish`, `promote`, `rollback`, `history`, `status`, `host allow-device`, `host revoke-device` |
+| Settings (services) | draft | `settings status`, `placement set`, `placement list`, `secret set`, `secret list` |
 | Project | experimental | `project init`, `project adopt`, `project check --gaps`, `decide` |
 | Proposals | experimental | `propose new`, `revise`, `list`, `show`, `reject` |
 
@@ -92,7 +93,18 @@ project's `## Release` section); the protocol decides when they run.
   and the result. Rolling back across a schema change needs a restored backup first and
   `--allow-schema`, on the owner's instruction.
 
-## 7. Proposals
+## 7. Settings (services)
+
+Secret values never pass through the agent (ADR 0015):
+
+- Read `pakem settings status --json`. Ask the owner for placement values, or derive them
+  from the repository and their decisions, and run `pakem placement set NAME=VALUE ...`.
+- Run `pakem secret set --generate-missing`, then `pakem secret set --missing --dialog` for
+  the secrets only the owner knows; each value goes from the owner's dialog to the host.
+- Never ask for a secret in chat, write one to a file, or pass one as an argument. A secret
+  pasted into the chat must be rotated: say so and do not use it.
+
+## 8. Proposals
 
 When a case looks like it holds beyond this project, discuss it with the owner until the
 rule is clear, then propose it from this session: draft the exact change in a framework

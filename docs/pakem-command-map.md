@@ -259,7 +259,7 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
 
 ### 4. Settings: `pakem secret`, `pakem placement`
 
-Stage: `draft` (design proposed 2026-10-29, ADR 0015). Direct-delivery hosts only; registry
+Stage: `draft` (ADR 0015 accepted and built 2026-10-29). Direct-delivery hosts only; registry
 and forge-variable setups stay manual until a project needs them.
 
 - `pakem secret set NAME [--environment E]`: hidden input on a terminal, or
@@ -295,9 +295,10 @@ and forge-variable setups stay manual until a project needs them.
 - **Owner actions:** filling the dialogs (or, without a desktop, one `pakem secret set
   --missing` in the terminal); re-running `pakem setup host <name>` once so the host has the
   receiver that accepts settings requests.
-- **Check:** `pakem release` reports missing declared settings before sending;
-  `pakem project check --host` lists them; `pakem project check` warns about declared
-  names without a description.
+- **Check:** `pakem release` reports required settings missing on the host before sending;
+  `pakem settings status` lists every missing name and warns about the required ones
+  (`pakem project check` stays offline, so it has no `--host` yet); `pakem project check`
+  warns about declared names without a description.
 
 ### 5. Release: `pakem release`
 
@@ -351,8 +352,8 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
 - **`pakem host revoke-device <host> [--device NAME] [--project P]`:** removes a device's
   lines, or one project from them; a lost device is revoked from another device by name.
   When the host has no such line it says so (exit `6`) instead of reporting success.
-- **Owner actions:** `setup host --project-dir` (or `allow-device`) and `revoke-device` on a terminal; placement values
-  and secrets on the host until `pakem secret` exists (area 4); pushing the tag if the
+- **Owner actions:** `setup host --project-dir` (or `allow-device`) and `revoke-device` on a terminal; secret values
+  that only the owner knows (area 4); pushing the tag if the
   push fails.
 - **Gaps:** none at release time; all are settled at init. A release refuses a project
   whose `AGENTS.md` says `Delivery: others` or `nobody`, and while a required gap that
