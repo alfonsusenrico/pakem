@@ -27,3 +27,15 @@ LOG_LEVEL = "debug|info|warning|error"
 
 [prod_assert]
 LOG_LEVEL = "info"
+
+# Optional, read only by pakem (settings status, interviews, dialogs); the engine ignores them.
+[descriptions]
+PUBLIC_HOST = "The environment's public domain, as its DNS record names it"
+HTTP_PORT = "A free loopback port on the host for the web service"
+DATA_DIR = "Where the environment keeps its files on the host"
+DATABASE_PASSWORD = "The database password; pakem creates it"
+SMTP_PASSWORD = "The mail provider's SMTP password, from its dashboard"
+
+# Secrets pakem may create on the host: token:<bytes>, deploy-key:read, or deploy-key:write.
+[generate]
+DATABASE_PASSWORD = "token:32"

@@ -174,6 +174,24 @@ class SettingsManifest(unittest.TestCase):
         manifest["prod_assert"] = {"DATABASE_PASSWORD": "x"}
         self.assertTrue(contracts.validate_settings_manifest(manifest))
 
+    def test_descriptions_and_generate_name_declared_settings(self) -> None:
+        for table, entries, message in (
+            ("descriptions", {"UNKNOWN": "text"}, "descriptions.UNKNOWN names no declared setting"),
+            ("descriptions", {"PUBLIC_HOST": "two\nlines"}, "descriptions.PUBLIC_HOST must be one line"),
+            ("descriptions", {"PUBLIC_HOST": " "}, "descriptions.PUBLIC_HOST must be one line"),
+            ("generate", {"PUBLIC_HOST": "token:32"}, "generate.PUBLIC_HOST is not in secrets"),
+            ("generate", {"SESSION_KEY": "token:32"}, "generate.SESSION_KEY is not in secrets"),
+            ("generate", {"SMTP_PASSWORD": "token:8"}, "generate.SMTP_PASSWORD must be token:<bytes>"),
+            ("generate", {"SMTP_PASSWORD": "deploy-key:admin"}, "generate.SMTP_PASSWORD must be token:<bytes>"),
+        ):
+            with self.subTest(table=table, entries=entries):
+                manifest = copy.deepcopy(self.manifest)
+                manifest[table] = entries
+                self.assertIn(f"settings.toml: {message}", "\n".join(contracts.validate_settings_manifest(manifest)))
+        manifest = copy.deepcopy(self.manifest)
+        manifest["generate"] = {"SMTP_PASSWORD": "deploy-key:write", "DATABASE_PASSWORD": "token:1024"}
+        self.assertEqual(contracts.validate_settings_manifest(manifest), [])
+
     def test_committed_defaults_cannot_hold_other_sources(self) -> None:
         problems = contracts.validate_defaults_file("PUBLIC_HOST=example.com\nSESSION_KEY=abc\n", self.manifest)
         self.assertEqual(len(problems), 2)
