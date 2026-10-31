@@ -24,6 +24,8 @@ from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
 from .gaps import STAGES, gaps_report, run_decide
+from .health import add_parser as add_health_parser
+from .health import run_health
 from .project import run_check, run_sync
 from .project_init import run_project_adopt, run_project_init
 from .propose import add_parser as add_propose_parser
@@ -50,6 +52,7 @@ MIGRATING_COMMANDS = ("uninstall", "enforce", "schedule")
 AREAS = (
     ("status and updates", "stable", "status, update, config"),
     ("device", "stable", "setup device, setup key, setup check"),
+    ("device health", "experimental", "health check, health clean"),
     ("host", "stable", "host add, setup host, setup check --host, host runner add|remove"),
     ("project", "experimental", "project init, project adopt, project check --gaps, decide"),
     ("settings", "draft", "secret set|list, placement set|list, settings status"),
@@ -403,6 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_propose_parser(commands)
     add_docs_parser(commands)
+    add_health_parser(commands)
 
     decide = commands.add_parser("decide", help="record a decision on one of the project's gaps")
     decide.add_argument("gap", help="gap id, such as health.proof (see `pakem project check --gaps`)")
@@ -597,6 +601,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_project_adopt(args)
     if args.command == "decide":
         return run_decide(args)
+    if args.command == "health":
+        return run_health(args)
     if args.command == "docs":
         return run_docs(args)
     if args.command == "propose":

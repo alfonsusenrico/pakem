@@ -108,6 +108,27 @@ Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requ
   with a pointer to WSL.
 - **Gaps:** none.
 
+### 1a. Device health: `pakem health check`, `pakem health clean`
+
+Stage: `experimental` (built 2026-10-31, ADR 0016, from the health agent's audits on the
+owner's MacBook). It becomes `stable` after real use on a second system.
+
+- **`pakem health check [--json]`**, read-only: hardware and OS, battery, thermal state,
+  memory and swap, the data volume's free space rated `critical`, `watch`, or `healthy`,
+  agent sessions and builds with their folders, idle Gradle and Kotlin daemons, listening
+  ports, Docker (containers, protected named volumes, anonymous volumes, images, build
+  cache, the disk image's allocated size), and build output under the configured roots.
+  Each reclaimable item is a finding with an id, size, tier (`zero` or `warm`), and an
+  in-use flag. The result is kept in the state folder for `clean`.
+- **`pakem health clean <id>... [--plan] [--yes]`**: removes findings of the last check
+  (at most 24 hours old) by id, re-verifying each first (still present, still unused,
+  inside the roots, the right kind). Folders go directly, never through `cargo clean`.
+  Docker objects go one by one, never through `volume prune` or `system prune`. Skipped
+  findings are listed with the reason. Agents run it only for ids the owner approved.
+- **Configuration:** `~/.config/pakem/health.toml` (`roots`, thresholds). Device-local.
+- **Systems:** macOS, Linux, and WSL. A probe a system lacks reports `unknown`.
+- **Weekly report:** on a configured device, a read-only "Device health" section.
+
 ### 2. Host: `pakem setup host <ssh-target>`
 
 Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
