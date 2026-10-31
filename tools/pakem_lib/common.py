@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 IGNORED_FILE_NAMES = frozenset({".DS_Store"})
+# Python writes these beside any script it runs, so an installed skill gains them by use.
+BYTECODE_DIR_NAMES = frozenset({"__pycache__"})
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
@@ -144,10 +146,12 @@ def display_path(path: Path) -> str:
     return "~/" + relative.as_posix()
 
 
-def tree_files(directory: Path) -> list[str]:
+def tree_files(directory: Path, skip_bytecode: bool = True) -> list[str]:
     """Sorted POSIX relative paths of regular files under a directory."""
     relative_paths: list[str] = []
     for current_root, dir_names, file_names in os.walk(directory):
+        if skip_bytecode:
+            dir_names[:] = [name for name in dir_names if name not in BYTECODE_DIR_NAMES]
         dir_names.sort()
         for file_name in file_names:
             if file_name in IGNORED_FILE_NAMES:
@@ -158,10 +162,10 @@ def tree_files(directory: Path) -> list[str]:
     return relative_paths
 
 
-def tree_sha(directory: Path) -> str:
+def tree_sha(directory: Path, skip_bytecode: bool = True) -> str:
     """Hash of sorted relative paths plus contents; stable across copies."""
     hasher = hashlib.sha256()
-    for relative in tree_files(directory):
+    for relative in tree_files(directory, skip_bytecode):
         content = (directory / relative).read_bytes()
         hasher.update(f"{relative}\0{len(content)}\0".encode("utf-8"))
         hasher.update(content)

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from .common import (
+    BYTECODE_DIR_NAMES,
     PakemError,
     Framework,
     Report,
@@ -104,6 +105,14 @@ def installed_sha(path: Path, kind: str) -> str:
     if kind == KIND_INSTRUCTIONS:
         return sha256_file(path)
     return tree_sha(path)
+
+
+def matches_manifest(path: Path, kind: str, recorded_sha: str | None) -> bool:
+    """True when the installed copy is what pakem recorded, apart from bytecode caches."""
+    if installed_sha(path, kind) == recorded_sha:
+        return True
+    # Manifests written before bytecode caches were skipped hashed them too.
+    return kind == KIND_SKILL and tree_sha(path, skip_bytecode=False) == recorded_sha
 
 
 def framework_skill_sources(framework: Framework, report: Report) -> list[SkillSource]:
@@ -221,7 +230,7 @@ def _decide_skill_action(
         item.action = BLOCKED_UNMANAGED
         item.detail = "existing skill directory was not installed by pakem"
         return
-    if current == entry.get("sha256"):
+    if matches_manifest(path, item.kind, entry.get("sha256")):
         item.action = REPLACE_MANAGED
         return
     if force:
@@ -283,7 +292,7 @@ def _plan_orphan_removal(entry: dict, force: bool) -> InstallItem:
     elif not path.is_dir():
         item.action = BLOCKED_EDITED
         item.detail = "source no longer exists, but the installed skill is no longer a directory"
-    elif installed_sha(path, KIND_SKILL) != entry.get("sha256"):
+    elif not matches_manifest(path, KIND_SKILL, entry.get("sha256")):
         if force:
             item.action = BACKUP_AND_REMOVE
             item.detail = "source no longer exists. The edited copy is backed up first"
@@ -458,7 +467,7 @@ def _write_skill(item: InstallItem) -> None:
     if staging.exists():
         shutil.rmtree(staging)
     try:
-        shutil.copytree(item.source_dir, staging, ignore=shutil.ignore_patterns(".DS_Store"))
+        shutil.copytree(item.source_dir, staging, ignore=shutil.ignore_patterns(".DS_Store", *BYTECODE_DIR_NAMES))
         os.replace(staging, item.path)
     except OSError:
         if staging.exists():
@@ -654,7 +663,7 @@ def build_uninstall_plan(force: bool) -> tuple[list[UninstallItem], dict]:
             items.append(UninstallItem(path, kind, ALREADY_ABSENT))
         elif path.is_symlink():
             items.append(UninstallItem(path, kind, BLOCKED_EDITED, "replaced by a symlink after install"))
-        elif installed_sha(path, kind) == entry.get("sha256"):
+        elif matches_manifest(path, kind, entry.get("sha256")):
             items.append(UninstallItem(path, kind, REMOVE))
         elif force:
             items.append(UninstallItem(path, kind, BACKUP_AND_REMOVE))

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import unittest
 
-from support import IsolatedTestCase, activate_hooks, context_profile, init_repo, git, targets_toml, write
+from support import REPO_ROOT, IsolatedTestCase, activate_hooks, context_profile, init_repo, git, targets_toml, write
+
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+from pakem_lib.common import tree_sha  # noqa: E402
 
 INSTALL = ("install", "--allow-dirty")
 
@@ -52,6 +56,39 @@ class InstallTests(IsolatedTestCase):
         write(self.framework / "skills" / "demo-skill" / ".DS_Store", "junk")
         self.assert_ok(self.pakem(*INSTALL, "--apply"))
         self.assertFalse((self.home / ".claude" / "skills" / "demo-skill" / ".DS_Store").exists())
+
+    def test_bytecode_caches_are_not_copied_or_counted_as_edits(self) -> None:
+        source = self.framework / "skills" / "demo-skill"
+        write(source / "scripts" / "__pycache__" / "tool.cpython-314.pyc", "from the checkout")
+        self.assert_ok(self.pakem(*INSTALL, "--apply"))
+        installed = self.home / ".claude" / "skills" / "demo-skill"
+        self.assertFalse((installed / "scripts" / "__pycache__").exists())
+
+        # Running an installed skill's script makes Python write a cache beside it.
+        write(installed / "scripts" / "__pycache__" / "tool.cpython-314.pyc", "from a run")
+        self.assert_ok(self.pakem("doctor"))
+        write(source / "SKILL.md", (source / "SKILL.md").read_text() + "\nNew line.\n")
+        completed = self.pakem(*INSTALL, "--apply")
+        self.assert_ok(completed)
+        self.assertNotIn("BLOCKED", completed.stdout)
+        self.assertIn("New line.", (installed / "SKILL.md").read_text())
+
+    def test_manifests_that_hashed_bytecode_still_match(self) -> None:
+        self.assert_ok(self.pakem(*INSTALL, "--apply"))
+        installed = self.home / ".claude" / "skills" / "demo-skill"
+        write(installed / "scripts" / "__pycache__" / "tool.cpython-314.pyc", "copied by an older pakem")
+        manifest_path = self.home / ".local" / "state" / "pakem" / "manifest.json"
+        manifest = self.manifest()
+        for entry in manifest["entries"]:
+            if entry["path"] == "~/.claude/skills/demo-skill":
+                entry["sha256"] = tree_sha(installed, skip_bytecode=False)
+        manifest_path.write_text(json.dumps(manifest))
+
+        source = self.framework / "skills" / "demo-skill" / "SKILL.md"
+        write(source, source.read_text() + "\nNew line.\n")
+        completed = self.pakem(*INSTALL, "--apply")
+        self.assert_ok(completed)
+        self.assertIn("New line.", (installed / "SKILL.md").read_text())
 
     def test_symlink_is_backed_up_and_restored_by_uninstall(self) -> None:
         real_target = write(self.base / "elsewhere" / "AGENTS.md", "owner rules\n")

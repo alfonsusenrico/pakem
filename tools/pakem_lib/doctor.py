@@ -18,7 +18,7 @@ from .hosts import HostTarget, load_targets
 from .installer import (
     KIND_INSTRUCTIONS,
     framework_skill_sources,
-    installed_sha,
+    matches_manifest,
     profile_skill_sources,
     split_orphaned_skill_entries,
 )
@@ -53,7 +53,7 @@ def check_manifest(framework: Framework, report: Report) -> None:
         if entry["kind"] == KIND_INSTRUCTIONS and not path.is_file():
             report.error(f"edited: {entry['path']} is no longer a regular file")
             continue
-        if installed_sha(path, entry["kind"]) != entry.get("sha256"):
+        if not matches_manifest(path, entry["kind"], entry.get("sha256")):
             report.error(f"edited: {entry['path']} differs from what pakem installed")
 
 
