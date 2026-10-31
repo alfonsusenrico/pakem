@@ -27,6 +27,8 @@ from .common import (
 from .doctor import discover_repos, installed_state_report, repo_status, unusable_repo_message
 from .legacy_install import LEGACY_REPORT_CONFIG, REPORT_CONFIG
 from .lint import Linter
+from .health import config_path as health_config_path
+from .health import summary_lines as health_summary_lines
 from .manifest import reports_dir
 from .project import check_repo
 from .source import framework_source_status
@@ -159,6 +161,21 @@ def installed_state_section(framework: Framework, profile_dirs: list[str]) -> Se
     return Section("pakem doctor: installed state", report)
 
 
+def health_section() -> Section | None:
+    """Disk urgency and reclaimable build output, on a device that configured `pakem health`."""
+    if not health_config_path().is_file():
+        return None
+    report = Report()
+    try:
+        lines = health_summary_lines()
+    except (PakemError, OSError) as exc:
+        report.error(f"pakem health could not run: {exc}")
+        return Section("Device health", report)
+    if "healthy" not in lines[0]:
+        report.warn(". ".join(lines))
+    return Section("Device health", report)
+
+
 def repo_section(framework: Framework, repo: Path) -> Section:
     title = display_path(repo)
     if not is_git_work_tree(repo):
@@ -277,6 +294,9 @@ def run_report(args) -> int:
         installed_state_section(framework, profile_dirs),
         configuration,
     ]
+    health = health_section()
+    if health is not None:
+        overview.append(health)
     repos = [repo_section(framework, repo) for repo in repo_paths]
     text = render_report(generated, framework, source_summary, config, overview, repos)
 
