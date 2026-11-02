@@ -16,6 +16,7 @@ Host configuration (TOML, private):
     registry_credentials = "/etc/af/registries.json"   # optional, read-only tokens
     lock_wait_seconds = 0
     notify = "/etc/af/notify.toml"              # optional channels file (af_notify.py)
+    min_free_gb = 10                            # direct only: free disk a build needs; 0 = off
 
     [proxy]                                     # optional: the host's reverse proxy (Caddy)
     sites = "/etc/caddy/sites"                  # af-writable directory the Caddyfile imports
@@ -98,6 +99,10 @@ class ProxyConfig:
 
 DELIVERY_REGISTRY = "registry"
 DELIVERY_DIRECT = "direct"
+# Free disk a direct build needs on the Docker data root and the release base, in GB; 0 turns
+# the check off. A build that fills the disk fails halfway and can starve running services.
+DEFAULT_MIN_FREE_GB = 10
+MAX_MIN_FREE_GB = 1000
 
 
 @dataclass
@@ -112,17 +117,21 @@ class HostConfig:
     notify: Path | None = None
     proxy: ProxyConfig | None = None
     delivery: str = DELIVERY_REGISTRY
+    min_free_gb: int = DEFAULT_MIN_FREE_GB
 
     @classmethod
     def load(cls, path: Path) -> HostConfig:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         allowed = {
             "project", "environment", "base", "pointer", "public_key", "registry_credentials", "lock_wait_seconds",
-            "notify", "proxy", "delivery",
+            "notify", "proxy", "delivery", "min_free_gb",
         }
         unknown = set(data) - allowed
         if unknown:
             raise EngineError(f"host config has unknown keys: {', '.join(sorted(unknown))}", EXIT_REFUSED)
+        min_free_gb = data.get("min_free_gb", DEFAULT_MIN_FREE_GB)
+        if isinstance(min_free_gb, bool) or not isinstance(min_free_gb, int) or not 0 <= min_free_gb <= MAX_MIN_FREE_GB:
+            raise EngineError(f"host config min_free_gb must be a whole number from 0 to {MAX_MIN_FREE_GB}", EXIT_REFUSED)
         delivery = data.get("delivery", DELIVERY_REGISTRY)
         if delivery == DELIVERY_REGISTRY:
             if "pointer" not in data or "public_key" not in data:
@@ -144,6 +153,7 @@ class HostConfig:
                 notify=Path(data["notify"]) if data.get("notify") else None,
                 proxy=ProxyConfig.parse(data["proxy"]) if "proxy" in data else None,
                 delivery=delivery,
+                min_free_gb=min_free_gb,
             )
         except (KeyError, TypeError, ValueError):
             raise EngineError("host config needs project, environment, and base", EXIT_REFUSED) from None
