@@ -5,6 +5,7 @@
 #   sudo ./af_runner.sh add-repo <owner>/<repo>      (registration token on standard input)
 #   sudo ./af_runner.sh remove-repo <owner>/<repo>   (removal token on standard input)
 #   sudo ./af_runner.sh check
+#   sudo ./af_runner.sh prune                         (the daily Docker clean-up, now)
 #
 # The runner runs as its own user `ci-runner` (no sudo, not in the `docker` or `af` groups)
 # with its own rootless Docker, so jobs never reach the production Docker socket, the
@@ -16,7 +17,9 @@
 #     ssh <host> sudo ./af_runner.sh add-repo <owner>/<repo>
 # and are never printed or passed as arguments. Debian's docker.io and Docker's docker-ce
 # both work: the rootless pieces come from the same source as the installed Docker, so
-# the production Docker is never replaced.
+# the production Docker is never replaced. A daily timer bounds the runner's Docker: build
+# cache over RUNNER_BUILD_CACHE_MAX and unused images older than RUNNER_IMAGE_MAX_AGE go,
+# so check jobs that build images cannot fill the host's disk.
 set -euo pipefail
 
 RUNNER_VERSION=2.338.0
@@ -28,6 +31,11 @@ RUNNER_LABEL=pakem
 RUNNER_CPU_QUOTA=${RUNNER_CPU_QUOTA:-200%}
 RUNNER_MEMORY_MAX=${RUNNER_MEMORY_MAX:-4G}
 RUNNER_TASKS_MAX=${RUNNER_TASKS_MAX:-4096}
+RUNNER_BUILD_CACHE_MAX=${RUNNER_BUILD_CACHE_MAX:-10GB}
+# Unused images this old go; younger ones stay as the next jobs' cache (base images, a
+# project's last builds). Dangling-only pruning would keep every tagged check image forever.
+RUNNER_IMAGE_MAX_AGE=${RUNNER_IMAGE_MAX_AGE:-72h}
+PRUNE_UNIT=pakem-docker-prune
 SUBID_COUNT=65536
 # Paths the runner must never read or write; checked by `check`.
 PROTECTED_PATHS=(/var/run/docker.sock /etc/af/secrets /srv/deploy /etc/af/hosts)
@@ -39,7 +47,7 @@ say() { printf 'af-runner: %s\n' "$*"; }
 die() { say "error: $*" >&2; exit 2; }
 
 usage() {
-  sed -n '4,7p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '4,8p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -269,6 +277,50 @@ UNIT
   as_runner systemctl --user daemon-reload
 }
 
+install_prune_timer() {
+  local directory="$RUNNER_HOME/.config/systemd/user" service timer
+  service="[Unit]
+Description=Bound the runner's Docker: build cache and old unused images
+
+[Service]
+Type=oneshot
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart=%h/bin/docker builder prune --force --max-used-space $RUNNER_BUILD_CACHE_MAX
+ExecStart=%h/bin/docker image prune --all --force --filter until=$RUNNER_IMAGE_MAX_AGE"
+  timer="[Unit]
+Description=Daily clean-up of the runner's Docker
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target"
+  if [[ -f "$directory/$PRUNE_UNIT.service" ]] && [[ "$(cat "$directory/$PRUNE_UNIT.service")" == "$service" ]] &&
+    [[ -f "$directory/$PRUNE_UNIT.timer" ]] && [[ "$(cat "$directory/$PRUNE_UNIT.timer")" == "$timer" ]] &&
+    as_runner systemctl --user is-active --quiet "$PRUNE_UNIT.timer"; then
+    return
+  fi
+  install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0755 "$directory"
+  printf '%s\n' "$service" > "$directory/$PRUNE_UNIT.service"
+  printf '%s\n' "$timer" > "$directory/$PRUNE_UNIT.timer"
+  chown "$RUNNER_USER:$RUNNER_USER" "$directory/$PRUNE_UNIT.service" "$directory/$PRUNE_UNIT.timer"
+  as_runner systemctl --user daemon-reload
+  as_runner systemctl --user enable --now "$PRUNE_UNIT.timer" >/dev/null 2>&1
+  say "daily Docker clean-up: build cache over $RUNNER_BUILD_CACHE_MAX, unused images older than $RUNNER_IMAGE_MAX_AGE"
+}
+
+prune_command() {
+  require_root
+  id "$RUNNER_USER" >/dev/null 2>&1 || die "run af_runner.sh install first"
+  say "before:"
+  as_runner docker system df
+  as_runner systemctl --user start "$PRUNE_UNIT.service" || die "the clean-up failed: as_runner journalctl --user -u $PRUNE_UNIT"
+  say "after:"
+  as_runner docker system df
+}
+
 install_command() {
   require_root
   install_packages
@@ -279,6 +331,7 @@ install_command() {
   limit_resources
   download_runner
   install_hooks_and_unit
+  install_prune_timer
   say "installed. Register repositories with: af_runner.sh add-repo <owner>/<repo>"
 }
 
@@ -350,6 +403,7 @@ slice_capped() {
     [[ "$(systemctl show "$slice" -p CPUQuotaPerSecUSec --value)" != infinity ]]
 }
 runner_active() { as_runner systemctl --user is-active --quiet "actions-runner@$1"; }
+prune_timer_active() { as_runner systemctl --user is-active --quiet "$PRUNE_UNIT.timer"; }
 
 check_command() {
   require_root
@@ -364,6 +418,7 @@ check_command() {
   check_item "user session survives logout (linger)" linger_on
   check_item "rootless Docker is running for $RUNNER_USER" rootless_running
   check_item "resource caps on the runner's slice" slice_capped
+  check_item "daily Docker clean-up timer is active" prune_timer_active
   local path
   for path in "${PROTECTED_PATHS[@]}"; do
     [[ -e "$path" ]] || continue
@@ -390,6 +445,7 @@ main() {
     add-repo) add_repo "${2:-}" ;;
     remove-repo) remove_repo "${2:-}" ;;
     check) check_command ;;
+    prune) prune_command ;;
     *) usage ;;
   esac
 }

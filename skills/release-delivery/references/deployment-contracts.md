@@ -2,7 +2,7 @@
 
 Status: Draft (ADR 0009; becomes Active with deployment standard v1.0)
 Applies to: projects with the `deployed` capability on hosts we or our pipeline control
-Last reviewed: 2026-10-29
+Last reviewed: 2026-11-02
 Review by: 2027-04-19
 Sources: ADR 0009, 0010, 0015; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
@@ -304,7 +304,10 @@ channels, authorized keys) stay manual.
    default), and downloads the checksum-pinned runner. `add-repo <owner>/<repo>` registers
    one repository with a token piped from the owner's GitHub login
    (`gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token`);
-   `remove-repo` takes a removal token the same way; `check` proves the isolation. Jobs
+   `remove-repo` takes a removal token the same way; `check` proves the isolation. A daily
+   user timer bounds the runner's Docker (build cache over `RUNNER_BUILD_CACHE_MAX`, 10 GB by
+   default, and unused images older than `RUNNER_IMAGE_MAX_AGE`, 72 hours), so check jobs that
+   build images cannot fill the host's disk; `prune` runs it now. Jobs
    use `runs-on: [self-hosted, linux, x64, pakem]`. Job containers reach the host's loopback
    at `10.0.2.2` (a job's own steps already can), and `--network host` means the runner's
    private network, so a test that starts a container publishes its port to `127.0.0.1`
@@ -337,7 +340,8 @@ commit, and the host builds and deploys it. Commands: `pakem release` (device) a
 `assets/deploy/af_receive.py` (host).
 
 **Host configuration.** `/etc/af/hosts/<project>-<environment>.toml` with
-`delivery = "direct"` and no `pointer`, `public_key`, or `registry_credentials`; the pull
+`delivery = "direct"`, an optional `min_free_gb` (the disk preflight, below), and no
+`pointer`, `public_key`, or `registry_credentials`; the pull
 agent skips it, the push trigger refuses it, and `af_engine.py deploy` refuses it (direct
 releases arrive only through the receiver). The monitor checks it like any other.
 
@@ -438,6 +442,16 @@ than 7 days pruned), with `AF_REVISION` and the revision label as in CI, tagged
 `pakem/<project>-<image>:<commit>`. The deploy bundle (section 2) is taken from the same
 tree. A kept commit (promotion, rollback, or the same commit again) reuses its images
 and bundle; a resent archive must match the one it was built from.
+
+**Disk preflight.** In its build slot, before BuildKit starts, the receiver measures the free
+space on Docker's data root (its parent when the deploy user may not enter it) and on the
+environment's base. Below the host config's `min_free_gb` (10 by default; 0 turns it off) it
+refuses the release: a build that fills the disk fails halfway and can starve the running
+services. The refusal names the free space, the setting, and Docker's totals per kind (no
+image names), and the ways to free space: a lower `keep` in the project's release config,
+pruning build cache older than a day, and on a runner host `af_runner.sh prune`. It
+deletes nothing. When `docker info` cannot name the data root, the release fails rather
+than building blind. A kept commit builds nothing and is not checked.
 
 **Record.** `releases/<commit>/record.json` is a direct release record:
 

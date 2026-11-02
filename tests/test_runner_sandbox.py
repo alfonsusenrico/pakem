@@ -4,9 +4,10 @@ Boots a systemd Debian 13 container with Debian's docker.io as the host (a priva
 namespace, as on a real machine), runs af_runner.sh install twice (the second run must
 change nothing that matters), and proves the isolation and the job path: `check` passes,
 the runner user's rootless Docker reaches the internet and a service container, the
-production Docker socket refuses it, the slice caps apply, tokens are only accepted on
-standard input, and a public repository is refused. Registering a real repository needs
-a GitHub token and is not tested here. The container is removed afterwards.
+production Docker socket refuses it, the slice caps apply, the daily Docker clean-up runs,
+tokens are only accepted on standard input, and a public repository is refused. Registering a
+real repository needs a GitHub token and is not tested here. The container is removed
+afterwards.
 """
 
 from __future__ import annotations
@@ -100,6 +101,18 @@ class RunnerSandboxTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout)
         self.assertIn("all checks passed", completed.stdout)
         self.assertIn("ok    ci-runner cannot read or write /var/run/docker.sock", completed.stdout)
+        self.assertIn("ok    daily Docker clean-up timer is active", completed.stdout)
+
+    def test_prune_bounds_the_runners_docker(self) -> None:
+        self.assertIn("daily Docker clean-up", self.first_install.stdout)
+        self.assertNotIn("daily Docker clean-up", self.second_install.stdout)
+        host(AS_RUNNER + "docker pull -q alpine:3")
+        completed = host("/root/af_runner.sh prune 2>&1", check=False)
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("after:", completed.stdout)
+        unit = host(AS_RUNNER + "systemctl --user cat pakem-docker-prune.service").stdout
+        self.assertIn("builder prune --force --max-used-space 10GB", unit)
+        self.assertIn("image prune --all --force --filter until=72h", unit)
 
     def test_jobs_reach_the_internet_and_service_containers(self) -> None:
         outbound = host(AS_RUNNER + 'docker run --rm alpine:3 sh -c "wget -q -O /dev/null https://github.com && echo ok"')

@@ -85,6 +85,14 @@ BUILD_TIMEOUT = 3600
 BUILDER = "pakem-build"
 BUILDER_LIMITS = ("memory=4g", "cpu-period=100000", "cpu-quota=200000")
 BUILD_CACHE_FILTER = "until=168h"
+GB = 1024 ** 3
+# What the owner can do when a build is refused for disk space; the preflight deletes nothing.
+FREE_SPACE_ACTIONS = (
+    "lower `keep` for the environment in the project's deploy/release.toml",
+    "prune build cache older than a day (`docker builder prune --filter until=24h`, and "
+    f"`docker buildx prune --builder {BUILDER} --filter until=24h`)",
+    "on a CI runner host, `sudo /opt/af/af_runner.sh prune`",
+)
 PUBLIC_KEY = re.compile(r"ssh-ed25519 [A-Za-z0-9+/]+={0,2}")
 ACTOR_PREFIX = "device:"
 
@@ -438,9 +446,10 @@ def load_project(source: Path, project: str, environment: str) -> dict:
 class Builder:
     """Builds a commit's images natively, one build at a time on this host."""
 
-    def __init__(self, lock_path: Path, run=subprocess.run) -> None:
+    def __init__(self, lock_path: Path, run=subprocess.run, disk_usage=shutil.disk_usage) -> None:
         self.lock_path = lock_path
         self.run = run
+        self.disk_usage = disk_usage
 
     def _docker(self, *arguments: str, timeout: int = BUILD_TIMEOUT) -> subprocess.CompletedProcess:
         try:
@@ -458,11 +467,22 @@ class Builder:
         if created.returncode != 0:
             raise ReceiveError("could not create the build container", af_engine.EXIT_FAILED)
 
-    def build(self, source: Path, config: dict, project: str, commit: str) -> dict[str, str]:
+    def build(
+        self,
+        source: Path,
+        config: dict,
+        project: str,
+        commit: str,
+        *,
+        min_free_gb: int = af_engine.DEFAULT_MIN_FREE_GB,
+        base: Path | None = None,
+    ) -> dict[str, str]:
         descriptor = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             log("waiting for this host's build slot")
             fcntl.flock(descriptor, fcntl.LOCK_EX)
+            # Inside the slot: another build may have used the space while this one waited.
+            self.check_space(min_free_gb, base)
             self._ensure_builder()
             images = {}
             for image in config["images"]:
@@ -471,6 +491,51 @@ class Builder:
             return images
         finally:
             os.close(descriptor)
+
+    def check_space(self, min_free_gb: int, base: Path | None = None) -> None:
+        """Refuse a build before it starts when the Docker data root or the release base has
+        less than `min_free_gb` free: a build that fills the disk fails halfway and can starve
+        running services. Deletes nothing; the message names the usage and what to do."""
+        if min_free_gb == 0:
+            return
+        info = self._docker("info", "--format", "{{.DockerRootDir}}", timeout=60)
+        root = info.stdout.strip()
+        if info.returncode != 0 or not root.startswith("/"):
+            raise ReceiveError(
+                "could not read Docker's data root (`docker info` failed), so free disk space is unknown. "
+                "Nothing was built", af_engine.EXIT_FAILED,
+            )
+        places = [("the Docker data root", Path(root))] + ([("the release base", base)] if base is not None else [])
+        short = []
+        for label, path in places:
+            free = self._free_bytes(path)
+            if free < min_free_gb * GB:
+                short.append(f"{free / GB:.1f} GB free on {label}")
+        if not short:
+            return
+        raise ReceiveError(
+            f"not enough disk space to build: {', '.join(short)}; this host keeps at least {min_free_gb} GB free "
+            f"(host setting min_free_gb). Docker uses {self._usage()}. Nothing was built or deleted. "
+            f"To free space: {'; '.join(FREE_SPACE_ACTIONS)}"
+        )
+
+    def _free_bytes(self, path: Path) -> int:
+        """Free bytes on the file system holding `path`; its parent when the deploy user may
+        not look inside it (Docker's data root is root's)."""
+        for candidate in (path, path.parent):
+            try:
+                return self.disk_usage(candidate).free
+            except OSError:
+                continue
+        raise ReceiveError(f"could not measure the free space at {path}. Nothing was built", af_engine.EXIT_FAILED)
+
+    def _usage(self) -> str:
+        """Docker's totals per kind (images, containers, volumes, build cache): no names."""
+        listed = self._docker("system", "df", "--format", "{{.Type}} {{.Size}} ({{.Reclaimable}} reclaimable)", timeout=120)
+        lines = [line.strip() for line in listed.stdout.splitlines() if line.strip()]
+        if listed.returncode != 0 or not lines:
+            return "an amount `docker system df` could not report"
+        return ", ".join(lines)
 
     @staticmethod
     def _inside(source: Path, name: str, relative: str) -> Path:
@@ -713,7 +778,9 @@ class Receiver:
                 schema_version = af_publish.schema_version(source, config)
             except af_publish.PublishError as error:
                 raise ReceiveError(str(error)) from None
-            images = self.builder.build(source, config, request["project"], commit)
+            images = self.builder.build(
+                source, config, request["project"], commit, min_free_gb=host.min_free_gb, base=host.base
+            )
             bundle = work / "bundle"
             copy_bundle(source, config, bundle)
             archive_digest = request["archive"]
