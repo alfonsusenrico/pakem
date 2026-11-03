@@ -111,7 +111,10 @@ class RunnerSandboxTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout)
         self.assertIn("after:", completed.stdout)
         unit = host(AS_RUNNER + "systemctl --user cat pakem-docker-prune.service").stdout
-        self.assertIn("builder prune --force --max-used-space 10GB", unit)
+        # Debian 13's docker.io 26.1 has BuildKit older than v0.17 and buildx 0.13, so only
+        # the last flag works here: the prune above passing proves the fallback.
+        self.assertIn("for limit in --max-used-space --reserved-space --keep-storage", unit)
+        self.assertIn("builder prune --force $$limit 10GB", unit)
         self.assertIn("image prune --all --force --filter until=72h", unit)
 
     def test_jobs_reach_the_internet_and_service_containers(self) -> None:
