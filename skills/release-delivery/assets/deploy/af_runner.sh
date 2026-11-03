@@ -300,13 +300,18 @@ UNIT
 
 install_prune_timer() {
   local directory="$RUNNER_HOME/.config/systemd/user" service timer
+  # The cache limit's flag depends on two versions (2026-11-03). --max-used-space needs
+  # BuildKit v0.17 in the daemon, which Debian 13's docker.io 26.1 lacks even where its buildx
+  # lists the flag. --reserved-space is the older keep-bytes limit under its buildx 0.17+
+  # name, and --keep-storage the same limit for older buildx (0.13 on Debian 13). systemd
+  # expands $NAME in ExecStart itself, so the shell's variable is written $$limit.
   service="[Unit]
 Description=Bound the runner's Docker: build cache and old unused images
 
 [Service]
 Type=oneshot
 Environment=DOCKER_HOST=unix://%t/docker.sock
-ExecStart=%h/bin/docker builder prune --force --max-used-space $RUNNER_BUILD_CACHE_MAX
+ExecStart=/bin/sh -c 'for limit in --max-used-space --reserved-space --keep-storage; do %h/bin/docker builder prune --force \$\$limit $RUNNER_BUILD_CACHE_MAX && exit 0; done; exit 1'
 ExecStart=%h/bin/docker image prune --all --force --filter until=$RUNNER_IMAGE_MAX_AGE"
   timer="[Unit]
 Description=Daily clean-up of the runner's Docker
