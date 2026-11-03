@@ -95,6 +95,12 @@ class FollowUpTests(IsolatedTestCase):
         self.assertIn("Pakem change added-runners: Projects: make CI safe to run twice at once.", output)
         self.assertNotIn("fixed-typo", output, "a fragment without a note asks nothing of projects")
 
+        # A release before the project ever aligned keeps its notes: they live in git.
+        (self.framework / "changes" / "added-runners.md").unlink()
+        release = self.commit(self.framework, "chore: release")
+        self.assertIn("Pakem change added-runners: Projects: make CI safe to run twice at once.", self.check())
+        git(self.framework, "revert", "--no-edit", release, home=self.home)
+
         self.assert_ok(self.pakem("project", "sync", str(self.project), "--aligned", "--apply"))
         record = tomllib.loads((self.project / ".pakem" / "framework.toml").read_text())
         self.assertEqual(record["aligned"], git(self.framework, "rev-parse", "HEAD", home=self.home).stdout.strip())
