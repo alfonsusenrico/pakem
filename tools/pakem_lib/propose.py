@@ -187,6 +187,15 @@ def apply_change(worktree: Path, proposal: Proposal) -> None:
                              capture_output=True, text=True)
     if applied.returncode != 0:
         raise CommandRefused(f"the drafted change does not apply to the framework's main: {applied.stderr.strip()}")
+    # Only a release deletes change notes. A drafted change that deletes one was made against
+    # an older main: applied now, it would undo the changes merged since (2026-11-03).
+    deleted = run_git(worktree, "diff", "--cached", "--name-only", "--diff-filter=D", "origin/main", "--",
+                      "changes/").stdout.split()
+    if deleted:
+        raise CommandRefused(
+            f"the drafted change deletes the change notes {', '.join(deleted)}, so it was drafted from an older "
+            "main and would undo what merged since. Draft it again from the framework's current main"
+        )
     # A drafted change that already adds its own note keeps it: one note per change, or the
     # release lists the change twice.
     drafted_notes = run_git(worktree, "diff", "--cached", "--name-only", "--diff-filter=A", "origin/main", "--",

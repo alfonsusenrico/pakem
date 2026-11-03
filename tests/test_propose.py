@@ -218,6 +218,20 @@ class ProposeTests(ProposeTestCase):
         self.assertFalse((self.state / "pulls.json").exists())
         self.assertEqual(git(self.framework, "worktree", "list", home=self.home).stdout.count("\n"), 1)
 
+    def test_a_change_drafted_from_an_older_main_is_refused(self) -> None:
+        write(self.framework / "changes" / "fixed-merged-since.md", "- Merged since.\n")
+        git(self.framework, "add", "-A", home=self.home)
+        git(self.framework, "commit", "-q", "-m", "fix: merged since", home=self.home)
+        git(self.framework, "push", "-q", "origin", "main", home=self.home)
+        stale = ("diff --git a/changes/fixed-merged-since.md b/changes/fixed-merged-since.md\n"
+                 "deleted file mode 100644\n--- a/changes/fixed-merged-since.md\n+++ /dev/null\n"
+                 "@@ -1 +0,0 @@\n-- Merged since.\n")
+        self.diff.write_text(DIFF + stale)
+        completed = self.propose("new", *self.fields())
+        self.assert_fails(completed, code=6)
+        self.assertIn("deletes the change notes changes/fixed-merged-since.md", completed.stderr)
+        self.assertFalse((self.state / "pulls.json").exists())
+
     def test_failing_checks_push_nothing(self) -> None:
         write(self.framework / "tests" / "test_ok.py", OK_TEST.replace("self.assertTrue(True)", "self.fail('broken')"))
         git(self.framework, "commit", "-q", "-am", "test: break", home=self.home)

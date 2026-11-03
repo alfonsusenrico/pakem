@@ -290,7 +290,7 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   copied from Pakem (CI workflows that carry the template's first line or a "Copied from
   Pakem" line, and `deploy/af/*`) that is an older copy or differs from every Pakem version,
   and shows each `Projects:` note of the change fragments merged since the commit recorded
-  in `.pakem/framework.toml` (without one, the pending fragments). `pakem project sync
+  in `.pakem/framework.toml` (without one, every note in the history). `pakem project sync
   --templates [--apply]` re-copies the older copies, and `--aligned [--apply]` records the
   installed Pakem commit and the version each changed copy was merged with. The session
   start hook adds one line while follow-ups wait, and `pakem update` ends with the known
