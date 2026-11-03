@@ -1,6 +1,7 @@
 # 0010. Project-chosen builders and triggers; no billed services
 
-- Status: Accepted (owner, 2026-10-21); amended 2026-10-21 (decision 8: one key per device);
+- Status: Accepted (owner, 2026-10-21); amended 2026-10-21 (decision 8: one key per device)
+  and 2026-11-03 (decision 9: several runners per repository);
   decision 1 superseded by ADR 0012 (spending follows the project's profile)
 - Date: 2026-10-21
 
@@ -90,7 +91,14 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
    - **Personal (GitHub):** checks run on a self-hosted GitHub Actions runner on the
      owner's server (one registration per repository, as personal accounts require),
      under a dedicated user with rootless Docker, so jobs cannot reach the system Docker
-     socket, the deploy user, or release secrets. Releases use the commands above from
+     socket, the deploy user, or release secrets.
+     *Amended 2026-11-03 (owner):* a repository may get up to 8 runners so its
+     independent jobs run side by side. A single runner made a 5-minute check run take
+     up to 19 minutes, queued job after job and behind the previous run. The runners
+     share one slice capped by default at half the host's CPUs and 40% of its memory (the
+     former 2 CPUs throttled jobs for 16% of their CPU time on a 4-core host). A project
+     raises its count only once its checks tolerate a parallel run: no fixed host ports,
+     image tags, or container names. Releases use the commands above from
      any of the owner's devices; delivery is direct and the server builds. Personal
      projects declare production only for now.
    - **Work (GitLab):** the self-hosted GitLab runner runs checks and the same release
