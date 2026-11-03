@@ -1,6 +1,6 @@
 # 0012. Kernel, profile, and project boundaries
 
-- Status: Proposed
+- Status: Accepted (owner, 2026-11-03)
 - Date: 2026-10-27
 
 ## Context

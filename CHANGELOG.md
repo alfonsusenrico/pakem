@@ -5,6 +5,172 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-03
+
+### Added
+
+- Direct releases refuse to build when the server's Docker data root or the release base has
+  less free space than the host config's `min_free_gb` (default 10 GB; 0 turns it off). The
+  refusal names the free space, Docker's usage per kind, and how to free space; nothing is
+  deleted. A kept commit builds nothing and is not checked.
+- `pakem project check` warns about each `docker image prune` or `docker system prune`
+  without a label filter in CI pipelines and deploy scripts.
+- Projects: replace each unfiltered prune the check names with clean-up scoped to the
+  project's own images (by tag or label).
+- `pakem health` (experimental, ADR 0016): `check` reports the device's state and what it
+  can shed, by tier (zero-impact or warm), with in-use flags from live sessions and builds,
+  and `clean <id>...` removes only owner-approved findings, re-verified first. Named Docker
+  volumes, `deps`, young `incremental` folders, agent folders, and `/tmp` are never
+  findings. New core skill `device-health`. The weekly report gains a read-only health
+  summary on a configured device.
+- `pakem docs` (experimental, ADR 0014): freelance engagement documents kept as plain
+  files in a private store outside every repository. The agent writes each document from
+  the owner's answers, `check` validates it (no placeholders, totals, references, stage),
+  `render` prints it in layout D to PDF with chrome-headless-shell (installed on demand by
+  `pakem docs browser` after the owner's confirmation),
+  and `approve`, `pay`, `handover`, `void`, and `close` record the owner's facts. Fourteen
+  document types, numbering that continues from the owner's last project, and the
+  `freelance` profile's `freelance-delivery` skill now uses it (profile 1.1.0).
+- `pakem host runner add <host> <owner/repo> --count N` (1 to 8) registers several runners
+  for one repository, so its independent jobs run side by side instead of queueing on a
+  single runner. `remove` removes all of them. The runner slice's default caps follow the
+  host: half its CPUs and 40% of its memory, at least 2 CPUs and 4 GiB (was a fixed 2 CPUs
+  and 4 GiB). An existing host takes the new caps when `pakem setup host` runs again.
+- Projects: on the self-hosted runner, make CI safe to run twice at once (no fixed host
+  ports, image tags, or container, network, or volume names, and clean up only this run's
+  objects), then tell the owner the runner count to set with `pakem host runner add`.
+- Projects follow Pakem updates by themselves (ADR 0017). `pakem project check` warns about
+  each file a project copied from Pakem (CI workflows, `deploy/af/*`) that is an older copy
+  or differs from every Pakem version, and shows each `- Projects:` note of the change
+  fragments merged since the commit in the project's `.pakem/framework.toml`.
+  `pakem project sync --templates` re-copies older copies, and `--aligned` records the
+  alignment. The session start hook adds a line while follow-ups wait, `pakem update` ends
+  with the projects that have some, and the `pakem-update` skill works through them.
+- Projects: once `pakem project check` shows no Pakem follow-ups you have not handled, run
+  `pakem project sync --aligned --apply` and commit `.pakem/framework.toml`.
+- Kernel §6 default `default:prune-merged`: once a merge request merges, its branch is
+  deleted locally and on the remote. A project opts out in `## Overrides` or keeps single
+  branches with a `Keep branches:` line in `AGENTS.md`. `pakem update` prunes the framework
+  checkout the same way, even when nothing else changed. Only a branch whose tip is part of
+  the default branch counts as merged, so a squash-merged branch is kept. Kernel §4's
+  cleanup line is shortened to make room.
+- `release-delivery`: each project keeps its release protocol in a `## Release` section
+  of its `AGENTS.md` (ADR 0013). The agent learns it from the repository on the first
+  release, or interviews the owner when the method is undecided, records it, and follows
+  it after. The owner's go covers the whole protocol, and the agent stops only for a
+  merge and on failure. New reference `references/release-protocol.md`.
+- Projects: a project we release records its protocol in a `## Release` section of its
+  `AGENTS.md` at its next release.
+- The self-hosted runner's rootless Docker gets a daily clean-up timer: build cache over
+  `RUNNER_BUILD_CACHE_MAX` (10 GB) and unused images older than `RUNNER_IMAGE_MAX_AGE` (72 h).
+  `af_runner.sh prune` runs it now, and `check` reports whether the timer is active.
+- `pakem secret set|list`, `pakem placement set|list`, and `pakem settings status` write and
+  list a direct-delivery service's secrets and placement through the release receiver, in a
+  signed `pakem.settings-request/v1` (ADR 0015, stage `draft`). `secret set` reads hidden
+  terminal input or a file, or creates the value on the host (`--generate token:<bytes>`,
+  or a deploy key the host makes and `gh` registers on the repository); `--missing --dialog`
+  asks for each missing secret in a hidden-input desktop dialog, and `--generate-missing`
+  creates what `[generate]` in `deploy/settings.toml` names. Hosts need `pakem setup host`
+  once for the new receiver.
+- `deploy/settings.toml` takes optional `[descriptions]` and `[generate]` tables. `pakem
+  release` names required settings the host lacks before it sends, and `pakem project check`
+  warns about placement and secret names without a description.
+- Projects: with `deploy/settings.toml`, describe every setting under `[descriptions]`
+  (`pakem project check` names the missing ones).
+- The UI and UX skill asks for each theme to be designed for its own background: a light theme
+  is chosen and checked on light surfaces, never derived from the dark one, and every text, icon,
+  mark and divider is checked against its surface, including content other programs draw.
+
+### Changed
+
+- CI templates run faster on the self-hosted runner and are safe to run in parallel there.
+  `security.yml` is one `security` job instead of four (`secret-scan`, `python-audit`,
+  `node-audit`, `ci-lint`), and every check still runs after another fails. Its verified
+  tools stay in the runner's tool cache, named by checksum (about 20 seconds per run).
+  `database.yml` binds Postgres to a random loopback port instead of `5432` on every
+  interface, and passes it through `TEST_DATABASE_URL` and `DATABASE_URL`. `verify-node.yml`
+  and `database.yml` use the Actions npm cache only on GitHub-hosted runners. The CI that
+  `pakem project init` writes checks out only for pull requests in its `changes` job, and
+  runs OpenSpec through `npm exec`, cached between runs. Projects that copied these
+  workflows re-copy them; checks named `security / secret-scan` and the like become
+  `security / security`.
+- Projects: re-copy Pakem workflows with `pakem project sync --templates --apply`. In the
+  project's own workflows, use the Actions uv or npm cache only on GitHub-hosted runners,
+  check out in the `changes` job only for pull requests, and run OpenSpec through `npm exec`.
+- The kernel holds only rules that apply in personal, work, and client repositories
+  (ADR 0012). `default:no-billed` leaves it: one rule remains, use no paid service, plan,
+  or metered usage the project or its profile has not approved, and free-first moves to
+  the `personal` profile. Profiles may change labelled defaults, each project pins one
+  context profile, an owner instruction overrides a written organization or client rule
+  only once that party agreed, and the person who merges is named by the profile or
+  project.
+- `pakem project check` accepts override labels that pinned profiles define, warns on the
+  retired `default:no-billed` label instead of failing, and warns when a project pins no
+  profile. It no longer asks `llm` projects for a budget, and the `gateway.profile` gap
+  asks only which gateway the project uses.
+- Projects: pin the context profile with `pakem project sync --profile <dir> --apply`, and
+  move a `default:no-billed` override to the profile's label or delete it.
+- The CI that `pakem project init` writes no longer runs on release tags. `pakem release`
+  reads the checks of the commit it deploys, which the push to `main` already ran, and it
+  pushes the tag only after deploying. A tag run repeated the main run, held a runner, and
+  while it ran, or after a flaky failure, made the next release of that commit refuse
+  (ADR 0010, decision 2 amended).
+- Projects: remove `tags: ["v*"]` from the `push` trigger of the CI workflow that runs
+  checks. Keep it in workflows that release or deploy from a tag.
+- Kernel §6: build pages and drafts locally, and publish or send nothing to a remote
+  service (an artifact, a paste, a shared document, a message) until the owner confirms
+  it. The §4 research line is shortened to make room.
+- `profiles/personal` now covers the owner's own projects only (1.0.0): free first
+  weighed against quality (`default:free-first`), AI calls through the owner's gateway,
+  GitHub and its runners, per-project hosts and environments, English, the personal
+  email. The freelance lifecycle and client-engagement rules move to the new
+  `profiles/freelance` (1.0.0), which adds a stop until the engagement records whether
+  client code and data may reach AI providers, and per-engagement spending
+  (ADR 0012). CI lints both profiles.
+- Profile digests may be up to 2,000 characters (warning above 1,800), up from 1,600,
+  because ADR 0012 moved context rules from the kernel into profiles.
+- No semicolon joins in user-facing text.
+- Numeric user in the Python service Dockerfile.
+- Deployment step 9 now limits image clean-up to the project's own images (by tag or
+  label) and forbids an unfiltered `docker image prune` or `docker system prune` on a
+  shared host.
+- Pakem's own messages, errors, `--help` text, git hooks, and server scripts no longer
+  join sentences with a semicolon, following the kernel's rule for user-facing text.
+
+### Fixed
+
+- `pakem install` and `pakem update` no longer block with `BLOCKED-locally-edited` after an
+  agent runs an installed skill's Python script: `__pycache__` folders are neither copied
+  nor hashed, and manifests from older installs that hashed them still match.
+  `pakem doctor` and `pakem uninstall` compare the same way.
+- A project that never recorded its alignment with Pakem keeps its follow-ups across a
+  Pakem release. `pakem project check` read such a project's notes from the change
+  fragments not yet released, so a release, which deletes them, hid every note (ADR 0017
+  amended).
+- `pakem propose` adds its own change note only when the drafted change has none, so an
+  accepted proposal appears once in the changelog.
+- `pakem update` (and `pakem status`) fetch with `--prune`, so a branch the forge already
+  deleted on merge is no longer planned for remote deletion, which used to end in a
+  needless warning. The update reports only the branches actually deleted, and names the
+  ones origin refused.
+- `pakem host runner add <host> <repo> --count N` works for a repository that already has a
+  runner. It used to reconfigure the registered instance, which the GitHub runner refuses
+  ("already configured"), so no runner was added. Registered instances are now kept as they
+  are, and only the missing ones are registered.
+- The self-hosted runner's daily Docker clean-up works on hosts with an older BuildKit. It
+  failed every day on Debian 13's docker.io 26.1, whose daemon refuses `--max-used-space`
+  ("buildkit v0.17.0+ is required"), so the runner's build cache was never bounded. The
+  clean-up now falls back to `--reserved-space`, then `--keep-storage`, the same limit under
+  the names older buildx versions know. Hosts take it when `pakem setup host` runs again.
+- Projects: on the self-hosted runner, drop in-script `docker builder prune
+  --max-used-space` calls (they fail the same way) and leave the build cache to the
+  runner's daily clean-up.
+- Commands that sign in to a server with the owner's login (`setup host`, `setup check
+  --host`, `host runner`, `host allow-device`, `host revoke-device`) open the connection
+  in the foreground first, so whatever the host asks before the login shows: a password, a
+  new host key, or Tailscale SSH's check link, which used to be hidden while the command
+  seemed to hang.
+
 ## [2.2.0] - 2026-10-24
 
 ### Added
