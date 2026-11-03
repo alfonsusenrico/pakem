@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .common import Framework, PakemError, display_path, normalize_newlines, read_text, run_git, write_text_atomically
 from .device_config import UPDATE_APPLY, setting
+from . import followups
 from .gaps import project_decisions
 from .manifest import load_manifest, state_dir
 from .pinned import PROFILE_KIND, parse_document
@@ -155,6 +156,16 @@ def project_status(framework: Framework, manifest: dict, cwd: Path) -> dict | No
     result["check"] = {"errors": len(report.errors), "warnings": len(report.warnings)}
     if report.errors:
         result["problems"].append(f"project check: {len(report.errors)} error(s). Run `pakem project check`")
+    try:
+        pending = followups.collect(framework, repo)
+    except PakemError as exc:
+        pending = None
+        result["problems"].append(f"Pakem follow-ups unreadable: {exc}")
+    if pending is not None and pending.pending:
+        result["problems"].append(
+            f"Pakem changes to align here: {pending.summary()}. Load the `pakem-update` skill and work "
+            "through `pakem project check`"
+        )
     try:
         result["decisions"] = project_decisions(repo)
     except PakemError as exc:

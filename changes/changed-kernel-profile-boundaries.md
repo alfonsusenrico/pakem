@@ -9,3 +9,5 @@
   retired `default:no-billed` label instead of failing, and warns when a project pins no
   profile. It no longer asks `llm` projects for a budget, and the `gateway.profile` gap
   asks only which gateway the project uses.
+- Projects: pin the context profile with `pakem project sync --profile <dir> --apply`, and
+  move a `default:no-billed` override to the profile's label or delete it.

@@ -40,6 +40,7 @@ from .common import (
     version_tuple,
 )
 from .enforce import ENFORCE_HOSTS
+from .followups import projects_to_align
 from .manifest import load_manifest, state_dir
 from .source import INSTALL_BRANCH, REMOTE, has_uncommitted_changes, head_release_tag, resolve_commit
 from .upstream import (
@@ -230,6 +231,14 @@ def run_update(args) -> int:
                 lines.append(f"Changed: {', '.join(groups)}")
         if result["reread"]:
             lines.append(f"Re-read: {', '.join(result['reread'])}")
+        if steps:
+            # ADR 0017: the projects whose agents have Pakem changes to align; each agent sees
+            # the same at its next session start.
+            pending = projects_to_align(framework)
+            result["projects_to_align"] = pending
+            if pending:
+                lines.append("Projects with Pakem changes to align (their agents see this at session start):")
+                lines += [f"  {line}" for line in pending]
         return _finish(args, result, lines)
 
 

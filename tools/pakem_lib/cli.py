@@ -377,6 +377,10 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("repo", nargs="?", help="repository directory (default: current directory)")
     sync.add_argument("--profile", action="append", metavar="DIR", help="profile directory (repeatable)")
     sync.add_argument("--replace-legacy", action="store_true", help="replace a legacy owner-baseline block")
+    sync.add_argument("--templates", action="store_true",
+                      help="re-copy the Pakem files this project holds unmodified older copies of")
+    sync.add_argument("--aligned", action="store_true",
+                      help="record that the project is aligned with the installed Pakem (.pakem/framework.toml)")
     _add_apply(sync)
     check = project_commands.add_parser(
         "check", help="verify pinned blocks, size, overrides, capabilities, and project files"

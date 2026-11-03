@@ -10,6 +10,11 @@ Every branch records its user-visible change here as its own file instead of edi
   and `<kebab-topic>` is lowercase letters, digits, and hyphens.
 - Content: one or more Markdown bullet lines starting with `- `; a continuation line
   is indented two spaces directly below its bullet. Nothing else.
+- When projects must act on the change (re-copy a file, change their CI, add a setting),
+  end the fragment with a `- Projects: <what a project does, and which projects>` bullet
+  (ADR 0017). `pakem project check` shows it in every project that has not aligned past
+  it, so agents act on it without a hand-written handoff. Leave it out when projects need
+  nothing.
 - Regular branches add or edit a fragment and never edit `CHANGELOG.md`. `pakem lint`
   fails on any bullet under `## [Unreleased]` and on invalid fragments.
 

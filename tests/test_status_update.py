@@ -169,6 +169,23 @@ class UpdateTests(StatusUpdateTestCase):
         self.assert_ok(again)
         self.assertIn("Nothing to do", again.stdout)
 
+    def test_update_names_the_projects_with_changes_to_align(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
+        project = init_repo(self.base / "app", self.home)
+        write(project / "AGENTS.md", "# app\n\nCapabilities: none\nDelivery: nobody\n")
+        write(self.home / ".config" / "pakem" / "report.toml", f'repos_dirs = []\nrepos = ["{project}"]\n')
+        clone = self.base / "upstream"
+        git(self.base, "clone", "-q", str(self.origin), str(clone), home=self.home)
+        git(clone, "config", "commit.gpgsign", "false", home=self.home)
+        write(clone / "changes" / "added-runners.md", "- Several runners.\n- Projects: make CI safe to run twice.\n")
+        self.commit(clone, "feat: runners")
+        git(clone, "push", "-q", "origin", "main", home=self.home)
+
+        updated = self.pakem("update", "--yes")
+        self.assert_ok(updated)
+        self.assertIn("Projects with Pakem changes to align", updated.stdout)
+        self.assertIn("  app: 1 change note for projects", updated.stdout)
+
     def test_a_failed_fetch_is_a_failed_check(self) -> None:
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))
         git(self.framework, "remote", "set-url", "origin", str(self.base / "missing.git"), home=self.home)
