@@ -97,7 +97,7 @@ class InitTests(ProjectTestCase):
         self.assertIn('runner: "pakem"', ci, "one label: a bracketed string would match no runner")
         self.assertIn("migrate_cmd:", ci)
         self.assertIn("test_cmd: uv run pytest", ci)
-        self.assertIn('tags: ["v*"]', ci)
+        self.assertNotIn("tags:", ci, "release tags run no checks: the main run covers their commit")
         for name in ("verify-python.yml", "security.yml", "database.yml"):
             self.assertTrue((self.repo / ".github" / "workflows" / name).is_file(), name)
         agents = (self.repo / "AGENTS.md").read_text()

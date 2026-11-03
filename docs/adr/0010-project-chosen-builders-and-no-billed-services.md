@@ -1,7 +1,8 @@
 # 0010. Project-chosen builders and triggers; no billed services
 
 - Status: Accepted (owner, 2026-10-21); amended 2026-10-21 (decision 8: one key per device)
-  and 2026-11-03 (decision 9: several runners per repository);
+  and 2026-11-03 (decision 9: several runners per repository, and decision 2: no checks
+  on release tags);
   decision 1 superseded by ADR 0012 (spending follows the project's profile)
 - Date: 2026-10-21
 
@@ -45,6 +46,13 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
    on public repositories, or a self-hosted runner. A release never runs checks of its
    own; it refuses a commit whose required checks did not pass (read from the forge's
    commit status).
+   *Amended 2026-11-03 (owner):* release tags run no checks. `pakem release` reads the
+   checks of the commit it deploys, which its push to `main` already ran, and pushes the
+   tag only after deploying, so a tag run guarded nothing. It held a runner for the length
+   of a full check run after every release, and while it ran, or after a flaky failure, it
+   added results to the released commit that made the next release of that commit
+   refuse. GitLab templates already ran no checks on tags. Every commit a release deploys
+   is still checked, on `main`.
 3. **The builder is a project declaration.** `deploy/release.toml` gains
    `[build] runner = "local" | "gitlab" | "github"`, and the project's `AGENTS.md` names
    it. Every builder runs the same `af_publish.py` commands (build once for the host

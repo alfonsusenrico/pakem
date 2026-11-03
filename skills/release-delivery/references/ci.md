@@ -2,12 +2,13 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-10-27
+Last reviewed: 2026-11-03
 Review by: 2027-04-07
 Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard Profile section 10
 
 ## Always
-- Triggers: pull/merge requests, pushes to `main`, tags.
+- Triggers: pull/merge requests and pushes to `main`. A release tag names a commit
+  already checked on `main`, so tags run no checks of their own.
 - Lockfile-checked install (`uv sync --locked`, `npm ci`); runtime versions match the
   Dockerfile.
 - Format check, lint, type check, tests, build - the same commands developers run.
@@ -51,7 +52,7 @@ superseded runs.
 else) skip the heavy jobs inside the workflow: a small `changes` job decides, the heavy jobs
 carry `if:` on its output, and a `docs` job runs the documentation checks (`openspec
 validate`). Never filter with `paths-ignore`: a required check would then never report and
-stay pending. Pushes to `main` and tags always run every check, because a release needs
+stay pending. Pushes to `main` always run every check, because a release needs
 them on the exact commit it deploys. Anything else, or an unclear change, runs everything.
 
 **Caches on self-hosted runners** stay on the runner's disk: leave the GitHub Actions cache
