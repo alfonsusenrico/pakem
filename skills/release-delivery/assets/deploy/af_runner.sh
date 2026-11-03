@@ -405,20 +405,24 @@ register_instance() {
   local repo=$1 name=$2 runner_name=$3 token=$4 uid=$5
   local directory="$RUNNER_HOME/runners/$name" serves
   if [[ -f "$directory/.runner" ]]; then
+    # config.sh refuses a directory it already configured, so a registered instance is
+    # kept as it is: adding runners to a repository registers only the new ones.
     serves=$(runner_repo "$directory" 2>/dev/null) || serves=""
     [[ "$serves" == "$repo" ]] || die "$directory already serves ${serves:-another repository}. Nothing changed for it"
+    say "$runner_name already serves $repo"
+  else
+    if [[ ! -x "$directory/run.sh" ]]; then
+      install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0700 "$directory"
+      as_runner tar -xzf "$RUNNER_HOME/dist/actions-runner-linux-$(architecture)-$RUNNER_VERSION.tar.gz" -C "$directory"
+    fi
+    say "registering $runner_name for $repo"
+    # The runner reads ACTIONS_RUNNER_INPUT_TOKEN when --token is absent: an environment is
+    # private to its user, while an argument shows in everyone's process list. A registration
+    # token stays valid for an hour, for every runner of the repository.
+    printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh --unattended \
+        --replace --url "https://github.com/$2" --name "$3" --labels "$4" --work _work >/dev/null' \
+      _ "$directory" "$repo" "$runner_name" "$RUNNER_LABEL"
   fi
-  if [[ ! -x "$directory/run.sh" ]]; then
-    install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0700 "$directory"
-    as_runner tar -xzf "$RUNNER_HOME/dist/actions-runner-linux-$(architecture)-$RUNNER_VERSION.tar.gz" -C "$directory"
-  fi
-  say "registering $runner_name for $repo"
-  # The runner reads ACTIONS_RUNNER_INPUT_TOKEN when --token is absent: an environment is
-  # private to its user, while an argument shows in everyone's process list. A registration
-  # token stays valid for an hour, for every runner of the repository.
-  printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh --unattended \
-      --replace --url "https://github.com/$2" --name "$3" --labels "$4" --work _work >/dev/null' \
-    _ "$directory" "$repo" "$runner_name" "$RUNNER_LABEL"
   cat > "$directory/.env" <<ENV
 DOCKER_HOST=unix:///run/user/$uid/docker.sock
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$RUNNER_HOME/hooks/job-completed.sh
