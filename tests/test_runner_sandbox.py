@@ -163,6 +163,28 @@ class RunnerSandboxTests(unittest.TestCase):
                            "/root/af_runner.sh add-repo owner/repo 2>&1", check=False)
         self.assertIn("could not confirm with GitHub that owner/repo is private", unreachable.stdout)
 
+    def test_adding_runners_keeps_a_registered_one(self) -> None:
+        # A registered instance, as config.sh leaves it: config.sh refuses to configure it again.
+        directory = "/var/lib/ci-runner/runners/owner-repo"
+        host(f"""set -e
+            mkdir -p {directory}
+            printf '{{"gitHubUrl": "https://github.com/owner/repo"}}' > {directory}/.runner
+            printf '#!/bin/sh\\nexec sleep infinity\\n' > {directory}/run.sh
+            chmod 0755 {directory}/run.sh
+            chown -R ci-runner:ci-runner {directory}
+            mkdir -p /tmp/api && cd /tmp/api && (python3 -m http.server 8765 >/dev/null 2>&1 &)
+            sleep 1""")
+        try:
+            # The local server answers 404, as GitHub does for a private repository.
+            completed = host("echo AAAAAAAAAAAAAAAAAAAAAAAA | GITHUB_API=http://127.0.0.1:8765 "
+                             "/root/af_runner.sh add-repo owner/repo 2>&1", check=False)
+            self.assertEqual(completed.returncode, 0, completed.stdout)
+            self.assertIn("already serves owner/repo", completed.stdout)
+            self.assertNotIn("registering", completed.stdout)
+        finally:
+            host(AS_RUNNER + "systemctl --user disable --now actions-runner@owner-repo", check=False)
+            host(f"rm -rf {directory}; pkill -f 'http.server 8765'", check=False)
+
     def test_tokens_only_on_standard_input(self) -> None:
         cases = [
             ("/root/af_runner.sh add-repo owner/repo </dev/null", "does not hold a runner token"),
