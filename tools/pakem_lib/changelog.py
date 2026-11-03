@@ -29,6 +29,10 @@ FRAGMENTS_README = "README.md"
 FRAGMENT_NAME = re.compile(r"^(?P<type>[a-z]+)-(?P<topic>[a-z0-9]+(?:-[a-z0-9]+)*)\.md$")
 FRAGMENT_BULLET = re.compile(r"^- \S")
 FRAGMENT_CONTINUATION = re.compile(r"^  \s*\S")
+# A note for projects (ADR 0017): `pakem project check` shows it to every project that has
+# not aligned past it, so its exact form matters.
+PROJECTS_NOTE = re.compile(r"^- projects\s*:", re.IGNORECASE)
+PROJECTS_NOTE_FORM = re.compile(r"^- Projects: \S")
 CHANGELOG_BULLET = re.compile(r"^\s*[-*+]\s")
 RELEASE_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 RELEASE_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -106,6 +110,12 @@ def check_fragment(path: Path) -> tuple[Fragment | None, list[str]]:
     problems += content_problems
     if not entries:
         problems.append("has no bullet line ('- ...')")
+    notes = [entry for entry in entries if PROJECTS_NOTE.match(entry)]
+    for entry in notes:
+        if not PROJECTS_NOTE_FORM.match(entry):
+            problems.append(f"a note for projects must start with '- Projects: ' ({entry.splitlines()[0][:40]})")
+    if notes and len(notes) == len(entries):
+        problems.append("has only a note for projects. Describe the change itself in its own bullet first")
     if problems:
         return None, problems
     return Fragment(path, change_type, tuple(entries)), []

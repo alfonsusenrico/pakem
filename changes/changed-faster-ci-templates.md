@@ -9,3 +9,6 @@
   runs OpenSpec through `npm exec`, cached between runs. Projects that copied these
   workflows re-copy them; checks named `security / secret-scan` and the like become
   `security / security`.
+- Projects: re-copy Pakem workflows with `pakem project sync --templates --apply`. In the
+  project's own workflows, use the Actions uv or npm cache only on GitHub-hosted runners,
+  check out in the `changes` job only for pull requests, and run OpenSpec through `npm exec`.

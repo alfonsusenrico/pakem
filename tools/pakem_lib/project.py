@@ -26,6 +26,7 @@ from .pinned import (
     parse_document,
     render_block,
 )
+from . import followups
 from .gaps import STUB_MARKER, load_facts
 from .github import origin_repository, public_runner_refusal, repository_visibility, self_hosted_workflows
 from .privacy import Scanner
@@ -174,6 +175,16 @@ def _resolve_repo(raw: str | None) -> Path:
 def run_sync(args) -> int:
     framework = Framework(Path(args.root))
     repo = _resolve_repo(args.repo)
+    if args.templates or args.aligned:
+        mode = "apply" if args.apply else "dry-run"
+        print(f"pakem project sync ({mode}) {repo}")
+        steps = followups.sync(framework, repo, args.templates, args.aligned, args.apply)
+        for step in steps or ["nothing to re-copy"]:
+            print(f"  {step}")
+        if not args.apply:
+            print("Dry run: nothing written. Re-run with --apply to write.")
+        if not args.profile:
+            return 0
     agents_path = repo / AGENTS_FILE
     report = Report()
 
@@ -517,7 +528,19 @@ def check_repo(framework: Framework, repo: Path) -> Report:
     _check_starters(repo, report)
     _check_image_cleanup(repo, report)
     _check_setting_descriptions(repo, report)
+    _check_followups(framework, repo, report)
     return report
+
+
+def _check_followups(framework: Framework, repo: Path, report: Report) -> None:
+    """Pakem files the project copied, and Pakem's notes for projects since it last aligned (ADR 0017)."""
+    try:
+        result = followups.collect(framework, repo)
+    except PakemError as exc:
+        report.warn(f"Pakem follow-ups could not be read: {exc}")
+        return
+    for line in followups.describe(framework, result):
+        report.warn(line)
 
 
 def check_public_text(repo: Path, report: Report) -> None:

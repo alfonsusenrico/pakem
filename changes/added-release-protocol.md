@@ -3,3 +3,5 @@
   release, or interviews the owner when the method is undecided, records it, and follows
   it after. The owner's go covers the whole protocol, and the agent stops only for a
   merge and on failure. New reference `references/release-protocol.md`.
+- Projects: a project we release records its protocol in a `## Release` section of its
+  `AGENTS.md` at its next release.

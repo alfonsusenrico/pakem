@@ -9,3 +9,5 @@
 - `deploy/settings.toml` takes optional `[descriptions]` and `[generate]` tables. `pakem
   release` names required settings the host lacks before it sends, and `pakem project check`
   warns about placement and secret names without a description.
+- Projects: with `deploy/settings.toml`, describe every setting under `[descriptions]`
+  (`pakem project check` names the missing ones).

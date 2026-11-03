@@ -281,6 +281,15 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   `hosts.toml` or a private name, values never printed), and
   `pakem project check --gaps`. Adopt reads the repository's visibility from GitHub, never
   from a flag or a prompt.
+- **Follow-ups (ADR 0017):** `pakem project check` also warns about each file the project
+  copied from Pakem (CI workflows that carry the template's first line or a "Copied from
+  Pakem" line, and `deploy/af/*`) that is an older copy or differs from every Pakem version,
+  and shows each `Projects:` note of the change fragments merged since the commit recorded
+  in `.pakem/framework.toml` (without one, the pending fragments). `pakem project sync
+  --templates [--apply]` re-copies the older copies, and `--aligned [--apply]` records the
+  installed Pakem commit and the version each changed copy was merged with. The session
+  start hook adds one line while follow-ups wait, and `pakem update` ends with the known
+  projects (the weekly report's repositories and the hosts' project folders) that have some.
 
 ### 4. Settings: `pakem secret`, `pakem placement`
 
