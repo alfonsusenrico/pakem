@@ -250,7 +250,9 @@ def ci_text(facts: Facts) -> str:
         "    outputs:",
         "      code: ${{ steps.files.outputs.code }}",
         "    steps:",
+        "      # Only a pull request compares files: a push or tag runs everything without a checkout.",
         f"      - uses: {CHECKOUT}",
+        "        if: github.event_name == 'pull_request'",
         "        with:",
         "          persist-credentials: false",
         "          fetch-depth: 0",
@@ -279,8 +281,8 @@ def ci_text(facts: Facts) -> str:
         f"      - uses: {SETUP_NODE}",
         "        with:",
         '          node-version: "24"',
-        f"      - run: npm install --global --ignore-scripts {OPENSPEC}",
-        "      - run: openspec validate --all --no-interactive",
+        "      # npm exec keeps the installed package in the npm cache, which a self-hosted runner keeps.",
+        f"      - run: npm exec --yes --ignore-scripts --package={OPENSPEC} -- openspec validate --all --no-interactive",
     ]
     jobs = [(f"verify-{facts.stack}", f"verify-{facts.stack}.yml", [f'{directory}: "."'])]
     if "deployed" in facts.capabilities:

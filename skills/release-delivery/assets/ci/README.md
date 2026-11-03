@@ -43,7 +43,7 @@ complete project callers.
 | --- | --- |
 | verify-python | `python_dir` (`.`), `python_version` (empty: `.python-version` or `requires-python`), `uv_version` (`0.12.23`), `typecheck_cmd` (`uv run pyright`), `test_cmd` (`uv run pytest`), `test_args`, `runner` (`ubuntu-24.04`), `timeout_minutes` (20) |
 | verify-node | `node_dir` (`.`), `node_version` (`24`), `build_env` (non-secret `NAME=value` lines), `test_cmd` (`npm test`), `runner`, `timeout_minutes` (20) |
-| security | `python_dir` and `node_dir` (empty skips that audit), `uv_version`, `node_version`, `runner`, `timeout_minutes` (10 per job) |
+| security | `python_dir` and `node_dir` (empty skips that audit), `uv_version`, `node_version`, `runner`, `timeout_minutes` (15). One job: every check runs even after another fails |
 | database | `stack` (`python` or `node`), `app_dir`, `python_version`, `uv_version`, `node_version`, `install_cmd` (empty: `uv sync --locked` or `npm ci`), `migrate_cmd` (required), `migrate_check_cmd`, `test_cmd` (required), `postgres_image` (`postgres:17`), `runner`, `timeout_minutes` (20) |
 | deploy | `environment` and `sha` (required), `mode` (`deploy` or `rollback`), `tools_dir` (`deploy/af`), `release_ref` (`origin/main`), `protected_environments` (`production`), `smoke_paths`, `tailscale` (true), `tailscale_tags` (`tag:ci`), `runner`, `timeout_minutes` (30); environment variables and secrets per [the deploy README](../deploy/README.md#variables); callers pass `secrets: inherit` |
 
@@ -109,6 +109,11 @@ tag or commit SHA. Alternatively copy them into the project and use `include: lo
   inconsistently.
 - The GitHub security tools are linux x86_64 binaries; use an x86_64 runner. Self-hosted
   runners need Actions Runner v2.327.1 or later for the node24-based actions.
+- Built for parallel runs on one self-hosted host (`af_runner.sh add-repo <repo> <count>`):
+  the database service listens on a random loopback port, never a fixed or public one; the
+  verified security tools stay in the runner's tool cache, named by checksum; npm uses the
+  Actions cache only on GitHub-hosted runners, since a self-hosted runner keeps `~/.npm`.
+  A project's own jobs must do the same: no fixed host ports, image tags, or container names.
 
 ## Verification of these templates
 

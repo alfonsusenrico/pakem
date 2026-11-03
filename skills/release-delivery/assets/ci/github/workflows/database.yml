@@ -80,8 +80,10 @@ jobs:
           POSTGRES_USER: app
           POSTGRES_PASSWORD: app
           POSTGRES_DB: app_test
+        # A random port on the loopback only: parallel jobs on one runner host never collide,
+        # and the disposable database is never reachable from the network.
         ports:
-          - 5432:5432
+          - 127.0.0.1::5432
         options: >-
           --health-cmd "pg_isready -U app -d app_test"
           --health-interval 5s
@@ -89,8 +91,6 @@ jobs:
           --health-retries 20
     env:
       REQUIRE_DB: "1"
-      TEST_DATABASE_URL: postgresql://app:app@localhost:5432/app_test
-      DATABASE_URL: postgresql://app:app@localhost:5432/app_test
       STACK: ${{ inputs.stack }}
       MIGRATE_CMD: ${{ inputs.migrate_cmd }}
     steps:
@@ -104,6 +104,15 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Point the tests at the database
+        working-directory: .
+        env:
+          PG_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          url="postgresql://app:app@127.0.0.1:${PG_PORT}/app_test"
+          echo "TEST_DATABASE_URL=$url" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,7 +132,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ inputs.node_version }}
-          cache: npm
+          # A self-hosted runner keeps ~/.npm itself; the Actions cache would only add an upload.
+          cache: ${{ runner.environment == 'github-hosted' && 'npm' || '' }}
+          package-manager-cache: false
           cache-dependency-path: ${{ inputs.app_dir }}/package-lock.json
 
       - name: Install
