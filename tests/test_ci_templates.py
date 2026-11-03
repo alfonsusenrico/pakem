@@ -200,9 +200,41 @@ class GitHubTemplateTests(unittest.TestCase):
     def test_database_workflow_requires_the_database(self) -> None:
         text = (GITHUB_ROOT / "workflows" / "database.yml").read_text()
         self.assertIn('REQUIRE_DB: "1"', text)
-        self.assertIn("TEST_DATABASE_URL:", text)
+        self.assertIn('echo "TEST_DATABASE_URL=$url" >> "$GITHUB_ENV"', text)
         self.assertEqual(text.count('eval "$MIGRATE_CMD"'), 2)
         self.assertIn("default: postgres:17", text)
+
+    def test_database_listens_on_a_random_loopback_port(self) -> None:
+        # A fixed host port collides when two jobs run on one runner host, and 0.0.0.0 would
+        # expose the disposable database to the network.
+        text = (GITHUB_ROOT / "workflows" / "database.yml").read_text()
+        self.assertIn("- 127.0.0.1::5432", text)
+        self.assertNotIn("5432:5432", text)
+        self.assertIn("PG_PORT: ${{ job.services.postgres.ports['5432'] }}", text)
+
+    def test_security_is_one_job_whose_checks_all_run(self) -> None:
+        text = (GITHUB_ROOT / "workflows" / "security.yml").read_text()
+        self.assertEqual(list(job_blocks(text)), ["security"])
+        checks = ("Scan for secrets", "Lint GitHub workflows", "Lint shell scripts", "Lint Dockerfiles",
+                  "Audit locked Python dependencies", "Audit locked npm dependencies")
+        for check in checks:
+            with self.subTest(check=check):
+                step = text.split(f"- name: {check}\n", 1)[1].split("\n", 1)[0]
+                self.assertIn("!cancelled()", step, "a failed check must not skip the next ones")
+
+    def test_security_tools_are_cached_by_checksum(self) -> None:
+        text = (GITHUB_ROOT / "workflows" / "security.yml").read_text()
+        self.assertIn('cache="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/pakem-ci"', text)
+        self.assertIn('cached="$cache/$name-$sha"', text)
+        self.assertIn('echo "$sha  $download" | sha256sum --check --strict', text)
+        self.assertEqual(text.count("\n          tool "), 4)
+
+    def test_npm_uses_the_actions_cache_only_on_github_hosted_runners(self) -> None:
+        for name in ("verify-node.yml", "database.yml"):
+            text = (GITHUB_ROOT / "workflows" / name).read_text()
+            with self.subTest(workflow=name):
+                self.assertIn("cache: ${{ runner.environment == 'github-hosted' && 'npm' || '' }}", text)
+                self.assertIn("package-manager-cache: false", text)
 
 
 class GitLabTemplateTests(unittest.TestCase):
