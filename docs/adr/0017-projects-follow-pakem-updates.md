@@ -35,7 +35,9 @@ learn of updates, and what to do after them, without that.
    writes `.pakem/framework.toml`: the Pakem commit, and for each changed copy the Pakem
    version it was merged with, so that copy stays quiet until Pakem changes it again.
    `pakem project check` lists the notes of fragments merged after that commit, read from
-   git so they survive a release. Without a record, it lists the pending fragments' notes.
+   git so they survive a release. Without a record, the project never aligned, so it lists
+   every note in the history (amended 2026-11-03: the pending fragments alone lost every
+   note at a release).
 4. **Agents notice by themselves.** The session start hook adds one line while follow-ups
    wait ("Pakem changes to align here: ..."). The `pakem-update` skill works through them:
    own projects on a topic branch, work projects proposed, client projects noted. Then it

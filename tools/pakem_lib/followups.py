@@ -225,29 +225,25 @@ def _fragment_names(paths: list[str]) -> list[str]:
 
 
 def notes_since(framework: Framework, aligned: str | None) -> tuple[list[Note], list[str]]:
-    """Change notes for projects merged after `aligned`; without a record, the pending fragments."""
+    """Change notes for projects merged after `aligned`. A project without a record never aligned,
+    so it gets every note in the history: a release deletes the fragments, never their notes."""
     problems: list[str] = []
     if aligned is not None and _git(framework.root, "cat-file", "-e", f"{aligned}^{{commit}}") is None:
         problems.append(f"the aligned Pakem commit {aligned[:12]} is not in {display_path(framework.root)}. "
                         "Update the framework checkout")
         aligned = None
     sources: dict[str, str] = {}
-    if aligned is None:
-        directory = framework.root / CHANGES_DIR
-        for path in sorted(directory.glob("*.md")) if directory.is_dir() else []:
-            if path.name != "README.md":
-                sources[f"{CHANGES_DIR}/{path.name}"] = path.read_text(encoding="utf-8")
-    else:
-        log = _git(framework.root, "log", "--reverse", "--diff-filter=AM", "--format=commit %H", "--name-only",
-                   f"{aligned}..HEAD", "--", CHANGES_DIR) or ""
-        commit = None
-        for line in log.splitlines():
-            if line.startswith("commit "):
-                commit = line.split()[1]
-            elif line and commit is not None and line in _fragment_names([line]):
-                text = _git(framework.root, "show", f"{commit}:{line}")
-                if text is not None:
-                    sources[line] = text
+    revisions = f"{aligned}..HEAD" if aligned is not None else "HEAD"
+    log = _git(framework.root, "log", "--reverse", "--diff-filter=AM", "--format=commit %H", "--name-only",
+               revisions, "--", CHANGES_DIR) or ""
+    commit = None
+    for line in log.splitlines():
+        if line.startswith("commit "):
+            commit = line.split()[1]
+        elif line and commit is not None and line in _fragment_names([line]):
+            text = _git(framework.root, "show", f"{commit}:{line}")
+            if text is not None:
+                sources[line] = text
     notes = [Note(Path(path).stem, text) for path, content in sorted(sources.items())
              for text in _note_lines(content)]
     return notes, problems
