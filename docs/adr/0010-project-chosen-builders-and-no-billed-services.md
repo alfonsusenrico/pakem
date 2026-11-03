@@ -106,7 +106,8 @@ prove the revision, automatic restore, and the pull or push trigger on the host 
      share one slice capped by default at half the host's CPUs and 40% of its memory (the
      former 2 CPUs throttled jobs for 16% of their CPU time on a 4-core host). A project
      raises its count only once its checks tolerate a parallel run: no fixed host ports,
-     image tags, or container names. Releases use the commands above from
+     image tags, or container names. (ADR 0018: the runner count limit and the slice's
+     caps follow each host, or the owner's values for it.) Releases use the commands above from
      any of the owner's devices; delivery is direct and the server builds. Personal
      projects declare production only for now.
    - **Work (GitLab):** the self-hosted GitLab runner runs checks and the same release

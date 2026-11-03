@@ -4,7 +4,7 @@ Boots a systemd Debian 13 container with Debian's docker.io as the host (a priva
 namespace, as on a real machine), runs af_runner.sh install twice (the second run must
 change nothing that matters), and proves the isolation and the job path: `check` passes,
 the runner user's rootless Docker reaches the internet and a service container, the
-production Docker socket refuses it, the slice caps apply, the daily Docker clean-up runs,
+production Docker socket refuses it, the slice caps the host's limits give apply, the daily Docker clean-up runs,
 tokens are only accepted on standard input, and a public repository is refused. Registering a
 real repository needs a GitHub token and is not tested here. The container is removed
 afterwards.
@@ -25,11 +25,12 @@ ENABLED = os.environ.get("AF_SANDBOX_RUNNER") == "1"
 HOST_IMAGE = "pakem-runner-host:test"
 CONTAINER = "pakem-runner-sandbox"
 SCRIPT = REPO_ROOT / "skills" / "release-delivery" / "assets" / "deploy" / "af_runner.sh"
+LIMITS = SCRIPT.with_name("af_limits.py")
 HOST_DOCKERFILE = textwrap.dedent(
     """\
     FROM debian:13
     RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd systemd-sysv dbus \\
-        docker.io >/dev/null
+        docker.io python3 >/dev/null
     STOPSIGNAL SIGRTMIN+3
     CMD ["/sbin/init"]
     """
@@ -81,6 +82,7 @@ class RunnerSandboxTests(unittest.TestCase):
                 break
             subprocess.run(["sleep", "1"], check=True)
         docker("cp", str(SCRIPT), f"{CONTAINER}:/root/af_runner.sh")
+        docker("cp", str(LIMITS), f"{CONTAINER}:/root/af_limits.py")
         host(PREPARE)
         cls.first_install = host("/root/af_runner.sh install 2>&1")
         cls.second_install = host("/root/af_runner.sh install 2>&1")
@@ -110,12 +112,14 @@ class RunnerSandboxTests(unittest.TestCase):
         completed = host("/root/af_runner.sh prune 2>&1", check=False)
         self.assertEqual(completed.returncode, 0, completed.stdout)
         self.assertIn("after:", completed.stdout)
-        unit = host(AS_RUNNER + "systemctl --user cat pakem-docker-prune.service").stdout
         # Debian 13's docker.io 26.1 has BuildKit older than v0.17 and buildx 0.13, so only
         # the last flag works here: the prune above passing proves the fallback.
-        self.assertIn("for limit in --max-used-space --reserved-space --keep-storage", unit)
-        self.assertIn("builder prune --force $$limit 10GB", unit)
-        self.assertIn("image prune --all --force --filter until=72h", unit)
+        logged = host("journalctl --no-pager -o cat _SYSTEMD_USER_UNIT=pakem-docker-prune.service").stdout
+        self.assertIn("build cache kept under", logged)
+        self.assertIn("--keep-storage", logged)
+        self.assertIn("unused images older than 72 h removed (derived)", logged)
+        unit = host(AS_RUNNER + "systemctl --user cat pakem-docker-prune.service").stdout
+        self.assertIn("/usr/bin/python3 /opt/af/af_limits.py prune-runner --docker %h/bin/docker", unit)
 
     def test_jobs_reach_the_internet_and_service_containers(self) -> None:
         outbound = host(AS_RUNNER + 'docker run --rm alpine:3 sh -c "wget -q -O /dev/null https://github.com && echo ok"')
@@ -148,12 +152,10 @@ class RunnerSandboxTests(unittest.TestCase):
     def test_slice_caps_apply(self) -> None:
         slice_dir = "/sys/fs/cgroup/user.slice/user-$(id -u ci-runner).slice"
         caps = host(f'cat {slice_dir}/memory.max {slice_dir}/cpu.max {slice_dir}/pids.max').stdout.split()
-        # Half the CPUs and 40% of the memory, at least 2 CPUs and 4 GiB.
-        cpus = int(host("nproc").stdout)
-        mem_kib = int(host("awk '/^MemTotal:/ { print $2 }' /proc/meminfo").stdout)
-        quota = cpus * 50 if cpus > 4 else 200
-        gib = max(mem_kib * 4 // 10 // 1048576, 4)
-        self.assertEqual(caps, [str(gib * 1024**3), str(quota * 1000), "100000", "4096"])
+        # The host's own share (af_limits.py), with no absolute floor.
+        quota, memory, _ = host("python3 /opt/af/af_limits.py runner-caps").stdout.split()
+        memory_bytes = int(memory.removesuffix("M")) * 1024**2
+        self.assertEqual(caps, [str(memory_bytes), str(int(quota.removesuffix("%")) * 1000), "100000", "4096"])
 
     def test_a_public_repository_is_refused(self) -> None:
         completed = host("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo actions/runner 2>&1", check=False)
@@ -190,8 +192,8 @@ class RunnerSandboxTests(unittest.TestCase):
             ("/root/af_runner.sh add-repo owner/repo </dev/null", "does not hold a runner token"),
             ("echo 'not a token!' | /root/af_runner.sh add-repo owner/repo", "does not hold a runner token"),
             ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo 'bad name'", "must look like owner/repo"),
-            ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo owner/repo 9", "count must be a number from 1 to 8"),
-            ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo owner/repo two", "count must be a number from 1 to 8"),
+            ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo owner/repo 999", "on this host (set runner.per_repo"),
+            ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo owner/repo two", "count must be a number from 1 to"),
             ("script -qec '/root/af_runner.sh add-repo owner/repo' /dev/null </dev/null", "Never pass it as an argument"),
             ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh remove-repo owner/missing", "no runner for owner/missing"),
         ]

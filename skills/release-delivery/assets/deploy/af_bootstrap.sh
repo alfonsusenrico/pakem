@@ -28,7 +28,7 @@ CADDY_KEY_URL=https://dl.cloudsmith.io/public/caddy/stable/gpg.155B6D79CA56EA34.
 COSIGN_VERSION=v3.1.3
 COSIGN_SHA256_AMD64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
 COSIGN_SHA256_ARM64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
-ENGINE_FILES="af_engine.py af_monitor.py af_notify.py af_oci.py af_publish.py af_receive.py af_release.py af_settings.py af_trigger.py contracts.py af_runner.sh"
+ENGINE_FILES="af_engine.py af_limits.py af_monitor.py af_notify.py af_oci.py af_publish.py af_receive.py af_release.py af_settings.py af_trigger.py contracts.py af_runner.sh"
 UNITS="af-agent.service af-agent.timer af-monitor.service af-monitor.timer"
 DOCKER_LOG_CONFIG='{"log-driver": "local", "log-opts": {"max-size": "20m", "max-file": "5"}}'
 
@@ -39,6 +39,7 @@ DEPLOY_ROOT=/srv/deploy
 PROXY=1
 REPLACE_CADDYFILE=0
 RELEASE_PORT=0
+HOST_SETTINGS=
 SSHD_DROPIN=/etc/ssh/sshd_config.d/pakem-release.conf
 # The deploy user owns its home, so a bug in anything it runs could rewrite
 # ~/.ssh/authorized_keys or add authorized_keys2; sshd reads its keys from a root-owned file.
@@ -66,12 +67,14 @@ parse_arguments() {
       --no-proxy) PROXY=0; shift ;;
       --replace-caddyfile) REPLACE_CADDYFILE=1; shift ;;
       --release-port) RELEASE_PORT=${2:-}; shift 2 ;;
+      --host-settings) HOST_SETTINGS=${2:-}; shift 2 ;;
       *) usage ;;
     esac
   done
   [[ "$TRIGGER" == pull || "$TRIGGER" == push ]] || die "--trigger must be pull or push"
   [[ "$DEPLOY_ROOT" =~ ^/[A-Za-z0-9._/-]+$ && "$DEPLOY_ROOT" != / ]] || die "--deploy-root must be an absolute path"
   [[ "$RELEASE_PORT" =~ ^[0-9]{1,5}$ ]] && ((RELEASE_PORT <= 65535)) || die "--release-port must be a TCP port"
+  [[ -z "$HOST_SETTINGS" || -f "$HOST_SETTINGS" ]] || die "--host-settings must name a file"
 }
 
 # -- host facts ------------------------------------------------------------------------
@@ -289,6 +292,19 @@ install_engine() {
   install -d -m 0750 -o af -g af "$DEPLOY_ROOT"
   # Device keys that may sign direct releases, written by `af_receive.py authorize`.
   [[ -e /etc/af/allowed_signers ]] || install -m 0640 -o root -g af /dev/null /etc/af/allowed_signers
+  install_limits
+}
+
+# The owner's host limits (no secrets), readable by the deploy user, the monitor, and the CI
+# runner's user; every limit not set there is derived on each run (af_limits.py, ADR 0018).
+# Recent builds' measured disk use lives in /var/lib/pakem, written by the deploy user.
+install_limits() {
+  install -d -m 0755 /etc/pakem
+  install -d -m 0755 -o af -g af /var/lib/pakem
+  if [[ -n "$HOST_SETTINGS" ]]; then
+    python3 /opt/af/af_limits.py --settings "$HOST_SETTINGS" show >/dev/null || die "the host settings are not valid"
+    install -m 0644 "$HOST_SETTINGS" /etc/pakem/host.toml
+  fi
 }
 
 install_units() {
@@ -455,6 +471,7 @@ admin_socket_ready() { [[ "$(stat -c '%a %G' /run/caddy/admin.sock)" == "660 cad
 sites_ready() { af_in_group caddy && [[ "$(stat -c %U /etc/caddy/sites)" == af ]]; }
 logs_bounded() { grep -q '"max-size"' /etc/docker/daemon.json; }
 release_port_listening() { sshd_only_on "$RELEASE_PORT"; }
+limits_valid() { python3 /opt/af/af_limits.py show; }
 keys_pinned() { [[ "$(stat -c '%U' "$DEPLOY_KEYS")" == root && "$(sshd_keys_file)" == "$DEPLOY_KEYS" ]]; }
 
 check() {
@@ -481,6 +498,8 @@ check() {
     result "$(passes sites_ready)" "caddy sites" "/etc/caddy/sites owned by af, af in the caddy group"
   fi
   result "$(passes logs_bounded)" "container logs" "size limit in /etc/docker/daemon.json"
+  result "$(passes limits_valid)" "host limits" "/etc/pakem/host.toml (absent values derived on this host)"
+  python3 /opt/af/af_limits.py show 2>&1 | sed 's/^/    /' || true
   if command -v sshd >/dev/null; then
     result "$(passes keys_pinned)" "deploy user keys" "sshd reads them from $DEPLOY_KEYS, owned by root"
   fi

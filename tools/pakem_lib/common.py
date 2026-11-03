@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import re
 import subprocess
@@ -217,11 +218,13 @@ def toml_string(text: str) -> str:
 
 
 def toml_value(value: object) -> str:
-    """A TOML value for the plain types Pakem writes: strings, booleans, integers, lists."""
+    """A TOML value for the plain types Pakem writes: strings, booleans, numbers, lists."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
+    if isinstance(value, float) and math.isfinite(value):
+        return repr(value)
     if isinstance(value, str):
         return toml_string(value)
     if isinstance(value, list):

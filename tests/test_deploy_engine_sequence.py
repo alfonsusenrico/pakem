@@ -395,12 +395,12 @@ class HostConfigFile(unittest.TestCase):
             with self.assertRaises(af_engine.EngineError):
                 af_engine.HostConfig.load(path)
 
-    def test_min_free_gb_defaults_to_ten_and_takes_a_whole_number(self) -> None:
+    def test_min_free_gb_is_optional_and_takes_a_whole_number(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "host.toml"
             valid = 'project = "example"\nenvironment = "production"\nbase = "/srv/x"\ndelivery = "direct"\n'
             path.write_text(valid)
-            self.assertEqual(af_engine.HostConfig.load(path).min_free_gb, 10)
+            self.assertIsNone(af_engine.HostConfig.load(path).min_free_gb, "absent: the host's reserve applies")
             for setting, expected in (("0", 0), ("40", 40)):
                 path.write_text(valid + f"min_free_gb = {setting}\n")
                 self.assertEqual(af_engine.HostConfig.load(path).min_free_gb, expected)

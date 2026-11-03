@@ -54,6 +54,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 import af_engine
+import af_limits
 import af_notify
 import af_publish
 import af_release
@@ -82,16 +83,18 @@ MAX_SOURCE_EXPANDED = 4 * 1024 * 1024 * 1024
 MAX_SOURCE_ENTRIES = 200_000
 BUILD_TIMEOUT = 3600
 # Builds run in their own BuildKit container so they cannot take the host from production.
+# Its CPU and memory, its cache, and the free space a build needs follow this host (af_limits.py).
 BUILDER = "pakem-build"
-BUILDER_LIMITS = ("memory=4g", "cpu-period=100000", "cpu-quota=200000")
-BUILD_CACHE_FILTER = "until=168h"
-GB = 1024 ** 3
+DRIVER_OPTION = re.compile(r'([\w-]+)="([^"]*)"')
+# `min_free_gb` counts decimal gigabytes, as Docker and the host settings print sizes.
+GB = 1000 ** 3
 # What the owner can do when a build is refused for disk space; the preflight deletes nothing.
 FREE_SPACE_ACTIONS = (
     "lower `keep` for the environment in the project's deploy/release.toml",
     "prune build cache older than a day (`docker builder prune --filter until=24h`, and "
     f"`docker buildx prune --builder {BUILDER} --filter until=24h`)",
     "on a CI runner host, `sudo /opt/af/af_runner.sh prune`",
+    "set this host's reserve with `pakem host limit <host> disk.reserve <size>`",
 )
 PUBLIC_KEY = re.compile(r"ssh-ed25519 [A-Za-z0-9+/]+={0,2}")
 ACTOR_PREFIX = "device:"
@@ -446,10 +449,31 @@ def load_project(source: Path, project: str, environment: str) -> dict:
 class Builder:
     """Builds a commit's images natively, one build at a time on this host."""
 
-    def __init__(self, lock_path: Path, run=subprocess.run, disk_usage=shutil.disk_usage) -> None:
+    def __init__(
+        self,
+        lock_path: Path,
+        run=subprocess.run,
+        disk_usage=shutil.disk_usage,
+        *,
+        settings: af_limits.Settings | None = None,
+        host: af_limits.Host | None = None,
+        state_dir: Path = af_limits.STATE_DIR,
+    ) -> None:
         self.lock_path = lock_path
         self.run = run
         self.disk_usage = disk_usage
+        self.settings = settings
+        self.host = host
+        self.state_dir = state_dir
+
+    def _limits(self) -> tuple[af_limits.Settings, af_limits.Host]:
+        """The owner's values and this host's size, read on every build so a change applies."""
+        try:
+            settings = self.settings if self.settings is not None else af_limits.Settings.load()
+            host = self.host if self.host is not None else af_limits.Host.measure()
+        except af_limits.LimitError as error:
+            raise ReceiveError(f"{error}. Nothing was built", af_engine.EXIT_FAILED) from None
+        return settings, host
 
     def _docker(self, *arguments: str, timeout: int = BUILD_TIMEOUT) -> subprocess.CompletedProcess:
         try:
@@ -459,10 +483,21 @@ class Builder:
         except subprocess.TimeoutExpired:
             raise ReceiveError(f"docker {arguments[0]} took longer than {timeout} s", af_engine.EXIT_FAILED) from None
 
-    def _ensure_builder(self) -> None:
-        if self._docker("buildx", "inspect", BUILDER, timeout=60).returncode == 0:
-            return
-        options = [part for limit in BUILDER_LIMITS for part in ("--driver-opt", limit)]
+    def _ensure_builder(self, settings: af_limits.Settings, host: af_limits.Host) -> None:
+        """The build container with this host's limits; re-created when they changed (a new
+        setting or a bigger host). Limits it cannot read keep the container and its cache."""
+        wanted = af_limits.builder_options(host, settings)
+        inspected = self._docker("buildx", "inspect", BUILDER, timeout=60)
+        if inspected.returncode == 0:
+            current = None
+            for line in inspected.stdout.splitlines():
+                if line.strip().startswith("Driver Options:"):
+                    current = {key: value for key, value in DRIVER_OPTION.findall(line)}
+            if current is None or current == dict(option.split("=", 1) for option in wanted):
+                return
+            log("the build container's limits changed: re-creating it")
+            self._docker("buildx", "rm", BUILDER, timeout=300)
+        options = [part for option in wanted for part in ("--driver-opt", option)]
         created = self._docker("buildx", "create", "--name", BUILDER, "--driver", "docker-container", *options, timeout=300)
         if created.returncode != 0:
             raise ReceiveError("could not create the build container", af_engine.EXIT_FAILED)
@@ -474,30 +509,31 @@ class Builder:
         project: str,
         commit: str,
         *,
-        min_free_gb: int = af_engine.DEFAULT_MIN_FREE_GB,
+        min_free_gb: int | None = None,
         base: Path | None = None,
     ) -> dict[str, str]:
         descriptor = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             log("waiting for this host's build slot")
             fcntl.flock(descriptor, fcntl.LOCK_EX)
+            settings, host = self._limits()
             # Inside the slot: another build may have used the space while this one waited.
-            self.check_space(min_free_gb, base)
-            self._ensure_builder()
-            images = {}
-            for image in config["images"]:
-                images[image["name"]] = self._build_one(source, image, project, commit)
-            self._docker("buildx", "prune", "--builder", BUILDER, "--force", "--filter", BUILD_CACHE_FILTER, timeout=600)
-            return images
+            self.check_space(min_free_gb, base, settings)
+            self._ensure_builder(settings, host)
+            before = self._cache_used()
+            try:
+                images = {}
+                for image in config["images"]:
+                    images[image["name"]] = self._build_one(source, image, project, commit)
+                self._record_build(before, images)
+                return images
+            finally:
+                # A failed build leaves its layers in the cache too: bound it either way.
+                self._prune_cache(settings)
         finally:
             os.close(descriptor)
 
-    def check_space(self, min_free_gb: int, base: Path | None = None) -> None:
-        """Refuse a build before it starts when the Docker data root or the release base has
-        less than `min_free_gb` free: a build that fills the disk fails halfway and can starve
-        running services. Deletes nothing; the message names the usage and what to do."""
-        if min_free_gb == 0:
-            return
+    def _data_root(self) -> Path:
         info = self._docker("info", "--format", "{{.DockerRootDir}}", timeout=60)
         root = info.stdout.strip()
         if info.returncode != 0 or not root.startswith("/"):
@@ -505,29 +541,86 @@ class Builder:
                 "could not read Docker's data root (`docker info` failed), so free disk space is unknown. "
                 "Nothing was built", af_engine.EXIT_FAILED,
             )
-        places = [("the Docker data root", Path(root))] + ([("the release base", base)] if base is not None else [])
+        return Path(root)
+
+    def _volume(self, path: Path) -> af_limits.Volume:
+        """The file system holding `path`; measured at its parent when the deploy user may
+        not look inside it (Docker's data root is root's)."""
+        try:
+            return af_limits.volume(path, self.disk_usage)
+        except af_limits.LimitError:
+            raise ReceiveError(f"could not measure the free space at {path}. Nothing was built",
+                               af_engine.EXIT_FAILED) from None
+
+    def check_space(self, min_free_gb: int | None, base: Path | None = None,
+                    settings: af_limits.Settings | None = None) -> None:
+        """Refuse a build before it starts when the Docker data root or the release base has
+        less free than its reserve: a build that fills the disk fails halfway and can starve
+        running services. The reserve is this environment's `min_free_gb` when its host config
+        sets one (0 turns the check off), else the host's (af_limits.reserve). Deletes nothing;
+        the message names the usage and what to do."""
+        if min_free_gb == 0:
+            return
+        if settings is None:
+            settings = self._limits()[0]
+        builds = af_limits.load_builds(self.state_dir)
+        places = [("the Docker data root", self._data_root())] + ([("the release base", base)] if base is not None else [])
         short = []
         for label, path in places:
-            free = self._free_bytes(path)
-            if free < min_free_gb * GB:
-                short.append(f"{free / GB:.1f} GB free on {label}")
+            disk = self._volume(path)
+            if min_free_gb is not None:
+                needed = af_limits.Limit(min_free_gb * GB, "min_free_gb in this environment's host config")
+            else:
+                needed = af_limits.reserve(disk, builds, settings)
+            if disk.free < needed.value:
+                short.append(f"{af_limits.format_size(disk.free)} free on {label}, which keeps at least "
+                             f"{af_limits.format_size(int(needed.value))} free ({needed.source})")
         if not short:
             return
         raise ReceiveError(
-            f"not enough disk space to build: {', '.join(short)}; this host keeps at least {min_free_gb} GB free "
-            f"(host setting min_free_gb). Docker uses {self._usage()}. Nothing was built or deleted. "
-            f"To free space: {'; '.join(FREE_SPACE_ACTIONS)}"
+            f"not enough disk space to build: {'. '.join(short)}. Docker uses {self._usage()}. Nothing was built "
+            f"or deleted. To free space: {'; '.join(FREE_SPACE_ACTIONS)}"
         )
 
-    def _free_bytes(self, path: Path) -> int:
-        """Free bytes on the file system holding `path`; its parent when the deploy user may
-        not look inside it (Docker's data root is root's)."""
-        for candidate in (path, path.parent):
-            try:
-                return self.disk_usage(candidate).free
-            except OSError:
-                continue
-        raise ReceiveError(f"could not measure the free space at {path}. Nothing was built", af_engine.EXIT_FAILED)
+    def _cache_used(self) -> int:
+        """Bytes in the build container's cache; 0 when BuildKit cannot say (a stopped builder)."""
+        listed = self._docker("buildx", "du", "--builder", BUILDER, timeout=300)
+        try:
+            return af_limits.total_line(listed.stdout) if listed.returncode == 0 else 0
+        except af_limits.LimitError:
+            return 0
+
+    def _record_build(self, before: int, images: dict[str, str]) -> None:
+        """Measure this build's disk use from BuildKit's own cache and the images it loaded:
+        other Docker activity on the volume (CI jobs) does not count, so the reserve follows
+        what releases need. Never fails the release."""
+        size = max(0, self._cache_used() - before)
+        for image in images.values():
+            inspected = self._docker("image", "inspect", "--format", "{{.Size}}", image, timeout=60)
+            if inspected.returncode == 0 and inspected.stdout.strip().isdigit():
+                size += int(inspected.stdout.strip())
+        try:
+            af_limits.record_build(size, self.state_dir)
+            log(f"this build used {af_limits.format_size(size)} of disk")
+        except OSError as error:
+            log(f"could not record this build's disk use: {error.strerror or error}")
+
+    def _prune_cache(self, settings: af_limits.Settings) -> None:
+        """Bound the build cache by size, recomputed from the volume now. Never masks the
+        build's own result: a failure here is logged."""
+        try:
+            disk = self._volume(self._data_root())
+            kept = af_limits.reserve(disk, af_limits.load_builds(self.state_dir), settings)
+            cap = af_limits.build_cache(disk, self._cache_used(), int(kept.value), settings)
+            flag = af_limits.prune_cache(lambda argv: self._docker(*argv[1:], timeout=600),
+                                         ["docker", "buildx", "prune", "--builder", BUILDER], int(cap.value))
+        except (ReceiveError, af_limits.LimitError) as error:
+            log(f"could not bound the build cache: {error}")
+            return
+        if flag is None:
+            log("could not bound the build cache: every size flag failed")
+        else:
+            log(f"build cache kept under {af_limits.format_size(int(cap.value))} ({cap.source})")
 
     def _usage(self) -> str:
         """Docker's totals per kind (images, containers, volumes, build cache): no names."""

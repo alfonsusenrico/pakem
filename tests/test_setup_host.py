@@ -16,7 +16,9 @@ import sys
 import time
 import tomllib
 
-from support import PAKEM, IsolatedTestCase, git, init_repo, isolated_env, write
+from support import PAKEM, REPO_ROOT, IsolatedTestCase, git, init_repo, isolated_env, write
+
+LIMITS = "skills/release-delivery/assets/deploy/af_limits.py"
 
 FAKE_SSH = """#!/bin/sh
 echo "ssh $*" >> "{log}"
@@ -51,6 +53,7 @@ for argument in "$@"; do
     */af_bootstrap.sh)
       [ -f "$argument" ] && echo "present bootstrap" >> "{log}"
       [ -f "$(dirname "$argument")/../../../../VERSION" ] && echo "present VERSION" >> "{log}" ;;
+    */host.toml) cp "$argument" "{state}/host.toml" ;;
   esac
 done
 [ -t 0 ] || cat > "{state}/sudo-stdin"
@@ -74,6 +77,7 @@ class SetupHostTests(IsolatedTestCase):
         assets = self.framework / "skills" / "release-delivery" / "assets" / "deploy"
         write(assets / "af_bootstrap.sh", "#!/bin/sh\nexit 0\n")
         write(assets / "af_runner.sh", "#!/bin/sh\nexit 0\n")
+        write(assets / "af_limits.py", (REPO_ROOT / LIMITS).read_text())
         write(assets / "systemd" / "af-agent.timer", "[Timer]\n")
         write(assets / "__pycache__" / "skip.pyc", "x")
         init_repo(self.framework, self.home)
@@ -123,10 +127,12 @@ class SetupHostTests(IsolatedTestCase):
         self.assertEqual(code, 0, output)
         calls = self.calls()
         install = next(call for call in calls if call.startswith("sudo bash") and "af_bootstrap.sh install" in call)
-        self.assertTrue(install.endswith("install --trigger pull --deploy-root /srv/deploy"), install)
+        self.assertRegex(install, r"install --trigger pull --deploy-root /srv/deploy --host-settings /tmp/pakem-host\.\w+/host\.toml$")
         self.assertIn("present bootstrap", calls)
         self.assertIn("present VERSION", calls, "the bootstrap finds VERSION four levels up")
-        self.assertTrue([call for call in calls if call.startswith("sudo bash") and call.endswith("af_runner.sh install")])
+        self.assertTrue([call for call in calls
+                         if call.startswith("sudo bash") and call.endswith("af_runner.sh install --deploy-root /srv/deploy")])
+        self.assertNotIn("[disk]", (self.state / "host.toml").read_text(), "nothing set: every limit is derived there")
         directory = re.search(r"(/tmp/pakem-host\.\w+)/", install).group(1)
         self.assertFalse(os.path.exists(directory), "the upload is removed")
         self.assertEqual(
@@ -205,7 +211,7 @@ class SetupHostTests(IsolatedTestCase):
         code, output = self.run_tty("host", "runner", "add", "prod", "me/app", "--count", "3", "--yes")
         self.assertEqual(code, 0, output)
         self.assertIn("sudo /opt/af/af_runner.sh add-repo me/app 3 <", "\n".join(self.calls()))
-        for count in ("0", "9"):
+        for count in ("0", "65"):
             self.log.write_text("")
             self.assert_fails(self.pakem("host", "runner", "add", "prod", "me/app", "--count", count, "--yes"), code=2)
             self.assertFalse(any("registration-token" in call for call in self.calls()), "refused before any token")
@@ -294,7 +300,7 @@ class SetupHostTests(IsolatedTestCase):
                                     "--release-port", "2222", "--project-dir", str(project), "--yes")
         self.assertEqual(code, 0, output)
         install = next(call for call in self.calls() if "af_bootstrap.sh install" in call)
-        self.assertTrue(install.endswith("--release-port 2222"), install)
+        self.assertTrue("--release-port 2222 --host-settings " in install, install)
         status = next(call for call in self.calls() if call.startswith("ssh") and "af@203.0.113.7" in call)
         self.assertIn("-p 2222", status)
         self.assertEqual(self.hosts()["prod"]["release_port"], 2222)
@@ -303,7 +309,7 @@ class SetupHostTests(IsolatedTestCase):
         cases = (
             (("admin@203.0.113.7", "--release-port", "22"), None),
             (("admin@203.0.113.7", "--port", "2200", "--release-port", "2200"), None),
-            (("box", "--release-port", "2223"), "2223"),
+            (("box", "--release-port", "2299"), "2299"),
         )
         for arguments, configured in cases:
             with self.subTest(arguments=arguments):
@@ -348,7 +354,7 @@ class SetupHostTests(IsolatedTestCase):
     def test_a_recorded_host_needs_only_its_name(self) -> None:
         project = self.service_project()
         added = self.pakem("host", "add", "prod", "--target", "admin@203.0.113.7", "--no-proxy", "--runner",
-                           "--release-port", "2223", "--project-dir", str(project))
+                           "--release-port", "2299", "--project-dir", str(project))
         self.assert_ok(added)
         self.assertIn("OWNER ACTION REQUIRED: run `pakem setup host prod`", added.stdout)
         self.assertEqual(self.calls(), [], "host add never connects")
@@ -356,11 +362,11 @@ class SetupHostTests(IsolatedTestCase):
         code, output = self.run_tty("setup", "host", "prod", "--no-passphrase", "--yes")
         self.assertEqual(code, 0, output)
         install = next(call for call in self.calls() if "af_bootstrap.sh install" in call)
-        self.assertTrue(install.endswith("--no-proxy --release-port 2223"), install)
+        self.assertTrue("--no-proxy --release-port 2299 --host-settings " in install, install)
         self.assertTrue([call for call in self.calls() if "af_runner.sh install" in call])
         self.assertTrue([call for call in self.calls() if "af_receive.py authorize" in call and "--project demo" in call])
         recorded = self.hosts()["prod"]
-        self.assertEqual((recorded["projects"], recorded["release_port"], recorded["proxy"]), (["demo"], 2223, False))
+        self.assertEqual((recorded["projects"], recorded["release_port"], recorded["proxy"]), (["demo"], 2299, False))
         self.assertIn("set_up_at", recorded)
 
     def test_given_options_change_a_recorded_host(self) -> None:
@@ -373,12 +379,12 @@ class SetupHostTests(IsolatedTestCase):
 
     def test_with_no_host_pakem_asks_on_a_terminal(self) -> None:
         project = self.service_project()
-        answers = ["admin@203.0.113.7", "prod", "y", "n", "y", "2223", "", str(project)]
+        answers = ["admin@203.0.113.7", "prod", "y", "n", "y", "2299", "", str(project)]
         code, output = self.run_answering(answers, "setup", "host", "--no-passphrase", "--yes")
         self.assertEqual(code, 0, output)
         recorded = self.hosts()["prod"]
         self.assertEqual((recorded["proxy"], recorded["runner"], recorded["release_port"], recorded["projects"]),
-                         (False, False, 2223, ["demo"]))
+                         (False, False, 2299, ["demo"]))
         without_terminal = self.pakem("setup", "host", "--yes")
         self.assert_fails(without_terminal, code=2)
         self.assertIn("name a host", without_terminal.stderr)

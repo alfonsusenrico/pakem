@@ -27,6 +27,7 @@ from test_deploy_engine_sequence import EXAMPLES, PLACEMENT, SECRET_VALUE, FakeD
 
 sys.path.insert(0, str(DEPLOY_ASSETS))
 import af_engine  # noqa: E402
+import af_limits  # noqa: E402
 import af_monitor  # noqa: E402
 import af_receive  # noqa: E402
 import af_settings  # noqa: E402
@@ -66,10 +67,10 @@ class FakeBuilder:
     def __init__(self) -> None:
         self.built: list[str] = []
         self.fails = False
-        self.space: list[tuple[int, Path | None]] = []
+        self.space: list[tuple[int | None, Path | None]] = []
 
     def build(self, source: Path, config: dict, project: str, commit: str, *,
-              min_free_gb: int = af_engine.DEFAULT_MIN_FREE_GB, base: Path | None = None) -> dict[str, str]:
+              min_free_gb: int | None = None, base: Path | None = None) -> dict[str, str]:
         self.space.append((min_free_gb, base))
         if self.fails:
             raise af_receive.ReceiveError("building web failed", af_engine.EXIT_FAILED)
@@ -181,7 +182,8 @@ class ReleaseTests(DirectHost):
         code, output = self.publish(A)
         self.assertEqual(code, 0, output)
         self.assertEqual(self.builder.built, [A])
-        self.assertEqual(self.builder.space, [(10, self.base("staging"))], "the host's disk floor reaches the build")
+        self.assertEqual(self.builder.space, [(None, self.base("staging"))],
+                         "no min_free_gb in the host config: the host's own reserve applies in the build")
         deployment = self.last("staging")
         self.assertEqual((deployment["result"], deployment["trigger"], deployment["actor"]), ("deployed", "direct", "device:laptop"))
         self.assertEqual(contracts.validate_deployment_record(deployment), [])
@@ -342,7 +344,7 @@ class RobustnessTests(DirectHost):
             raise subprocess.TimeoutExpired(arguments[0], options["timeout"])
         builder = af_receive.Builder(self.root / "build.lock", run=slow)
         with self.assertRaisesRegex(af_receive.ReceiveError, "took longer than 60 s") as caught:
-            builder._ensure_builder()
+            builder._ensure_builder(af_limits.Settings(), SMALL_HOST)
         self.assertEqual(caught.exception.exit_code, af_engine.EXIT_FAILED)
 
     def test_revoking_what_is_not_there_says_so(self) -> None:
@@ -388,11 +390,18 @@ class BuilderTests(unittest.TestCase):
 
 
 class DiskDocker:
-    """`docker` for the disk preflight: its data root, its usage totals, and builds."""
+    """`docker` for the disk preflight and the builder: its data root, usage totals, the build
+    container's cache (`cache` bytes, growing by `growth` per build), and builds."""
 
-    def __init__(self, info_fails: bool = False) -> None:
+    def __init__(self, info_fails: bool = False, build_fails: bool = False, driver_options: str | None = None,
+                 refused_flags: tuple[str, ...] = ()) -> None:
         self.calls: list[list[str]] = []
         self.info_fails = info_fails
+        self.build_fails = build_fails
+        self.driver_options = driver_options
+        self.refused_flags = refused_flags
+        self.cache = 2 * af_receive.GB
+        self.growth = 3 * af_receive.GB
 
     def __call__(self, argv: list[str], **options) -> subprocess.CompletedProcess:
         self.calls.append(argv)
@@ -404,19 +413,34 @@ class DiskDocker:
         elif arguments[:2] == ["system", "df"]:
             stdout = "Images 31GB (16GB reclaimable)\nBuild Cache 8GB (8GB reclaimable)\n"
         elif arguments[:2] == ["image", "inspect"]:
-            stdout = "sha256:" + "a" * 64 + "\n"
+            stdout = "1000000000\n" if "{{.Size}}" in arguments else "sha256:" + "a" * 64 + "\n"
+        elif arguments[:2] == ["buildx", "du"]:
+            stdout = f"ID  RECLAIMABLE  SIZE\nReclaimable:\t{self.cache}B\nTotal:\t\t{self.cache}B\n"
+        elif arguments[:2] == ["buildx", "inspect"] and self.driver_options is not None:
+            stdout = f"Name: pakem-build\nDriver Options:        {self.driver_options}\nStatus: running\n"
+        elif arguments[:2] == ["buildx", "build"]:
+            code = 1 if self.build_fails else 0
+            self.cache += self.growth
+        elif arguments[:2] == ["buildx", "prune"] and set(arguments) & set(self.refused_flags):
+            code = 1
         return subprocess.CompletedProcess(argv, code, stdout, "")
 
     def builds(self) -> list[list[str]]:
-        return [argv for argv in self.calls if argv[1] == "buildx"]
+        return [argv for argv in self.calls if argv[1] == "buildx" and argv[2] not in ("du", "prune", "inspect")]
+
+    def prunes(self) -> list[list[str]]:
+        return [argv for argv in self.calls if argv[1:3] == ["buildx", "prune"]]
 
 
-def free_space(**gigabytes: float):
+def free_space(total: float = 100, **gigabytes: float):
     """A disk_usage whose free space depends on the path: root= for Docker, base= for the base."""
     def usage(path: Path):
         key = "root" if str(path).startswith("/var/lib/docker") else "base"
-        return SimpleNamespace(free=int(gigabytes[key] * af_receive.GB))
+        return SimpleNamespace(free=int(gigabytes[key] * af_receive.GB), total=int(total * af_receive.GB))
     return usage
+
+
+SMALL_HOST = af_limits.Host(cpus=4, memory=16 * 1000**3)
 
 
 class DiskPreflightTests(unittest.TestCase):
@@ -424,8 +448,9 @@ class DiskPreflightTests(unittest.TestCase):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.config = {"images": [{"name": "web"}]}
 
-    def builder(self, docker: DiskDocker, **gigabytes: float) -> af_receive.Builder:
-        return af_receive.Builder(self.root / "build.lock", run=docker, disk_usage=free_space(**gigabytes))
+    def builder(self, docker: DiskDocker, settings: af_limits.Settings | None = None, **gigabytes: float):
+        return af_receive.Builder(self.root / "build.lock", run=docker, disk_usage=free_space(**gigabytes),
+                                  settings=settings or af_limits.Settings(), host=SMALL_HOST, state_dir=self.root)
 
     def test_too_little_space_refuses_before_any_build_command(self) -> None:
         docker = DiskDocker()
@@ -434,8 +459,8 @@ class DiskPreflightTests(unittest.TestCase):
             builder.build(self.root, self.config, "example", A, min_free_gb=10, base=self.root / "base")
         self.assertEqual(caught.exception.exit_code, af_engine.EXIT_REFUSED)
         message = str(caught.exception)
-        self.assertIn("4.2 GB free on the Docker data root", message)
-        self.assertIn("at least 10 GB free (host setting min_free_gb)", message)
+        self.assertIn("4.2GB free on the Docker data root, which keeps at least 10.0GB free "
+                      "(min_free_gb in this environment's host config)", message)
         self.assertIn("Docker uses Images 31GB (16GB reclaimable), Build Cache 8GB (8GB reclaimable)", message)
         self.assertIn("Nothing was built or deleted", message)
         self.assertIn("lower `keep`", message)
@@ -443,7 +468,7 @@ class DiskPreflightTests(unittest.TestCase):
 
     def test_a_full_release_base_is_refused_too(self) -> None:
         docker = DiskDocker()
-        with self.assertRaisesRegex(af_receive.ReceiveError, "2.0 GB free on the release base"):
+        with self.assertRaisesRegex(af_receive.ReceiveError, "2.0GB free on the release base"):
             self.builder(docker, root=80, base=2).build(
                 self.root, self.config, "example", A, min_free_gb=10, base=self.root / "base")
         self.assertEqual(docker.builds(), [])
@@ -476,9 +501,10 @@ class DiskPreflightTests(unittest.TestCase):
             seen.append(str(path))
             if str(path) == "/var/lib/docker":
                 raise PermissionError(13, "Permission denied")
-            return SimpleNamespace(free=40 * af_receive.GB)
+            return SimpleNamespace(free=40 * af_receive.GB, total=100 * af_receive.GB)
 
-        builder = af_receive.Builder(self.root / "build.lock", run=DiskDocker(), disk_usage=usage)
+        builder = af_receive.Builder(self.root / "build.lock", run=DiskDocker(), disk_usage=usage,
+                                     settings=af_limits.Settings(), host=SMALL_HOST, state_dir=self.root)
         builder.check_space(10)
         self.assertEqual(seen, ["/var/lib/docker", "/var/lib"])
 

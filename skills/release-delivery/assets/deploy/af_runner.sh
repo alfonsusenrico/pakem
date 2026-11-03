@@ -1,29 +1,42 @@
 #!/usr/bin/env bash
 # A free, isolated self-hosted GitHub Actions runner for a project's checks (ADR 0010).
 #
-#   sudo ./af_runner.sh install
+#   sudo ./af_runner.sh install [--deploy-root DIR]
 #   sudo ./af_runner.sh add-repo <owner>/<repo> [count] (registration token on standard input)
 #   sudo ./af_runner.sh remove-repo <owner>/<repo>   (removal token on standard input)
-#   sudo ./af_runner.sh check
+#   sudo ./af_runner.sh check [--deploy-root DIR]
 #   sudo ./af_runner.sh prune                         (the daily Docker clean-up, now)
 #
 # The runner runs as its own user `ci-runner` (no sudo, not in the `docker` or `af` groups)
 # with its own rootless Docker, so jobs never reach the production Docker socket, the
-# deploy user, or release secrets. Everything it runs shares one systemd slice capped at
-# RUNNER_CPU_QUOTA and RUNNER_MEMORY_MAX (by default half the host's CPUs and 40% of its
-# memory, leaving the rest to production). GitHub registers runners per repository for
-# personal accounts, and each runner takes one job at a time, so a repository gets `count`
-# runners (default 1, at most 8) to run its independent jobs side by side. Its checks must
-# then tolerate a parallel run: no fixed host ports, image tags, or container names.
+# deploy user, or release secrets. Everything it runs shares one systemd slice whose CPU and
+# memory follow the host (af_limits.py: a share of its CPUs and memory, leaving the rest to
+# production) unless the owner set them for this host (`pakem host limit`). GitHub registers
+# runners per repository for personal accounts, and each runner takes one job at a time, so
+# a repository gets `count` runners (default 1, at most what af_limits.py allows for this
+# host) to run its independent jobs side by side. Its checks must then tolerate a parallel
+# run: no fixed host ports, image tags, or container names.
 # Tokens come from the repository owner's own GitHub login, for example:
 #   gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token |
 #     ssh <host> sudo ./af_runner.sh add-repo <owner>/<repo>
 # and are never printed or passed as arguments. Debian's docker.io and Docker's docker-ce
 # both work: the rootless pieces come from the same source as the installed Docker, so
-# the production Docker is never replaced. A daily timer bounds the runner's Docker: build
-# cache over RUNNER_BUILD_CACHE_MAX and unused images older than RUNNER_IMAGE_MAX_AGE go,
-# so check jobs that build images cannot fill the host's disk.
+# the production Docker is never replaced. A daily timer bounds the runner's Docker
+# (af_limits.py prune-runner): the build cache to a cap recomputed from the volume on every
+# run, unused images past an age, and every unused image while the disk is low, so check
+# jobs that build images cannot fill the host's disk.
 set -euo pipefail
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+DEPLOY_ROOT=/srv/deploy
+ARGUMENTS=()
+while (($#)); do
+  case "$1" in
+    --deploy-root) DEPLOY_ROOT=${2:?--deploy-root needs a directory}; shift 2 ;;
+    *) ARGUMENTS+=("$1"); shift ;;
+  esac
+done
+set -- "${ARGUMENTS[@]}"
 
 RUNNER_VERSION=2.338.0
 RUNNER_SHA256_X64=af4b794c1bc41d73d40535e3fe092a39f9679cd8d965954c2aca25a05ca41d32
@@ -31,18 +44,13 @@ RUNNER_SHA256_ARM64=628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f
 RUNNER_USER=ci-runner
 RUNNER_HOME=/var/lib/ci-runner
 RUNNER_LABEL=pakem
-RUNNER_CPU_QUOTA=${RUNNER_CPU_QUOTA:-}
-RUNNER_MEMORY_MAX=${RUNNER_MEMORY_MAX:-}
-MAX_RUNNERS_PER_REPO=8
 RUNNER_TASKS_MAX=${RUNNER_TASKS_MAX:-4096}
-RUNNER_BUILD_CACHE_MAX=${RUNNER_BUILD_CACHE_MAX:-10GB}
-# Unused images this old go; younger ones stay as the next jobs' cache (base images, a
-# project's last builds). Dangling-only pruning would keep every tagged check image forever.
-RUNNER_IMAGE_MAX_AGE=${RUNNER_IMAGE_MAX_AGE:-72h}
+# The limits the runner's slice and clean-up read on every run; installed beside the engine.
+LIMITS=/opt/af/af_limits.py
 PRUNE_UNIT=pakem-docker-prune
 SUBID_COUNT=65536
 # Paths the runner must never read or write; checked by `check`.
-PROTECTED_PATHS=(/var/run/docker.sock /etc/af/secrets /srv/deploy /etc/af/hosts)
+PROTECTED_PATHS=(/var/run/docker.sock /etc/af/secrets "$DEPLOY_ROOT" /etc/af/hosts)
 
 COMMAND=${1:-}
 FAILURES=0
@@ -226,25 +234,24 @@ allow_host_loopback() {
   say "job containers reach the host's loopback at 10.0.2.2"
 }
 
-# Half the CPUs and 40% of the memory (at least 2 CPUs and 4 GiB): measured on a 4-core,
-# 16 GB host beside production, the former 2 CPUs throttled check jobs for 16% of their CPU
-# time (2026-11-03), while production used about a third of the memory.
-default_caps() {
-  local cpus mem_kib
-  cpus=$(nproc)
-  mem_kib=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
-  if [[ -z "$RUNNER_CPU_QUOTA" ]]; then
-    RUNNER_CPU_QUOTA="$(( cpus > 4 ? cpus * 50 : 200 ))%"
+# The limits module next to this script (a fresh upload), installed where the clean-up unit
+# reads it, so every later run follows the host and its settings.
+install_limits() {
+  if [[ "$HERE/af_limits.py" != "$LIMITS" ]]; then
+    install -D -m 0644 "$HERE/af_limits.py" "$LIMITS"
   fi
-  if [[ -z "$RUNNER_MEMORY_MAX" ]]; then
-    local gib=$(( mem_kib * 4 / 10 / 1048576 ))
-    RUNNER_MEMORY_MAX="$(( gib > 4 ? gib : 4 ))G"
-  fi
+}
+
+# CPU quota, memory, and runners per repository: derived from this host, or the owner's.
+runner_caps() {
+  local caps
+  caps=$(python3 "$LIMITS" runner-caps) || die "could not read the runner's limits (af_limits.py runner-caps)"
+  read -r RUNNER_CPU_QUOTA RUNNER_MEMORY_MAX RUNNERS_PER_REPO <<<"$caps"
 }
 
 limit_resources() {
   local uid slice
-  default_caps
+  runner_caps
   uid=$(runner_uid)
   slice="user-$uid.slice"
   systemctl set-property "$slice" CPUQuota="$RUNNER_CPU_QUOTA" MemoryMax="$RUNNER_MEMORY_MAX" TasksMax="$RUNNER_TASKS_MAX"
@@ -300,19 +307,15 @@ UNIT
 
 install_prune_timer() {
   local directory="$RUNNER_HOME/.config/systemd/user" service timer
-  # The cache limit's flag depends on two versions (2026-11-03). --max-used-space needs
-  # BuildKit v0.17 in the daemon, which Debian 13's docker.io 26.1 lacks even where its buildx
-  # lists the flag. --reserved-space is the older keep-bytes limit under its buildx 0.17+
-  # name, and --keep-storage the same limit for older buildx (0.13 on Debian 13). systemd
-  # expands $NAME in ExecStart itself, so the shell's variable is written $$limit.
+  # af_limits.py recomputes the limits on every run and picks the cache size flag this
+  # Docker accepts (older BuildKit and buildx name it differently).
   service="[Unit]
 Description=Bound the runner's Docker: build cache and old unused images
 
 [Service]
 Type=oneshot
 Environment=DOCKER_HOST=unix://%t/docker.sock
-ExecStart=/bin/sh -c 'for limit in --max-used-space --reserved-space --keep-storage; do %h/bin/docker builder prune --force \$\$limit $RUNNER_BUILD_CACHE_MAX && exit 0; done; exit 1'
-ExecStart=%h/bin/docker image prune --all --force --filter until=$RUNNER_IMAGE_MAX_AGE"
+ExecStart=/usr/bin/python3 $LIMITS prune-runner --docker %h/bin/docker"
   timer="[Unit]
 Description=Daily clean-up of the runner's Docker
 
@@ -334,7 +337,7 @@ WantedBy=timers.target"
   chown "$RUNNER_USER:$RUNNER_USER" "$directory/$PRUNE_UNIT.service" "$directory/$PRUNE_UNIT.timer"
   as_runner systemctl --user daemon-reload
   as_runner systemctl --user enable --now "$PRUNE_UNIT.timer" >/dev/null 2>&1
-  say "daily Docker clean-up: build cache over $RUNNER_BUILD_CACHE_MAX, unused images older than $RUNNER_IMAGE_MAX_AGE"
+  say "daily Docker clean-up: build cache and unused images, bounded by this host's limits (af_limits.py)"
 }
 
 prune_command() {
@@ -350,6 +353,7 @@ prune_command() {
 install_command() {
   require_root
   install_packages
+  install_limits
   ensure_ip_tables
   create_user
   install_rootless_docker
@@ -378,8 +382,9 @@ add_repo() {
   require_root
   local repo=${1:-} count=${2:-1} slug token uid instance
   slug=$(repo_slug "$repo")
-  if [[ ! "$count" =~ ^[1-9][0-9]*$ ]] || (( count > MAX_RUNNERS_PER_REPO )); then
-    die "count must be a number from 1 to $MAX_RUNNERS_PER_REPO"
+  runner_caps
+  if [[ ! "$count" =~ ^[1-9][0-9]*$ ]] || (( count > RUNNERS_PER_REPO )); then
+    die "count must be a number from 1 to $RUNNERS_PER_REPO on this host (set runner.per_repo with pakem host limit)"
   fi
   case "$(repo_visibility "$repo")" in
     private) ;;

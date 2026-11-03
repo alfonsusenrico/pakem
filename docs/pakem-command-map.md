@@ -178,11 +178,16 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
     check failed (the host is still recorded).
 - **`pakem setup check --host <name>`:** the bootstrap's `check`, with the recorded
   options, plus the runner's isolation check when the host has a runner.
+- **`pakem host limit <host> [<key> [<value>]] [--unset]`:** device-local, like `host add`
+  (agents may run it). Lists the host's limits, sets one instead of deriving it on the host,
+  or `--unset` derives it again (keys and rules: contracts §14, ADR 0018). Values are checked
+  against the host's own rules here (an alert level below the reserve is refused). The next
+  `pakem setup host` writes them to `/etc/pakem/host.toml`.
 - **`pakem host runner add|remove <host> <owner/repo> [--count N]`:** needs `gh` and a
   GitHub login (prepared on demand); takes a registration or removal token from the
   owner's `gh` login, keeps it in memory, and hands it to `/opt/af/af_runner.sh` on
   standard input through a file only the login user can read, removed right after.
-  `--count` (1 to 8, default 1) registers that many runners for the repository, so its
+  `--count` (default 1, at most the host's `runner.per_repo`) registers that many runners for the repository, so its
   jobs run side by side; raise it only when the project's checks tolerate a parallel run
   (no fixed host ports, image tags, or container names). `remove` removes every runner of
   the repository. To lower the count, remove the repository and add it again. Refused when the
@@ -285,7 +290,7 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   copied from Pakem (CI workflows that carry the template's first line or a "Copied from
   Pakem" line, and `deploy/af/*`) that is an older copy or differs from every Pakem version,
   and shows each `Projects:` note of the change fragments merged since the commit recorded
-  in `.pakem/framework.toml` (without one, every note in the history). `pakem project sync
+  in `.pakem/framework.toml` (without one, the pending fragments). `pakem project sync
   --templates [--apply]` re-copies the older copies, and `--aligned [--apply]` records the
   installed Pakem commit and the version each changed copy was merged with. The session
   start hook adds one line while follow-ups wait, and `pakem update` ends with the known
@@ -364,8 +369,8 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
     commit's `git archive` goes along only when no environment on the host keeps a build
     of it. The host checks the signature against the device's own `allowed_signers` line
     for that project, refuses requests older than ten minutes, builds each image once per
-    commit in a BuildKit container capped at 2 CPUs and 4 GB (one build at a time; cache
-    pruned after 7 days), and runs the engine (lock, preflight, backup, migrate, switch,
+    commit in a BuildKit container capped at the host's builder limits (one build at a time;
+    cache pruned to the host's cap after every build), and runs the engine (lock, preflight, backup, migrate, switch,
     health, restore, record, notify). Contracts §13.
   - `artifact`: builds each declared OS and CPU target, signs, and publishes a forge
     release; `rollback` marks a version withdrawn.
@@ -393,7 +398,8 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
   whose `AGENTS.md` says `Delivery: others` or `nobody`, and while a required gap that
   blocks release is open or pending (area 3).
 - **Decided while building (2026-10-22):** staging and production of a project share one
-  host (promotion reuses the staging build there); a host keeps build cache for 7 days.
+  host (promotion reuses the staging build there). Build cache and disk reserve follow the
+  host's limits (ADR 0018).
 - **Check:** the deployment record, the health response reports the commit, and the
   notice was sent.
 
