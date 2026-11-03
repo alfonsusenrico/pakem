@@ -2,9 +2,9 @@
 
 Status: Draft (ADR 0009; becomes Active with deployment standard v1.0)
 Applies to: projects with the `deployed` capability on hosts we or our pipeline control
-Last reviewed: 2026-11-02
+Last reviewed: 2026-11-03
 Review by: 2027-04-19
-Sources: ADR 0009, 0010, 0015; owner pipeline study 2026-10-07; deployment research 2026-10-19
+Sources: ADR 0009, 0010, 0015, 0018; owner pipeline study 2026-10-07; deployment research 2026-10-19
 
 ADR 0010 (accepted 2026-10-21) revises the builder side: the builder and trigger are each
 project's choice, nothing billed is used without the project's approval, images default
@@ -300,16 +300,17 @@ channels, authorized keys) stay manual.
 8. Optional, for private repositories whose checks must stay free (ADR 0010): a
    self-hosted GitHub Actions runner with `/opt/af/af_runner.sh`. `install` creates the
    `ci-runner` user (no sudo; not in `docker`, `af`, or `adm`) with its own rootless Docker
-   from the same source as the host's Docker, caps its systemd slice (by default half the
-   host's CPUs and 40% of its memory, at least 2 CPUs and 4 GB), and downloads the
+   from the same source as the host's Docker, caps its systemd slice at the host's limits
+   (section 14: a share of its CPUs and memory, or the owner's values), and downloads the
    checksum-pinned runner. `add-repo <owner>/<repo> [count]` registers one repository with
-   `count` runners (1 to 8, default 1), with a token piped from the owner's GitHub login
+   `count` runners (default 1, at most the host's `runner.per_repo`), with a token piped from the owner's GitHub login
    (`gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token`).
    Several runners run a repository's jobs side by side, so its checks must tolerate a
    parallel run: no fixed host ports, image tags, or container names. `remove-repo` removes
    every runner of the repository with a removal token taken the same way; `check` proves the isolation. A daily
-   user timer bounds the runner's Docker (build cache over `RUNNER_BUILD_CACHE_MAX`, 10 GB by
-   default, and unused images older than `RUNNER_IMAGE_MAX_AGE`, 72 hours), so check jobs that
+   user timer bounds the runner's Docker (`af_limits.py prune-runner`: the build cache to a cap
+   recomputed from the volume on each run, unused images past `runner.image_age_hours`, and
+   every unused image while the disk is below the alert level), so check jobs that
    build images cannot fill the host's disk; `prune` runs it now. Jobs
    use `runs-on: [self-hosted, linux, x64, pakem]`. Job containers reach the host's loopback
    at `10.0.2.2` (a job's own steps already can), and `--network host` means the runner's
@@ -440,17 +441,22 @@ release the project can already deploy code that reads its secrets.
 **Build.** A commit no environment of the project keeps is unpacked (files,
 directories, and symlinks that stay inside; size and entry limits), its deploy files
 validated, and each `[[images]]` entry built with `docker buildx build --load` in the
-`pakem-build` BuildKit container (2 CPUs, 4 GB; one build per host at a time; cache older
-than 7 days pruned), with `AF_REVISION` and the revision label as in CI, tagged
+`pakem-build` BuildKit container (its CPUs and memory are the host's builder limits,
+section 14, and it is re-created when they change; one build per host at a time; after
+every build, failed or not, its cache is pruned to the host's cache cap), with
+`AF_REVISION` and the revision label as in CI, tagged
 `pakem/<project>-<image>:<commit>`. The deploy bundle (section 2) is taken from the same
 tree. A kept commit (promotion, rollback, or the same commit again) reuses its images
 and bundle; a resent archive must match the one it was built from.
 
 **Disk preflight.** In its build slot, before BuildKit starts, the receiver measures the free
 space on Docker's data root (its parent when the deploy user may not enter it) and on the
-environment's base. Below the host config's `min_free_gb` (10 by default; 0 turns it off) it
-refuses the release: a build that fills the disk fails halfway and can starve the running
-services. The refusal names the free space, the setting, and Docker's totals per kind (no
+environment's base. Below the reserve it refuses the release: a build that fills the disk
+fails halfway and can starve the running services. The reserve is the environment's
+`min_free_gb` when its host config sets one (0 turns the check off), else the host's
+`disk.reserve` (section 14). Each build records its measured disk use (the build cache's
+growth plus the images it loaded) for that reserve. The refusal names the free space, the
+reserve and where it came from, and Docker's totals per kind (no
 image names), and the ways to free space: a lower `keep` in the project's release config,
 pruning build cache older than a day, and on a runner host `af_runner.sh prune`. It
 deletes nothing. When `docker info` cannot name the data root, the release fails rather
@@ -481,3 +487,29 @@ deployment record has trigger `rollback`, so "previous" never returns to a relea
 rollback left.
 Retention untags a release's images unless another environment of the project keeps
 the same commit; Docker keeps images a container still uses.
+
+## 14. Host limits (ADR 0018)
+
+Pakem ships rules, never numbers sized to one machine. Every host limit is derived on each
+run from what the host has, or set by the owner for that host with
+`pakem host limit <host> <key> <value>` (written to `/etc/pakem/host.toml` by
+`pakem setup host`). An owner value wins; nothing else overrides it, except an
+environment's own `min_free_gb` for its builds. `af_limits.py show` (part of
+`pakem setup check --host`) prints each limit, its value, and its source.
+
+| Key | Derived | Used by |
+| --- | --- | --- |
+| `disk.reserve` | 1.5 times the largest of the last 10 measured builds, at least 5% of the volume; 10% of the volume before any build | the build preflight |
+| `disk.build_cache` | the smaller of 10% of the volume and half the space above the reserve, recomputed every run | the release builder and the runner's clean-up |
+| `disk.alert_free` | 1.5 times the reserve (an owner value must stay above it) | `af-monitor` |
+| `disk.alert_hours` | 72: the free-space trend reaching the reserve sooner alerts | `af-monitor` |
+| `builder.cpus`, `builder.memory` | half the CPUs (at least 1), 30% of the memory | the `pakem-build` container |
+| `runner.cpus`, `runner.memory` | half the CPUs (at least 1), 40% of the memory | the runner's slice |
+| `runner.per_repo` | 2 per CPU of the runner's slice | `af_runner.sh add-repo` |
+| `runner.image_age_hours` | 72 | the runner's clean-up |
+
+Sizes take decimal (`20GB`) or binary (`16GiB`) units, or a share (`10%` of the volume or
+of the memory). `af-monitor` measures the volumes holding Docker's data and each deploy
+base every pass and notifies `disk_low` once (and `disk_recovered`) through the
+environments' channels; the alert level is always above the reserve, so it fires before a
+release is refused.

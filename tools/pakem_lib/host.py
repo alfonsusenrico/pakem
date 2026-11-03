@@ -20,6 +20,7 @@ lives in ~/.config/pakem/hosts.toml; what the host is lives on the host.
 from __future__ import annotations
 
 import dataclasses
+import importlib.util
 import io
 import json
 import re
@@ -61,8 +62,10 @@ BOOTSTRAP = DEPLOY_ASSETS / "af_bootstrap.sh"
 RUNNER = DEPLOY_ASSETS / "af_runner.sh"
 # The bootstrap installs the runner script here; runner registrations use that copy.
 INSTALLED_RUNNER = "/opt/af/af_runner.sh"
-# The same limit as MAX_RUNNERS_PER_REPO in af_runner.sh.
-MAX_RUNNERS_PER_REPO = 8
+LIMITS = DEPLOY_ASSETS / "af_limits.py"
+# A bound on one request only: the host refuses more runners than its own limit allows
+# (af_limits.py runners_per_repo, derived from its CPUs or set with `pakem host limit`).
+MAX_RUNNERS_PER_REQUEST = 64
 HOSTS_FILE = "hosts.toml"
 HOST_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]{0,62}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -104,6 +107,9 @@ class HostRecord:
     projects: list[str] = field(default_factory=list)
     # Service projects on this device to allow there on the next `pakem setup host`.
     project_dirs: list[str] = field(default_factory=list)
+    # The owner's values for the host's limits ("disk.reserve" = "20GB"); the rest is derived
+    # on the host (ADR 0018). Written to /etc/pakem/host.toml by `pakem setup host`.
+    limits: dict[str, object] = field(default_factory=dict)
     set_up_at: str | None = None
 
     @property
@@ -135,7 +141,7 @@ def load_hosts() -> dict[str, HostRecord]:
     hosts = {}
     for name, table in data.get("hosts", {}).items():
         keys = ("target", "port", "deploy_root", "trigger", "proxy", "runner", "release_port", "projects",
-                "project_dirs", "set_up_at")
+                "project_dirs", "limits", "set_up_at")
         fields = {key: table[key] for key in keys if key in table}
         hosts[name] = HostRecord(name, **fields)
     return hosts
@@ -167,7 +173,50 @@ def save_host(record: HostRecord, set_up: bool = True) -> None:
             lines.append(f"project_dirs = {toml_value(host.project_dirs)}")
         if host.set_up_at:
             lines.append(f"set_up_at = {toml_value(host.set_up_at)}")
+        if host.limits:
+            lines += ["", f"[hosts.{toml_string(name)}.limits]"]
+            lines += [f"{toml_string(key)} = {toml_value(host.limits[key])}" for key in sorted(host.limits)]
     write_text_atomically(hosts_path(), "\n".join(lines) + "\n")
+
+
+def deploy_limits(framework: Framework):
+    """The host limits module (af_limits.py) as shipped with this framework: its schema
+    validates the owner's values here, before they reach a host."""
+    spec = importlib.util.spec_from_file_location("pakem_deploy_limits", framework.root / LIMITS)
+    module = importlib.util.module_from_spec(spec)
+    # Its dataclasses resolve their module through sys.modules while it loads. No bytecode:
+    # a __pycache__ in the checkout would make it look edited to `pakem setup host`.
+    sys.modules[spec.name] = module
+    writes, sys.dont_write_bytecode = sys.dont_write_bytecode, True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = writes
+    return module
+
+
+def limit_sections(limits: dict[str, object]) -> dict[str, dict[str, object]]:
+    sections: dict[str, dict[str, object]] = {}
+    for key, value in limits.items():
+        section, _, name = key.partition(".")
+        sections.setdefault(section, {})[name] = value
+    return sections
+
+
+def host_settings_text(framework: Framework, record: HostRecord) -> str:
+    """/etc/pakem/host.toml for this host: only the owner's values, checked by the host's own rules."""
+    module = deploy_limits(framework)
+    sections = limit_sections(record.limits)
+    try:
+        module.Settings.parse(sections)
+    except module.LimitError as error:
+        raise PakemError(f"host {record.name}: {error}. Change it with `pakem host limit {record.name}`") from None
+    lines = ["# Written by `pakem setup host` from `pakem host limit`. Absent values are derived on this",
+             "# host from its size and recent builds (ADR 0018, af_limits.py)."]
+    for section in sorted(sections):
+        lines += ["", f"[{section}]"]
+        lines += [f"{name} = {toml_value(value)}" for name, value in sorted(sections[section].items())]
+    return "\n".join(lines) + "\n"
 
 
 def default_name(target: str) -> str:
@@ -291,7 +340,8 @@ def record_from_args(args) -> HostRecord:
         by_target = [record for record in hosts.values() if record.target == args.target]
         known = hosts.get(args.target) or (by_target[0] if len(by_target) == 1 else None)
     if known is not None:
-        record = dataclasses.replace(known, projects=list(known.projects), project_dirs=list(known.project_dirs))
+        record = dataclasses.replace(known, projects=list(known.projects), project_dirs=list(known.project_dirs),
+                                     limits=dict(known.limits))
         if args.target and args.target not in (known.name, known.target):
             record.target = args.target
     elif args.target:
@@ -423,6 +473,55 @@ def run_host_add(args) -> int:
     return EXIT_DONE
 
 
+def run_host_limit(args) -> int:
+    """List, set, or clear the owner's values for a host's limits; device-local, like `host add`.
+    The host derives every limit not set here from its size and its recent builds (ADR 0018)."""
+    framework = Framework(Path(args.root))
+    module = deploy_limits(framework)
+    record = resolve_host(args.host)
+    names = sorted(f"{section}.{key}" for section, keys in module.SCHEMA.items() for key in keys)
+    if args.key is None:
+        if args.json:
+            print(json.dumps({"host": record.name, "limits": record.limits}, indent=2))
+            return EXIT_DONE
+        for name in names:
+            value = record.limits.get(name)
+            print(f"{name}: {value if value is not None else 'derived on the host'}")
+        return EXIT_DONE
+    if args.key not in names:
+        raise PakemError(f"unknown limit {args.key!r}; one of: {', '.join(names)}")
+    limits = dict(record.limits)
+    if args.unset:
+        limits.pop(args.key, None)
+    elif args.value is None:
+        raise PakemError(f"give a value for {args.key}, or --unset to derive it on the host again")
+    else:
+        section, _, key = args.key.partition(".")
+        kind = module.SCHEMA[section][key]
+        value: object = args.value
+        try:
+            if kind == "cpus":
+                value = float(args.value)
+            elif kind in ("count", "hours"):
+                value = int(args.value)
+        except ValueError:
+            raise PakemError(f"{args.key} must be a number") from None
+        limits[args.key] = value
+    try:
+        module.Settings.parse(limit_sections(limits))
+    except module.LimitError as error:
+        raise PakemError(str(error)) from None
+    record.limits = limits
+    if args.plan:
+        print(f"would record {args.key} for host {record.name}. Plan only: nothing changed.")
+        return EXIT_DONE
+    save_host(record, set_up=False)
+    state = "derived on the host" if args.unset else f"set to {limits[args.key]}"
+    print(f"{args.key} for host {record.name}: {state}. Recorded in {display_path(hosts_path())}.")
+    print(f"OWNER ACTION REQUIRED: run `pakem setup host {record.name}` in your terminal to apply it")
+    return EXIT_DONE
+
+
 def _check_source(framework: Framework, args) -> str:
     """Only merged main or a release reaches a server, as with `pakem install` (source.py)."""
     status = framework_source_status(framework.root)
@@ -446,7 +545,9 @@ def run_setup_host(args) -> int:
     record = record_from_args(args)
     projects = _projects(record)
     source = _check_source(framework, args)
-    install = shlex.join(["sudo", "bash", str(BOOTSTRAP), "install", *record.bootstrap_flags()])
+    settings = host_settings_text(framework, record)
+    install = shlex.join(["sudo", "bash", str(BOOTSTRAP), "install", *record.bootstrap_flags(),
+                          "--host-settings", "host.toml"])
     steps = []
     if projects and not device_key.private_path().exists():
         steps.append("create this device's release key (ssh-keygen asks for its passphrase here)")
@@ -456,7 +557,7 @@ def run_setup_host(args) -> int:
         install,
     ]
     if record.runner:
-        steps.append(f"sudo bash {RUNNER} install")
+        steps.append(f"sudo bash {RUNNER} install --deploy-root {shlex.quote(record.deploy_root)}")
     steps.append("remove the temporary directory")
     for project in projects:
         steps.append(
@@ -486,9 +587,11 @@ def run_setup_host(args) -> int:
         try:
             directory = upload_assets(remote, framework)
             try:
-                code = run_sudo(remote, directory, BOOTSTRAP, ["install", *record.bootstrap_flags()])
+                remote.output(f"cat > {shlex.quote(directory)}/host.toml", data=settings.encode())
+                code = run_sudo(remote, directory, BOOTSTRAP, ["install", *record.bootstrap_flags(),
+                                                               "--host-settings", f"{directory}/host.toml"])
                 if code == 0 and record.runner:
-                    code = run_sudo(remote, directory, RUNNER, ["install"])
+                    code = run_sudo(remote, directory, RUNNER, ["install", "--deploy-root", record.deploy_root])
             finally:
                 remote.output(f"rm -rf {shlex.quote(directory)}")
             for project in projects if code == 0 else []:
@@ -526,7 +629,7 @@ def run_host_check(args, name_or_target: str) -> int:
             try:
                 code = run_sudo(remote, directory, BOOTSTRAP, ["check", *record.bootstrap_flags()])
                 if record.runner:
-                    runner_code = run_sudo(remote, directory, RUNNER, ["check"])
+                    runner_code = run_sudo(remote, directory, RUNNER, ["check", "--deploy-root", record.deploy_root])
                     if code == 0:
                         code = runner_code
             finally:
@@ -565,8 +668,9 @@ def run_host_runner(args) -> int:
         )
     verb = "add-repo" if args.runner_command == "add" else "remove-repo"
     count = getattr(args, "count", 1)
-    if not 1 <= count <= MAX_RUNNERS_PER_REPO:
-        raise PakemError(f"--count must be 1 to {MAX_RUNNERS_PER_REPO}, not {count}")
+    if not 1 <= count <= MAX_RUNNERS_PER_REQUEST:
+        raise PakemError(f"--count must be 1 to {MAX_RUNNERS_PER_REQUEST}, not {count}. The host refuses more than "
+                         "its own limit (`pakem host limit <host> runner.per_repo`)")
     ensure(framework, ("gh", "github-login"), args, f"pakem host runner {args.runner_command}")
     if args.runner_command == "add":
         refuse_public_runner(args.repository)

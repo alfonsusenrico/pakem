@@ -6,7 +6,8 @@ A host config may name a channels file (`notify = "/etc/af/notify.toml"`):
     kind = "telegram"                                # telegram, slack, discord, or webhook
     secret_file = "/etc/af/secrets/telegram-token"   # 0600: the bot token, or the webhook URL
     chat_id = "-1001234567890"                       # telegram only
-    events = ["failed", "restored", "restore_failed", "stopped", "refused", "unhealthy", "recovered"]
+    events = ["failed", "restored", "restore_failed", "stopped", "refused", "unhealthy", "recovered",
+              "disk_low", "disk_recovered"]
 
 `events` is optional (default: every event except `unchanged` and `busy`). Messages carry
 project, environment, result, version, commit, trigger, actor, and the engine's reason;
@@ -28,7 +29,7 @@ from pathlib import Path
 KINDS = {"telegram", "slack", "discord", "webhook"}
 EVENTS = {
     "deployed", "unchanged", "refused", "failed", "restored", "restore_failed", "stopped", "busy",
-    "unhealthy", "recovered",
+    "unhealthy", "recovered", "disk_low", "disk_recovered",
 }
 DEFAULT_EVENTS = frozenset(EVENTS - {"unchanged", "busy"})
 TIMEOUT_SECONDS = 10

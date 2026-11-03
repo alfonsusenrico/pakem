@@ -19,7 +19,7 @@ from .enforce import ENFORCE_HOSTS, run_enforce
 from .evals import HOSTS as EVAL_HOSTS
 from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
-from .host import run_host_add, run_host_check, run_host_runner, run_setup_host
+from .host import run_host_add, run_host_check, run_host_limit, run_host_runner, run_setup_host
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
@@ -256,8 +256,17 @@ def build_parser() -> argparse.ArgumentParser:
         if verb == "add":
             runner_parser.add_argument(
                 "--count", type=int, default=1,
-                help="runners for the repository, to run its jobs side by side (1 to 8, default 1)",
+                help="runners for the repository, to run its jobs side by side (default 1, at most the host's limit)",
             )
+    limit = host_commands.add_parser(
+        "limit", help="set a host's limit instead of deriving it there (agents may run it). Then `pakem setup host`"
+    )
+    limit.add_argument("host", help="host name or target from ~/.config/pakem/hosts.toml")
+    limit.add_argument("key", nargs="?", help="for example disk.reserve, builder.memory, runner.cpus (omit to list)")
+    limit.add_argument("value", nargs="?", help="a size (20GB), a share (10%%), or a number")
+    limit.add_argument("--unset", action="store_true", help="derive this limit on the host again")
+    limit.add_argument("--plan", action="store_true", help="check the value and record nothing")
+    limit.add_argument("--json", action="store_true", help="machine-readable list")
     allow = host_commands.add_parser(
         "allow-device", help="let this device's key release a project there (your own login, from your terminal)"
     )
@@ -567,6 +576,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_setup_check(args)
     if args.command == "host" and args.host_command == "add":
         return run_host_add(args)
+    if args.command == "host" and args.host_command == "limit":
+        return run_host_limit(args)
     if args.command == "host" and args.host_command == "runner":
         return run_host_runner(args)
     if args.command == "host" and args.host_command == "allow-device":
@@ -636,7 +647,8 @@ def is_dialogue(args) -> bool:
     """Commands that talk to the owner's terminal (ssh, sudo, ssh-keygen) and print as they
     go; with --json their lines go to stderr and stdout carries one result document."""
     if args.command == "host":
-        return True
+        # `host limit` only reads and writes this device's record: its JSON is the list itself.
+        return args.host_command != "limit"
     return args.command == "setup" and (args.setup_command in ("key", "host")
                                         or (args.setup_command == "check" and bool(args.host)))
 

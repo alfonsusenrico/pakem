@@ -16,7 +16,8 @@ Host configuration (TOML, private):
     registry_credentials = "/etc/af/registries.json"   # optional, read-only tokens
     lock_wait_seconds = 0
     notify = "/etc/af/notify.toml"              # optional channels file (af_notify.py)
-    min_free_gb = 10                            # direct only: free disk a build needs; 0 = off
+    min_free_gb = 10                            # direct only, optional: free disk a build needs here;
+                                                # 0 = off; absent: the host's reserve (af_limits.py)
 
     [proxy]                                     # optional: the host's reverse proxy (Caddy)
     sites = "/etc/caddy/sites"                  # af-writable directory the Caddyfile imports
@@ -99,10 +100,13 @@ class ProxyConfig:
 
 DELIVERY_REGISTRY = "registry"
 DELIVERY_DIRECT = "direct"
-# Free disk a direct build needs on the Docker data root and the release base, in GB; 0 turns
-# the check off. A build that fills the disk fails halfway and can starve running services.
-DEFAULT_MIN_FREE_GB = 10
+# An environment may set the free disk a direct build needs, in GB (0 turns the check off).
+# Without it the host's reserve applies, derived from its volume and recent builds (af_limits.py).
 MAX_MIN_FREE_GB = 1000
+# Releases kept per environment when the project's deploy/release.toml sets no `keep`; the
+# same defaults as release_host.py.
+DEFAULT_KEEP = {"production": 6}
+FALLBACK_KEEP = 3
 
 
 @dataclass
@@ -117,7 +121,7 @@ class HostConfig:
     notify: Path | None = None
     proxy: ProxyConfig | None = None
     delivery: str = DELIVERY_REGISTRY
-    min_free_gb: int = DEFAULT_MIN_FREE_GB
+    min_free_gb: int | None = None
 
     @classmethod
     def load(cls, path: Path) -> HostConfig:
@@ -129,8 +133,10 @@ class HostConfig:
         unknown = set(data) - allowed
         if unknown:
             raise EngineError(f"host config has unknown keys: {', '.join(sorted(unknown))}", EXIT_REFUSED)
-        min_free_gb = data.get("min_free_gb", DEFAULT_MIN_FREE_GB)
-        if isinstance(min_free_gb, bool) or not isinstance(min_free_gb, int) or not 0 <= min_free_gb <= MAX_MIN_FREE_GB:
+        min_free_gb = data.get("min_free_gb")
+        if min_free_gb is not None and (
+            isinstance(min_free_gb, bool) or not isinstance(min_free_gb, int) or not 0 <= min_free_gb <= MAX_MIN_FREE_GB
+        ):
             raise EngineError(f"host config min_free_gb must be a whole number from 0 to {MAX_MIN_FREE_GB}", EXIT_REFUSED)
         delivery = data.get("delivery", DELIVERY_REGISTRY)
         if delivery == DELIVERY_REGISTRY:
@@ -662,7 +668,7 @@ class Engine:
             return self._fail_late("post-switch or smoke hook failed", candidate, fetched, previous, started, backup)
 
         self.promote(candidate)
-        keep = int(environment.get("keep", 3))
+        keep = int(environment.get("keep", DEFAULT_KEEP.get(self.host.environment, FALLBACK_KEEP)))
         protect = {candidate.record["commit"]} | ({previous.record["commit"]} if previous else set())
         self.retain(keep, protect)
         log("deployed")
