@@ -145,7 +145,12 @@ class RunnerSandboxTests(unittest.TestCase):
     def test_slice_caps_apply(self) -> None:
         slice_dir = "/sys/fs/cgroup/user.slice/user-$(id -u ci-runner).slice"
         caps = host(f'cat {slice_dir}/memory.max {slice_dir}/cpu.max {slice_dir}/pids.max').stdout.split()
-        self.assertEqual(caps, ["4294967296", "200000", "100000", "4096"])
+        # Half the CPUs and 40% of the memory, at least 2 CPUs and 4 GiB.
+        cpus = int(host("nproc").stdout)
+        mem_kib = int(host("awk '/^MemTotal:/ { print $2 }' /proc/meminfo").stdout)
+        quota = cpus * 50 if cpus > 4 else 200
+        gib = max(mem_kib * 4 // 10 // 1048576, 4)
+        self.assertEqual(caps, [str(gib * 1024**3), str(quota * 1000), "100000", "4096"])
 
     def test_a_public_repository_is_refused(self) -> None:
         completed = host("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo actions/runner 2>&1", check=False)
@@ -160,7 +165,9 @@ class RunnerSandboxTests(unittest.TestCase):
             ("/root/af_runner.sh add-repo owner/repo </dev/null", "does not hold a runner token"),
             ("echo 'not a token!' | /root/af_runner.sh add-repo owner/repo", "does not hold a runner token"),
             ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo 'bad name'", "must look like owner/repo"),
-            ("script -qec '/root/af_runner.sh add-repo owner/repo' /dev/null </dev/null", "never pass it as an argument"),
+            ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo owner/repo 9", "count must be a number from 1 to 8"),
+            ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh add-repo owner/repo two", "count must be a number from 1 to 8"),
+            ("script -qec '/root/af_runner.sh add-repo owner/repo' /dev/null </dev/null", "Never pass it as an argument"),
             ("echo AAAAAAAAAAAAAAAAAAAAAAAA | /root/af_runner.sh remove-repo owner/missing", "no runner for owner/missing"),
         ]
         for command, needle in cases:

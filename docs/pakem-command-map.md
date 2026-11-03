@@ -178,10 +178,14 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
     check failed (the host is still recorded).
 - **`pakem setup check --host <name>`:** the bootstrap's `check`, with the recorded
   options, plus the runner's isolation check when the host has a runner.
-- **`pakem host runner add|remove <host> <owner/repo>`:** needs `gh` and a GitHub login
-  (prepared on demand); takes a registration or removal token from the owner's `gh`
-  login, keeps it in memory, and hands it to `/opt/af/af_runner.sh` on standard input
-  through a file only the login user can read, removed right after. Refused when the
+- **`pakem host runner add|remove <host> <owner/repo> [--count N]`:** needs `gh` and a
+  GitHub login (prepared on demand); takes a registration or removal token from the
+  owner's `gh` login, keeps it in memory, and hands it to `/opt/af/af_runner.sh` on
+  standard input through a file only the login user can read, removed right after.
+  `--count` (1 to 8, default 1) registers that many runners for the repository, so its
+  jobs run side by side; raise it only when the project's checks tolerate a parallel run
+  (no fixed host ports, image tags, or container names). `remove` removes every runner of
+  the repository. To lower the count, remove the repository and add it again. Refused when the
   host has no runner, and refused (exit `6`) for a repository GitHub reports as public: its
   pull requests could run any fork's code on the server. The runner script checks the
   same before registering, and its `check` fails for a runner that serves a public one.

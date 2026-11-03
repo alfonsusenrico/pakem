@@ -61,6 +61,8 @@ BOOTSTRAP = DEPLOY_ASSETS / "af_bootstrap.sh"
 RUNNER = DEPLOY_ASSETS / "af_runner.sh"
 # The bootstrap installs the runner script here; runner registrations use that copy.
 INSTALLED_RUNNER = "/opt/af/af_runner.sh"
+# The same limit as MAX_RUNNERS_PER_REPO in af_runner.sh.
+MAX_RUNNERS_PER_REPO = 8
 HOSTS_FILE = "hosts.toml"
 HOST_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]{0,62}$")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -562,11 +564,16 @@ def run_host_runner(args) -> int:
             f"{record.name} has no CI runner. Set it up first with `pakem setup host {record.target} --runner`"
         )
     verb = "add-repo" if args.runner_command == "add" else "remove-repo"
+    count = getattr(args, "count", 1)
+    if not 1 <= count <= MAX_RUNNERS_PER_REPO:
+        raise PakemError(f"--count must be 1 to {MAX_RUNNERS_PER_REPO}, not {count}")
     ensure(framework, ("gh", "github-login"), args, f"pakem host runner {args.runner_command}")
     if args.runner_command == "add":
         refuse_public_runner(args.repository)
+    count_arg = f" {count}" if count > 1 else ""
+    script_args = f"{verb} {args.repository}{count_arg}"
     print(f"  get a runner token for {args.repository} from your gh login (never printed)")
-    print(f"  sudo {INSTALLED_RUNNER} {verb} {args.repository} on {record.target} (token on standard input)")
+    print(f"  sudo {INSTALLED_RUNNER} {script_args} on {record.target} (token on standard input)")
     if args.plan:
         print("Plan only: nothing changed.")
         return EXIT_DONE
@@ -580,7 +587,8 @@ def run_host_runner(args) -> int:
             # for the password on the terminal; the file is removed whatever happens.
             token_file = remote.output('umask 077 && f="$(mktemp)" && cat > "$f" && printf %s "$f"', data=token)
             try:
-                command = f"sudo {INSTALLED_RUNNER} {verb} {shlex.quote(args.repository)} < {shlex.quote(token_file)}"
+                command = (f"sudo {INSTALLED_RUNNER} {verb} {shlex.quote(args.repository)}{count_arg}"
+                           f" < {shlex.quote(token_file)}")
                 code = remote.run(command, tty=True).returncode
             finally:
                 remote.output(f"rm -f {shlex.quote(token_file)}")

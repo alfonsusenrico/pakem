@@ -2,7 +2,7 @@
 # A free, isolated self-hosted GitHub Actions runner for a project's checks (ADR 0010).
 #
 #   sudo ./af_runner.sh install
-#   sudo ./af_runner.sh add-repo <owner>/<repo>      (registration token on standard input)
+#   sudo ./af_runner.sh add-repo <owner>/<repo> [count] (registration token on standard input)
 #   sudo ./af_runner.sh remove-repo <owner>/<repo>   (removal token on standard input)
 #   sudo ./af_runner.sh check
 #   sudo ./af_runner.sh prune                         (the daily Docker clean-up, now)
@@ -10,8 +10,11 @@
 # The runner runs as its own user `ci-runner` (no sudo, not in the `docker` or `af` groups)
 # with its own rootless Docker, so jobs never reach the production Docker socket, the
 # deploy user, or release secrets. Everything it runs shares one systemd slice capped at
-# RUNNER_CPU_QUOTA and RUNNER_MEMORY_MAX. One runner process per repository (GitHub
-# registers runners per repository for personal accounts); each takes one job at a time.
+# RUNNER_CPU_QUOTA and RUNNER_MEMORY_MAX (by default half the host's CPUs and 40% of its
+# memory, leaving the rest to production). GitHub registers runners per repository for
+# personal accounts, and each runner takes one job at a time, so a repository gets `count`
+# runners (default 1, at most 8) to run its independent jobs side by side. Its checks must
+# then tolerate a parallel run: no fixed host ports, image tags, or container names.
 # Tokens come from the repository owner's own GitHub login, for example:
 #   gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token |
 #     ssh <host> sudo ./af_runner.sh add-repo <owner>/<repo>
@@ -28,8 +31,9 @@ RUNNER_SHA256_ARM64=628b4a7258487b80c1d3c221095a7ded349f5ae0175fd3dfab708d07428f
 RUNNER_USER=ci-runner
 RUNNER_HOME=/var/lib/ci-runner
 RUNNER_LABEL=pakem
-RUNNER_CPU_QUOTA=${RUNNER_CPU_QUOTA:-200%}
-RUNNER_MEMORY_MAX=${RUNNER_MEMORY_MAX:-4G}
+RUNNER_CPU_QUOTA=${RUNNER_CPU_QUOTA:-}
+RUNNER_MEMORY_MAX=${RUNNER_MEMORY_MAX:-}
+MAX_RUNNERS_PER_REPO=8
 RUNNER_TASKS_MAX=${RUNNER_TASKS_MAX:-4096}
 RUNNER_BUILD_CACHE_MAX=${RUNNER_BUILD_CACHE_MAX:-10GB}
 # Unused images this old go; younger ones stay as the next jobs' cache (base images, a
@@ -222,8 +226,25 @@ allow_host_loopback() {
   say "job containers reach the host's loopback at 10.0.2.2"
 }
 
+# Half the CPUs and 40% of the memory (at least 2 CPUs and 4 GiB): measured on a 4-core,
+# 16 GB host beside production, the former 2 CPUs throttled check jobs for 16% of their CPU
+# time (2026-11-03), while production used about a third of the memory.
+default_caps() {
+  local cpus mem_kib
+  cpus=$(nproc)
+  mem_kib=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
+  if [[ -z "$RUNNER_CPU_QUOTA" ]]; then
+    RUNNER_CPU_QUOTA="$(( cpus > 4 ? cpus * 50 : 200 ))%"
+  fi
+  if [[ -z "$RUNNER_MEMORY_MAX" ]]; then
+    local gib=$(( mem_kib * 4 / 10 / 1048576 ))
+    RUNNER_MEMORY_MAX="$(( gib > 4 ? gib : 4 ))G"
+  fi
+}
+
 limit_resources() {
   local uid slice
+  default_caps
   uid=$(runner_uid)
   slice="user-$uid.slice"
   systemctl set-property "$slice" CPUQuota="$RUNNER_CPU_QUOTA" MemoryMax="$RUNNER_MEMORY_MAX" TasksMax="$RUNNER_TASKS_MAX"
@@ -335,10 +356,26 @@ install_command() {
   say "installed. Register repositories with: af_runner.sh add-repo <owner>/<repo>"
 }
 
+# The runner directories serving a repository, read from each runner's own settings.
+repo_directories() {
+  local directory
+  for directory in "$RUNNER_HOME"/runners/*/; do
+    [[ -f "$directory/.runner" ]] || continue
+    [[ "$(runner_repo "$directory" 2>/dev/null)" == "$1" ]] && basename "$directory"
+  done
+  return 0
+}
+
+# Instance 1 keeps the original directory and name, so existing registrations stay as they are.
+instance_suffix() { (( $1 == 1 )) || printf -- '-%s' "$1"; }
+
 add_repo() {
   require_root
-  local repo=${1:-} slug token directory uid
+  local repo=${1:-} count=${2:-1} slug token uid instance
   slug=$(repo_slug "$repo")
+  if [[ ! "$count" =~ ^[1-9][0-9]*$ ]] || (( count > MAX_RUNNERS_PER_REPO )); then
+    die "count must be a number from 1 to $MAX_RUNNERS_PER_REPO"
+  fi
   case "$(repo_visibility "$repo")" in
     private) ;;
     public) die "$repo is public: its pull requests could run any fork's code on this host. Use GitHub-hosted runners" ;;
@@ -346,40 +383,60 @@ add_repo() {
   esac
   token=$(read_token)
   id "$RUNNER_USER" >/dev/null 2>&1 || die "run af_runner.sh install first"
+  local existing
+  existing=$(repo_directories "$repo" | wc -l)
+  if (( existing > count )); then
+    die "$repo has $existing runners. To have fewer, remove-repo it, then add-repo it with $count"
+  fi
   uid=$(runner_uid)
-  directory="$RUNNER_HOME/runners/$slug"
+  for (( instance = 1; instance <= count; instance++ )); do
+    register_instance "$repo" "$slug$(instance_suffix "$instance")" "$(hostname -s)-${repo#*/}$(instance_suffix "$instance")" \
+      "$token" "$uid"
+  done
+  say "$count runner(s) for $repo are running (labels: self-hosted, linux, $(architecture), $RUNNER_LABEL)"
+}
+
+register_instance() {
+  local repo=$1 name=$2 runner_name=$3 token=$4 uid=$5
+  local directory="$RUNNER_HOME/runners/$name" serves
+  if [[ -f "$directory/.runner" ]]; then
+    serves=$(runner_repo "$directory" 2>/dev/null) || serves=""
+    [[ "$serves" == "$repo" ]] || die "$directory already serves ${serves:-another repository}. Nothing changed for it"
+  fi
   if [[ ! -x "$directory/run.sh" ]]; then
     install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0700 "$directory"
     as_runner tar -xzf "$RUNNER_HOME/dist/actions-runner-linux-$(architecture)-$RUNNER_VERSION.tar.gz" -C "$directory"
   fi
-  say "registering $repo"
+  say "registering $runner_name for $repo"
   # The runner reads ACTIONS_RUNNER_INPUT_TOKEN when --token is absent: an environment is
-  # private to its user, while an argument shows in everyone's process list.
+  # private to its user, while an argument shows in everyone's process list. A registration
+  # token stays valid for an hour, for every runner of the repository.
   printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh --unattended \
       --replace --url "https://github.com/$2" --name "$3" --labels "$4" --work _work >/dev/null' \
-    _ "$directory" "$repo" "$(hostname -s)-${repo#*/}" "$RUNNER_LABEL"
+    _ "$directory" "$repo" "$runner_name" "$RUNNER_LABEL"
   cat > "$directory/.env" <<ENV
 DOCKER_HOST=unix:///run/user/$uid/docker.sock
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$RUNNER_HOME/hooks/job-completed.sh
 ENV
   chown "$RUNNER_USER:$RUNNER_USER" "$directory/.env"
   chmod 0600 "$directory/.env"
-  as_runner systemctl --user enable --now "actions-runner@$slug" >/dev/null 2>&1
-  say "runner for $repo is running (labels: self-hosted, linux, $(architecture), $RUNNER_LABEL)"
+  as_runner systemctl --user enable --now "actions-runner@$name" >/dev/null 2>&1
 }
 
 remove_repo() {
   require_root
-  local repo=${1:-} slug token directory
-  slug=$(repo_slug "$repo")
+  local repo=${1:-} token name names=()
+  repo_slug "$repo" >/dev/null
   token=$(read_token)
-  directory="$RUNNER_HOME/runners/$slug"
-  [[ -d "$directory" ]] || die "no runner for $repo"
-  as_runner systemctl --user disable --now "actions-runner@$slug" >/dev/null 2>&1 || true
-  printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh remove >/dev/null' \
-    _ "$directory"
-  rm -rf -- "$directory"
-  say "removed the runner for $repo"
+  while IFS= read -r name; do names+=("$name"); done < <(repo_directories "$repo")
+  (( ${#names[@]} > 0 )) || die "no runner for $repo"
+  for name in "${names[@]}"; do
+    as_runner systemctl --user disable --now "actions-runner@$name" >/dev/null 2>&1 || true
+    printf '%s' "$token" | as_runner sh -c 'cd "$1" && ACTIONS_RUNNER_INPUT_TOKEN="$(cat)" ./config.sh remove >/dev/null' \
+      _ "$RUNNER_HOME/runners/$name"
+    rm -rf -- "${RUNNER_HOME:?}/runners/$name"
+  done
+  say "removed ${#names[@]} runner(s) for $repo"
 }
 
 result() {
@@ -442,7 +499,7 @@ check_command() {
 main() {
   case "$COMMAND" in
     install) install_command ;;
-    add-repo) add_repo "${2:-}" ;;
+    add-repo) add_repo "${2:-}" "${3:-1}" ;;
     remove-repo) remove_repo "${2:-}" ;;
     check) check_command ;;
     prune) prune_command ;;

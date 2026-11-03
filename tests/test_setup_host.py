@@ -199,6 +199,17 @@ class SetupHostTests(IsolatedTestCase):
         staged = remote_add.rsplit("< ", 1)[1].split()[0]
         self.assertFalse(os.path.exists(staged), "the staged token file is removed")
 
+    def test_a_repository_can_get_several_runners(self) -> None:
+        self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
+        self.log.write_text("")
+        code, output = self.run_tty("host", "runner", "add", "prod", "me/app", "--count", "3", "--yes")
+        self.assertEqual(code, 0, output)
+        self.assertIn("sudo /opt/af/af_runner.sh add-repo me/app 3 <", "\n".join(self.calls()))
+        for count in ("0", "9"):
+            self.log.write_text("")
+            self.assert_fails(self.pakem("host", "runner", "add", "prod", "me/app", "--count", count, "--yes"), code=2)
+            self.assertFalse(any("registration-token" in call for call in self.calls()), "refused before any token")
+
     def test_a_public_repository_never_gets_the_runner(self) -> None:
         self.run_tty("setup", "host", "admin@203.0.113.7", "--name", "prod", "--runner", "--yes")
         (self.state / "private").write_text("false\n")

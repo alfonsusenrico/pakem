@@ -300,11 +300,14 @@ channels, authorized keys) stay manual.
 8. Optional, for private repositories whose checks must stay free (ADR 0010): a
    self-hosted GitHub Actions runner with `/opt/af/af_runner.sh`. `install` creates the
    `ci-runner` user (no sudo; not in `docker`, `af`, or `adm`) with its own rootless Docker
-   from the same source as the host's Docker, caps its systemd slice (2 CPUs and 4 GB by
-   default), and downloads the checksum-pinned runner. `add-repo <owner>/<repo>` registers
-   one repository with a token piped from the owner's GitHub login
-   (`gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token`);
-   `remove-repo` takes a removal token the same way; `check` proves the isolation. A daily
+   from the same source as the host's Docker, caps its systemd slice (by default half the
+   host's CPUs and 40% of its memory, at least 2 CPUs and 4 GB), and downloads the
+   checksum-pinned runner. `add-repo <owner>/<repo> [count]` registers one repository with
+   `count` runners (1 to 8, default 1), with a token piped from the owner's GitHub login
+   (`gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq .token`).
+   Several runners run a repository's jobs side by side, so its checks must tolerate a
+   parallel run: no fixed host ports, image tags, or container names. `remove-repo` removes
+   every runner of the repository with a removal token taken the same way; `check` proves the isolation. A daily
    user timer bounds the runner's Docker (build cache over `RUNNER_BUILD_CACHE_MAX`, 10 GB by
    default, and unused images older than `RUNNER_IMAGE_MAX_AGE`, 72 hours), so check jobs that
    build images cannot fill the host's disk; `prune` runs it now. Jobs

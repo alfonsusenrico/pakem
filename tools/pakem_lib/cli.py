@@ -253,6 +253,11 @@ def build_parser() -> argparse.ArgumentParser:
         runner_parser.add_argument("--plan", action="store_true", help="print the steps without doing them")
         runner_parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
         runner_parser.add_argument("--json", action="store_true", help="machine-readable result")
+        if verb == "add":
+            runner_parser.add_argument(
+                "--count", type=int, default=1,
+                help="runners for the repository, to run its jobs side by side (1 to 8, default 1)",
+            )
     allow = host_commands.add_parser(
         "allow-device", help="let this device's key release a project there (your own login, from your terminal)"
     )
