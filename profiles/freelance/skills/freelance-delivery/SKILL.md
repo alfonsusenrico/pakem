@@ -89,7 +89,7 @@ Treat the approved proposal as the contract for planning:
 ## 7. A document, step by step
 
 1. `pakem docs engagement new --client ... --name ... --kind fixed|workstream --lang
-   id|en --currency IDR|USD` once per engagement, then fill `engagement.toml`
+   id|en --currency <ISO code, such as IDR>` once per engagement, then fill `engagement.toml`
    (representative and the facts the wording needs) from the owner.
 2. `pakem docs new <type> <PRJ>`, fill the version file, `pakem docs check <code>`
    until it passes, then `pakem docs render <code>`.

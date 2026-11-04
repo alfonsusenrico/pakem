@@ -3,6 +3,13 @@
 All notable changes to the `freelance` profile. Versions follow semantic versioning;
 `VERSION` and `profile.toml` change together.
 
+## [1.1.1] - 2026-11-04
+
+### Changed
+
+- `freelance-delivery`: an engagement's currency is any ISO 4217 code, and the documents
+  store may set its paper size.
+
 ## [1.1.0] - 2026-10-27
 
 ### Changed

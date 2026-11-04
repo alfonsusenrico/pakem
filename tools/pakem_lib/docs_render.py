@@ -67,13 +67,17 @@ def weekday(raw: str, lang: str) -> str:
     return WEEKDAYS[lang][parse_date(raw).weekday()]
 
 
+# Per language: the thousands separator, and the currency signs written before an amount
+# with no space. Any other currency is written as its ISO 4217 code and a space.
+GROUP_SEPARATORS = {"id": ".", "en": ","}
+CURRENCY_SIGNS = {"id": {"IDR": "Rp"}, "en": {}}
+PAPER_SIZES = ("A4", "Letter")
+
+
 def format_money(amount: int, currency: str, lang: str) -> str:
-    grouped = f"{amount:,}"
-    if lang == "id":
-        grouped = grouped.replace(",", ".")
-    if currency == "IDR":
-        return f"Rp{grouped}" if lang == "id" else f"IDR {grouped}"
-    return f"{currency} {grouped}"
+    grouped = f"{amount:,}".replace(",", GROUP_SEPARATORS[lang])
+    sign = CURRENCY_SIGNS[lang].get(currency)
+    return f"{sign}{grouped}" if sign else f"{currency} {grouped}"
 
 
 def format_number(value: float) -> str:
@@ -130,12 +134,18 @@ def _en_words(number: int) -> str:
     raise AssertionError(number)
 
 
+# Per language: an amount in words, and zero. A new language adds an entry to each table
+# keyed by language here and in docs_types (tests/test_docs.py names any it lacks).
+NUMBER_WORDS = {"id": _id_words, "en": _en_words}
+ZERO_WORDS = {"id": "nol", "en": "zero"}
+
+
 def amount_in_words(amount: int, lang: str) -> str:
     if amount < 0:
         raise PakemError("an amount in words needs a positive amount")
     if amount == 0:
-        return "nol" if lang == "id" else "zero"
-    return _id_words(amount) if lang == "id" else _en_words(amount)
+        return ZERO_WORDS[lang]
+    return NUMBER_WORDS[lang](amount)
 
 
 def parse_wording(text: str) -> dict[str, str]:
@@ -190,7 +200,7 @@ def css_string(text: str) -> str:
 
 
 CSS = Template("""
-@page { size: A4; margin: 30mm 18mm 22mm 18mm;
+@page { size: $paper; margin: 30mm 18mm 22mm 18mm;
   @top-left { content: $issuer; font: 700 9.5pt Arial, Helvetica, sans-serif; letter-spacing: .04em;
     color: #4d4d4d; vertical-align: bottom; padding-bottom: 2.5mm; border-bottom: 1px solid #bfbfbf; margin-bottom: 6mm; }
   @top-center { content: ""; vertical-align: bottom; border-bottom: 1px solid #bfbfbf; margin-bottom: 6mm; }
@@ -283,8 +293,10 @@ def signatures(signers: list[tuple[str, str]], stamp_text: str | None) -> str:
     return f'<div class="sign">{"".join(cells)}</div>'
 
 
-def page(lang: str, title: str, project: str, issuer: str, code: str, when: str, body: str) -> str:
+def page(lang: str, title: str, project: str, issuer: str, code: str, when: str, body: str,
+         paper: str = "A4") -> str:
     css = CSS.substitute({
+        "paper": paper,
         "issuer": css_string(issuer),
         "head": css_string(f"{code} · {when}"),
         "code": css_string(code),
