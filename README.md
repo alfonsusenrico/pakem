@@ -95,6 +95,9 @@ shows the whole plan, and changes nothing until you say yes:
    you in to your forges in your terminal, and makes this device's own release key.
 7. **Guardrails:** each agent's hooks that block risky commands and start every session
    with Pakem's status.
+8. **Servers (optional):** set up or update each server you release to, or add one, with
+   your own login. Pakem installs its release engine there and lets this device's key
+   release your projects.
 
 **To change anything later, run the same one-liner again** (or `pakem setup`): every
 question offers your current answer, so you change only what you need.

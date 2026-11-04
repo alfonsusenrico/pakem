@@ -113,8 +113,11 @@ Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requ
   device settings (`--forges`, `--containers`, `--update`). It shows the plan, asks once,
   then installs the kernel and skills, prepares the tools, forge logins, and device key
   (`--no-tools` skips them), turns on each agent's guardrails (`--no-guardrails` skips
-  them), and ends with `pakem setup check`. Without a terminal it needs `--yes`, which
-  takes every default and the flags as the answers.
+  them), offers each recorded server and new ones to set up with `pakem setup host` in the
+  owner's terminal (`--server NAME_OR_TARGET`, repeatable; a server that fails is named
+  with the command to run again, and the rest completes), and ends with
+  `pakem setup check`. Without a terminal it needs `--yes`, which takes every default and
+  the flags as the answers.
 - `pakem setup device [--plan] [--yes] [--json]`: prepares at once every need of the device's
   settings (`forges`, `containers`), for a fresh machine.
 - `pakem setup check [--json]`: lists every need without changing anything; exit `0` all

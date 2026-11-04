@@ -10,7 +10,9 @@ every question offers the device's current answer, and only what changes is done
     5. Install the kernel and skills, with those agents and profiles.
     6. Tools, logins, and the device key (what `pakem setup device` prepares).
     7. Guardrails: each agent's hooks and the session-start notice (`pakem enforce`).
-    8. Summary: `pakem setup check`, and what only the owner can still do.
+    8. Servers: set up or update each server this device releases to, or add one; each
+       runs `pakem setup host` in the owner's terminal with the owner's own login.
+    9. Summary: `pakem setup check`, and what only the owner can still do.
 
 It asks only what it cannot find out, and without a terminal it asks nothing: an agent or
 a script passes flags and `--yes`. It installs nothing without the owner's go (one
@@ -30,6 +32,7 @@ from pathlib import Path
 
 from .common import CommandRefused, Framework, PakemError, display_path, expand_user_path, run_git
 from .device_config import SETTINGS, load_config, save_setting
+from .host import load_hosts
 from .hosts import load_targets
 from .manifest import load_manifest
 from .profiles import PROFILE_NAME_PATTERN, load_profile
@@ -80,6 +83,8 @@ class Plan:
     settings: dict[str, str]
     guardrails: bool
     tools: bool
+    # Recorded host names or SSH targets to set up; None asks `pakem setup host` for a new one.
+    servers: list[str | None] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -230,6 +235,26 @@ def ask_settings(prompt: Prompter, flags: dict[str, str | None]) -> dict[str, st
     return answers
 
 
+def ask_servers(prompt: Prompter, flags: list[str] | None) -> list[str | None]:
+    """Servers to set up from this device: the flags, or on a terminal each recorded one
+    and any new ones. Setting one up signs in with the owner's own login (ADR 0011)."""
+    if flags is not None:
+        return list(flags)
+    if not prompt.interactive:
+        return []
+    recorded = load_hosts()
+    if not prompt.confirm("Do you release to servers from this device?", bool(recorded)):
+        return []
+    chosen: list[str | None] = []
+    for name, record in recorded.items():
+        if prompt.confirm(f"Set up {name} ({record.target}): update its release engine and let this device's key "
+                          "release its projects?", True):
+            chosen.append(name)
+    while prompt.confirm("Add a new server (pakem setup host asks for its details)?", not recorded and not chosen):
+        chosen.append(None)
+    return chosen
+
+
 def build_plan(framework: Framework, args, prompt: Prompter) -> Plan:
     manifest = load_manifest()
     if manifest.get("framework_version"):
@@ -240,7 +265,8 @@ def build_plan(framework: Framework, args, prompt: Prompter) -> Plan:
     profiles = ask_profiles(framework, prompt, args.profile, profiles_dir, manifest)
     settings = ask_settings(prompt, {"forges": args.forges, "containers": args.containers, "update": args.update})
     guardrails = not args.no_guardrails and prompt.confirm("Turn on each agent's guardrails and session notice?", True)
-    return Plan(follow, hosts, profiles, settings, guardrails, tools=not args.no_tools)
+    servers = ask_servers(prompt, args.server)
+    return Plan(follow, hosts, profiles, settings, guardrails, tools=not args.no_tools, servers=servers)
 
 
 # -- doing it ---------------------------------------------------------------------------------
@@ -275,6 +301,9 @@ def describe(plan: Plan) -> list[str]:
         lines.append("prepare the tools, forge logins, and device key this device needs")
     if plan.guardrails:
         lines.append("turn on the guardrails and session notice of each agent")
+    for server in plan.servers:
+        lines.append(f"set up the server {server} (your own login)" if server else
+                     "add a new server: `pakem setup host` asks for its details (your own login)")
     return lines
 
 
@@ -331,6 +360,16 @@ def run_guided(args, prompt: Prompter | None = None, run: Callable[[list[str]], 
             if run(tool_command(framework, "enforce", "install", "--host", host, "--apply")) != 0:
                 raise PakemError(f"turning on the {host} guardrails failed. See the lines above")
         done.append("turned on the guardrails")
+    for server in plan.servers:
+        # Each server is its own `pakem setup host` in the owner's terminal: one failing does
+        # not undo the device, and the summary names how to run it again.
+        # The owner already accepted the plan, so `setup host` does not ask a second time.
+        code = run(tool_command(framework, "setup", "host", *([server] if server else []), "--yes"))
+        if code == 0:
+            done.append(f"set up {server or 'the new server'}")
+        else:
+            plan.notes.append(f"The server {server or '(new)'} is not set up (exit {code}). Run "
+                              f"`pakem setup host{' ' + server if server else ''}` again in your terminal.")
 
     assessment = assess(framework, device_needs(), interactive)
     prompt.write("\nThis device:")
@@ -338,6 +377,8 @@ def run_guided(args, prompt: Prompter | None = None, run: Callable[[list[str]], 
         prompt.write(f"  {'ok  ' if check.ok else 'FAIL'}  {check.name}: {check.detail}")
     for action in assessment.owner_actions:
         prompt.write(action)
+    for note in plan.notes:
+        prompt.write(note)
     prompt.write("\nDone: " + ", ".join(done) + "." if done else "\nNothing changed.")
     prompt.write("Run the installer again, or `pakem setup`, to change any answer. Next: open your coding agent in a "
                  "project and say \"Set up this project with Pakem.\"")
@@ -357,3 +398,6 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--update", choices=SETTINGS["update"][0], help="how updates arrive")
     parser.add_argument("--no-guardrails", action="store_true", help="leave the agents' hooks off")
     parser.add_argument("--no-tools", action="store_true", help="install nothing beyond Pakem itself (no tools or logins)")
+    parser.add_argument("--server", action="append", metavar="NAME_OR_TARGET",
+                        help="a server to set up from this device with `pakem setup host` (repeatable; your own "
+                             "login, so it needs a terminal). Default on a terminal: asked")

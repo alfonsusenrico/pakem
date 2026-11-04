@@ -50,7 +50,7 @@ def arguments(**options) -> argparse.Namespace:
     return args
 
 
-class GuidedSetupTests(IsolatedTestCase):
+class GuidedTestCase(IsolatedTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.ran: list[list[str]] = []
@@ -79,6 +79,8 @@ class GuidedSetupTests(IsolatedTestCase):
         return [command[command.index("install"):] for command in self.ran if "install" in command
                 and "enforce" not in command]
 
+
+class GuidedSetupTests(GuidedTestCase):
     def test_a_fresh_device_is_set_up_from_the_answers(self) -> None:
         (self.home / ".claude").mkdir()
         mine = self.profile(self.base / "profiles" / "mine", "mine")
@@ -213,3 +215,36 @@ class InstallerTests(IsolatedTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GuidedServerTests(GuidedTestCase):
+    def record(self) -> None:
+        write(self.home / ".config" / "pakem" / "hosts.toml",
+              '[hosts."box"]\ntarget = "admin@203.0.113.7"\ndeploy_root = "/srv/deploy"\ntrigger = "pull"\n'
+              'proxy = true\nrunner = false\n')
+
+    def setups(self) -> list[list[str]]:
+        return [command[command.index("setup"):] for command in self.ran if "setup" in command]
+
+    def test_each_recorded_server_and_a_new_one_are_set_up(self) -> None:
+        self.record()
+        answers = iter(["", "", "y", "n"])
+        prompt = Scripted({})
+        prompt.read = lambda question: next(answers) if question.startswith(("Do you release", "Set up box",
+                                                                             "Add a new server")) else ""
+        self.run_setup(prompt)
+        self.assertEqual(self.setups(), [["setup", "host", "box", "--yes"], ["setup", "host", "--yes"]])
+
+    def test_a_device_without_servers_is_not_asked_for_one(self) -> None:
+        self.run_setup(Scripted({}))
+        self.assertEqual(self.setups(), [])
+
+    def test_a_server_that_fails_is_named_and_the_rest_completes(self) -> None:
+        self.record()
+        args = arguments(root=str(self.framework), no_tools=True, yes=True, server=["box"])
+        prompt = Scripted({})
+        prompt.interactive = False
+        with mock.patch.object(guided.sys.stdin, "isatty", return_value=True):
+            guided.run_guided(args, prompt, run=lambda command: 3 if "setup" in command else 0)
+        self.assertTrue(any("Run `pakem setup host box` again" in line for line in prompt.said))
+        self.assertTrue(any(line.startswith("\nDone: installed") for line in prompt.said))
