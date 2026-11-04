@@ -112,4 +112,5 @@ Considered and rejected:
   from the repository.
 - The owner archives the proposal generator repository.
 - Not built: sending, e-signature, tax calculation (a tax line is an ordinary invoice
-  item), and currency conversion. IDR and USD amounts are formatted, nothing more.
+  item), and currency conversion. Amounts in any ISO 4217 currency are formatted, nothing
+  more (amended 2026-11-04: formerly IDR and USD only).

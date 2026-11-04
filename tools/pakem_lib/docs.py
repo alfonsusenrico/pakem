@@ -53,6 +53,7 @@ from .docs_render import (
     install_headless_shell,
     label,
     list_html,
+    PAPER_SIZES,
     page,
     parse_date,
     parse_wording,
@@ -64,19 +65,21 @@ from .docs_render import (
     wording_html,
     wording_names,
 )
-from .docs_types import AMOUNT, DATE, FIXED, LIST, PREFIXES, ROWS, TEXT, TYPES, WORKSTREAM, DocType
+from .docs_types import AMOUNT, DATE, FIXED, LABELS, LIST, PREFIXES, ROWS, TEXT, TYPES, WORKSTREAM, DocType
 
 STORE_SETTINGS = "documents.toml"
 PROJECT_CODE = re.compile(r"^PRJ-(\d{4})-(\d{3})$")
 # A value nobody filled yet: a bracketed capital word ([FILL], [NAMA KLIEN]) or an owner
 # question ([OWNER: fee]).
 PLACEHOLDER = re.compile(r"\[(?:[A-Z][A-Z0-9 _./-]*|OWNER:[^\]]*)\]")
-LANGUAGES = ("id", "en")
-CURRENCIES = ("IDR", "USD")
+# The languages every per-language table covers (docs_types.LABELS is the reference).
+LANGUAGES = tuple(LABELS)
+CURRENCY = re.compile(r"^[A-Z]{3}$")
 FILL_TEXT = "[FILL]"
 STAGES = {FIXED: ("discovery", "proposal", "development", "finishing", "closed"), WORKSTREAM: ("active", "closed")}
-# A receipt above this many rupiah carries a Rp10,000 duty stamp (UU 10/2020).
-STAMP_THRESHOLD_IDR = 5_000_000
+# Receipts that carry a duty stamp, by currency: above this amount, the stamp label shows.
+# Rupiah: a Rp10,000 meterai above Rp5,000,000 (UU 10/2020). Add a currency's own rule here.
+RECEIPT_DUTIES = {"IDR": 5_000_000}
 ISSUER_FIELDS = ("name", "email", "phone", "city", "address", "bank", "account_number", "account_holder")
 
 
@@ -94,6 +97,20 @@ def load_toml(path: Path) -> dict:
         raise PakemError(f"{display_path(path)} is missing") from exc
     except tomllib.TOMLDecodeError as exc:
         raise PakemError(f"invalid TOML in {display_path(path)}: {exc}") from exc
+
+
+def currency_code(value: str) -> str:
+    code = value.upper()
+    if not CURRENCY.match(code):
+        raise argparse.ArgumentTypeError(f"{value!r} is not an ISO 4217 currency code (three letters, such as EUR)")
+    return code
+
+
+def store_paper(root: Path) -> str:
+    paper = load_toml(root / "config.toml").get("paper", "A4")
+    if paper not in PAPER_SIZES:
+        raise PakemError(f"config.toml: paper must be one of {', '.join(PAPER_SIZES)}, not {paper!r}")
+    return paper
 
 
 def store_settings() -> dict:
@@ -532,7 +549,8 @@ def body_html(engagement: Engagement, code: str, content: dict, wording: dict[st
                                   (L("date_received"), day(content["date"])), (L("method"), content["method"])]))
         parts.append(f'<div class="amount"><span>{e(L("amount"))}</span><span>{e(money(content["amount"]))}</span></div>')
         parts.append(f'<div class="block">{wording["statement"]}</div>')
-        needs_stamp = currency == "IDR" and content["amount"] > STAMP_THRESHOLD_IDR
+        threshold = RECEIPT_DUTIES.get(currency)
+        needs_stamp = threshold is not None and content["amount"] > threshold
         city = issuer.get("city", "")
         parts.append(signatures([(f"{city}, {day(content['date'])} · {L('received_by')}", issuer_name)],
                                 L("stamp") if needs_stamp else None))
@@ -770,7 +788,8 @@ def run_render(args) -> int:
     when = content.get("date") if doc_type.fields.get("date") and doc_type.fields["date"].kind == DATE else None
     shown_date = format_date(when, lang) if when else format_date(date.today().isoformat(), lang)
     html_text = page(lang, doc_type.title[lang], engagement.data.get("project", ""), issuer.get("name", ""),
-                     args.code, shown_date, body_html(engagement, args.code, content, wording, issuer))
+                     args.code, shown_date, body_html(engagement, args.code, content, wording, issuer),
+                     paper=store_paper(root))
     html_path = document_dir / f"v{version}.html"
     pdf_path = document_dir / f"v{version}.pdf"
     write_text_atomically(html_path, html_text)
@@ -992,7 +1011,8 @@ def add_parser(commands) -> None:
     new_engagement.add_argument("--name", required=True, help="the project name shown on every document")
     new_engagement.add_argument("--kind", required=True, choices=(FIXED, WORKSTREAM))
     new_engagement.add_argument("--lang", required=True, choices=LANGUAGES)
-    new_engagement.add_argument("--currency", required=True, choices=CURRENCIES)
+    new_engagement.add_argument("--currency", required=True, type=currency_code,
+                                help="an ISO 4217 code, for example IDR, USD, EUR")
     new_engagement.add_argument("--issuer", help="issuer key in config.toml (default: the only one)")
     new_engagement.add_argument("--representative", help="the client's representative who signs")
     new_document = common(sub.add_parser("new", help="allocate a document code and write its v1 to fill"))

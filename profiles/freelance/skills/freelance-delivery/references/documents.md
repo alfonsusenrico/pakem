@@ -7,7 +7,7 @@ Review by: 2027-04-27
 Sources: owner decisions 2026-10-27 (framework ADR 0014: catalogue, layout D, wording); owner Working Standard Profile sections 3 and 12
 
 Every document is a short approval document in layout D: the classic header (issuer and
-code in the running header, centred title) over ruled content, A4, in the engagement's
+code in the running header, centred title) over ruled content, A4 unless the store sets `paper`, in the engagement's
 language. `pakem docs new <type>` writes the fields to fill. Fixed wording comes from the
 store's `wording/<type>.<lang>.md` (`## <section>` blocks, `{{fact}}` placeholders filled
 from `engagement.toml` and the document), never from the agent.

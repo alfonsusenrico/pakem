@@ -382,3 +382,36 @@ class WordsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocaleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.render = load_render_module()
+        from pakem_lib import docs, docs_types
+        self.docs, self.types = docs, docs_types
+
+    def test_every_language_table_covers_every_language(self) -> None:
+        tables = {"MONTHS": self.render.MONTHS, "WEEKDAYS": self.render.WEEKDAYS,
+                  "GROUP_SEPARATORS": self.render.GROUP_SEPARATORS, "CURRENCY_SIGNS": self.render.CURRENCY_SIGNS,
+                  "NUMBER_WORDS": self.render.NUMBER_WORDS, "ZERO_WORDS": self.render.ZERO_WORDS}
+        keys = set(self.types.LABELS[self.docs.LANGUAGES[0]])
+        for lang in self.docs.LANGUAGES:
+            with self.subTest(lang=lang):
+                self.assertEqual(set(self.types.LABELS[lang]), keys, "the same labels in every language")
+                self.assertEqual([name for name, table in tables.items() if lang not in table], [])
+                self.assertEqual([name for name, kind in self.types.TYPES.items() if lang not in kind.title], [])
+
+    def test_any_currency_is_written_by_its_code(self) -> None:
+        money = self.render.format_money
+        self.assertEqual(money(1_500_000, "EUR", "en"), "EUR 1,500,000")
+        self.assertEqual(money(1_500_000, "EUR", "id"), "EUR 1.500.000")
+        self.assertEqual(money(1_500_000, "IDR", "id"), "Rp1.500.000")
+        self.assertEqual(money(1_500_000, "IDR", "en"), "IDR 1,500,000")
+        self.assertEqual(self.docs.currency_code("eur"), "EUR")
+        with self.assertRaises(Exception):
+            self.docs.currency_code("EURO")
+
+    def test_the_paper_size_reaches_the_page(self) -> None:
+        html = self.render.page("en", "INVOICE", "Demo", "Dev", "INV-2026-001-01", "4 November 2026", "", paper="Letter")
+        self.assertIn("@page { size: Letter;", html)
+        self.assertEqual(self.docs.RECEIPT_DUTIES, {"IDR": 5_000_000}, "only the rupiah rule is known")

@@ -468,9 +468,11 @@ has gone through it.
   numbering), `wording/<type>.<lang>.md` (the owner's approved fixed text), and a folder
   per engagement: `engagement.toml` (owner facts), `state.toml` (stage, counters),
   `records.toml` (append-only approvals, payments, handover, voids, renders), and one
-  folder per document with `v<n>.toml` content and its rendered `.html` and `.pdf`.
+  folder per document with `v<n>.toml` content and its rendered `.html` and `.pdf`. The
+  store's `config.toml` may set `paper = "Letter"` (default A4). A language is one entry in
+  each per-language table of `docs_render.py` and `docs_types.py`; a test names any it lacks.
 - **Commands:** `init --store DIR --last-project PRJ-YYYY-NNN`; `engagement new --client
-  --name --kind fixed|workstream --lang id|en --currency IDR|USD [--issuer]
+  --name --kind fixed|workstream --lang id|en --currency <ISO 4217 code> [--issuer]
   [--representative]`; `new <type> <PRJ>` (14 types, `pakem docs new --help`);
   `revise <code>`; `check <code>` (exit `5` on errors); `render <code>`; `approve <code>
   --by --method --evidence --date [--role]`; `pay <invoice> --amount --date --method
