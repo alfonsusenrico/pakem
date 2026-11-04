@@ -55,8 +55,12 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
     repository keeps (`Keep branches:` in `AGENTS.md`, or a `default:prune-merged`
     override). A squash-merged branch is kept. A remote deletion that fails is a
     warning, never a failed update.
-- `pakem config set update notify|apply`: `notify` (default) only tells the owner; `apply`
-  is the owner's standing approval for agents to update.
+- `pakem config set update notify|apply|off`: `notify` (default) only tells the owner; `apply`
+  is the owner's standing approval for agents to update; `off` makes no automatic network
+  check (an explicit `pakem update` or `pakem status --refresh` still fetches).
+- `pakem config set forges github|gitlab|both` (default `github`) and `containers yes|no`
+  (default `yes`): what this device works with, so `setup device` and `setup check`
+  prepare only those tools and logins.
 - Hooks (`pakem enforce install --host <host>`), on every supported agent host:
   - a session-start hook prints `pakem status --brief` into each session, with advice
     that follows the `update` setting;
@@ -100,8 +104,8 @@ Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requ
   system: the macOS Keychain unlocks it without prompts (with Apple's `ssh-add`); Linux
   and WSL need `ssh-add` once per login or boot. `pakem setup key --no-passphrase` is
   only for a device nobody can unlock (a headless machine), recorded in `device.toml`.
-- `pakem setup device [--plan] [--yes] [--json]`: prepares every need at once, for a fresh
-  machine.
+- `pakem setup device [--plan] [--yes] [--json]`: prepares at once every need of the device's
+  settings (`forges`, `containers`), for a fresh machine.
 - `pakem setup check [--json]`: lists every need without changing anything; exit `0` all
   present, `3` owner actions remain, `5` something pakem would prepare is missing.
 - **Systems:** macOS, Linux, and WSL (detected from the kernel); native Windows is refused

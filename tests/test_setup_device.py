@@ -125,19 +125,20 @@ class SetupDeviceMacTests(SetupTestCase):
 
         planned = self.run_setup("device", "--plan")
         self.assert_ok(planned)
-        self.assertIn("brew install gh glab uv docker colima", planned.stdout)
+        self.assertIn("brew install gh uv docker colima", planned.stdout)
         self.assertFalse([call for call in self.calls() if not call.endswith(("--version", "version"))],
                          "--plan installs and starts nothing")
         self.assertIn("OWNER ACTION REQUIRED: run `pakem setup key` in your terminal", planned.stdout)
 
         done = self.run_setup("device", "--yes")
         self.assert_fails(done, code=3)
-        self.assertIn("brew install gh glab uv docker colima", self.calls())
+        self.assertIn("brew install gh uv docker colima", self.calls())
         self.assertIn("colima start", self.calls())
         self.assertIn("OWNER ACTION REQUIRED: run `pakem setup key` in your terminal", done.stdout)
         self.assertIn("OWNER ACTION REQUIRED: run `gh auth login` in your terminal", done.stdout)
         self.assertFalse(self.key().exists(), "without a terminal nobody can type the passphrase")
         self.assertTrue((self.home / ".claude" / "CLAUDE.md").exists(), "the framework is installed")
+        self.assertNotIn("glab", "\n".join(self.calls()), "a GitHub device is not asked for GitLab")
 
         code, made = self.run_tty("key", "--no-passphrase")
         self.assertEqual(code, 0, made)
@@ -155,6 +156,15 @@ class SetupDeviceMacTests(SetupTestCase):
         self.assertEqual(result["status"], "done")
         self.assertTrue(all(check["ok"] for check in result["checks"]), result["checks"])
         self.assertFalse([call for call in self.calls() if call.startswith(("brew install", "colima start"))])
+
+
+    def test_the_device_settings_choose_what_is_prepared(self) -> None:
+        write(self.home / ".config" / "pakem" / "config.toml", 'forges = "both"\ncontainers = "no"\n')
+        planned = self.run_setup("device", "--plan")
+        self.assert_ok(planned)
+        self.assertIn("brew install gh glab uv", planned.stdout)
+        self.assertNotIn("docker", planned.stdout)
+        self.assertNotIn("colima", planned.stdout)
 
     def test_a_running_runtime_is_kept(self) -> None:
         self.install_fake("gh", "glab", "uv", "docker")

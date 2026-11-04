@@ -15,6 +15,7 @@ import subprocess
 import sys
 import unittest
 from contextlib import redirect_stdout
+from types import SimpleNamespace
 
 from engine_sandbox import ENABLED, SKIP_REASON, EngineSandbox
 from support import DEPLOY_ASSETS
@@ -71,7 +72,7 @@ class TriggersEndToEnd(EngineSandbox):
         sent: list[str] = []
         notifier = af_notify.Notifier([])
         notifier.send = lambda event, text, record=None: sent.append(event)
-        monitor = af_monitor.Monitor(notifier=lambda host: notifier)
+        monitor = af_monitor.Monitor(notifier=lambda host: notifier, disk=SimpleNamespace(check=lambda hosts: True))
         compose = ["docker", "compose", "--project-name", "sandbox-staging"]
         output = io.StringIO()
         with redirect_stdout(output):

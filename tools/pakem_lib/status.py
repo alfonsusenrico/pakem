@@ -20,7 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .common import Framework, PakemError, display_path, normalize_newlines, read_text, run_git, write_text_atomically
-from .device_config import UPDATE_APPLY, setting
+from .device_config import UPDATE_APPLY, UPDATE_OFF, setting
 from . import followups
 from .gaps import project_decisions
 from .manifest import load_manifest, state_dir
@@ -181,7 +181,9 @@ def project_status(framework: Framework, manifest: dict, cwd: Path) -> dict | No
 
 def collect(framework: Framework, cwd: Path, network: bool, force: bool) -> tuple[FrameworkStatus, dict | None]:
     manifest = load_manifest()
-    fetch = refresh(framework.root, force=force, allow_network=network)
+    # `update off`: no automatic network check; an explicit --refresh still fetches.
+    automatic = _setting("update") != UPDATE_OFF
+    fetch = refresh(framework.root, force=force, allow_network=network and (force or automatic))
     status = framework_status(framework.root, manifest, fetch)
     return status, project_status(framework, manifest, cwd)
 

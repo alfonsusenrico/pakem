@@ -84,7 +84,9 @@ The installer:
    the plan and asking first.
 
 Prefer to read it first? [`install.sh`](install.sh) is short, or run it with
-`sh -s -- --dry-run`. Pin a version with `PAKEM_VERSION=v2.0.0`.
+`sh -s -- --dry-run`. Pin a version with `PAKEM_VERSION=v2.0.0`, or install your own fork
+with `PAKEM_REPO=<its git URL>`. Agents you add later get Pakem with
+`pakem install --hosts <id> --apply` (ids in `hosts/targets.toml`).
 
 To remove Pakem: `pakem uninstall --apply` (restores your agents' files), then delete
 `~/.local/share/pakem` and the two commands in `~/.local/bin`.

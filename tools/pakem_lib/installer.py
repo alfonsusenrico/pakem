@@ -27,7 +27,7 @@ from .common import (
 from .hosts import HostTarget, load_targets, select_hosts
 from .kernel import render_kernel, size_violations
 from .legacy_install import migrate
-from .manifest import BackupSession, entries_by_path, load_manifest, save_manifest
+from .manifest import BackupSession, entries_by_path, load_manifest, save_manifest, state_dir
 from .profiles import Profile, load_profiles
 from .schedule import ScheduleContext, default_context
 from .source import (
@@ -591,6 +591,10 @@ def run_install(args, schedule_context: ScheduleContext | None = None) -> int:
     framework = Framework(Path(args.root))
     targets = load_targets(framework.targets_path)
     hosts = select_hosts(targets, args.hosts)
+    if args.hosts is None and len(hosts) < len(targets):
+        skipped = [target.label for target in targets.values() if target not in hosts]
+        print(f"Agent hosts found here: {', '.join(target.label for target in hosts)}. Skipped: "
+              f"{', '.join(skipped)} (pass --hosts to install for them too).")
     plan = build_install_plan(framework, hosts, args.profile, args.force)
     source_summary = check_install_sources(plan, framework, args)
 
@@ -625,6 +629,11 @@ def run_install(args, schedule_context: ScheduleContext | None = None) -> int:
     kept = [item for item in plan.items if item.action == KEPT]
     changed = len(plan.items) - len(unchanged) - len(kept)
     print(f"Applied: {changed} change(s), {len(unchanged)} unchanged, {len(kept)} kept.")
+    for item in plan.items:
+        if item.action == BACKUP_UNMANAGED and item.kind == KIND_INSTRUCTIONS:
+            print(f"NOTE: your own rules in {display_path(item.path)} no longer load. They are kept in "
+                  f"{display_path(state_dir() / 'backups')} and come back with `pakem uninstall`. Put the ones every "
+                  "agent should follow in a profile (`pakem install --profile DIR`).")
     return 0
 
 

@@ -14,6 +14,7 @@ import unittest
 from contextlib import redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 
 from support import DEPLOY_ASSETS
 
@@ -29,6 +30,9 @@ RECORD = {
     "version": "v1.2.0", "commit": "c" * 40, "trigger": "push", "actor": "octocat",
 }
 
+
+# The health checks under test, not this machine's disk (af_monitor.DiskWatch has its own tests).
+DISK_OK = SimpleNamespace(check=lambda hosts: True)
 
 class RecordingNotifier(af_notify.Notifier):
     def __init__(self) -> None:
@@ -212,7 +216,7 @@ class HealthMonitor(unittest.TestCase):
         self.notifier = RecordingNotifier()
 
     def run_checks(self, engine: FakeEngine, passes: int) -> list[int]:
-        monitor = af_monitor.Monitor(engine=lambda host: engine, notifier=lambda host: self.notifier)
+        monitor = af_monitor.Monitor(engine=lambda host: engine, notifier=lambda host: self.notifier, disk=DISK_OK)
         results = []
         with redirect_stdout(io.StringIO()):
             for _ in range(passes):
