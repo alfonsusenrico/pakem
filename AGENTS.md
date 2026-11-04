@@ -5,9 +5,9 @@ it is installed into each host by `tools/pakem install`, not loaded from here.
 
 ## Purpose and boundaries
 
-- This repository holds the owner's universal kernel, skills, standards,
-  templates, and tooling. It must stay free of organization- and client-specific
-  content; that belongs in profile repositories (ADR 0001).
+- This repository holds the universal kernel, skills, standards, templates, and tooling.
+  It must stay free of organization- and client-specific content and of the maintainer's
+  own preferences: those belong in profile repositories (ADR 0001, ADR 0012).
 - Project business rules never belong here.
 
 ## Commands

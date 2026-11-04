@@ -8,8 +8,10 @@ owner-selected outside projects (a freelance marketplace backend, the owner's po
 and personal finance tracker, a client event-reservation system, client headless
 WordPress landing pages, a proposal generator, a community scheduling tool); cited research.
 
-This profile is the owner-approved source from which the kernel, skills, standards, and
-templates are written. It records how the owner works, not any project's business rules.
+History: this is the maintainer's interview the first kernel, skills, standards, and
+templates were written from. It records how one person works, not a rule for Pakem's
+users: the core now stands on its ADRs and the research each reference cites, and the
+maintainer's own practice lives in their profiles (ADR 0012).
 
 ## 0. How evidence was weighted
 

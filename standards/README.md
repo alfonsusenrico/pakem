@@ -27,4 +27,5 @@ shows where each standard lives and which capability makes it mandatory
 | CI, deployment, handover, alerting | `skills/release-delivery/references` | always (CI); deployed |
 | Instruction files, lessons intake, agent tooling | `skills/instruction-maintenance` | always |
 
-Source of all of the above: `docs/working-standard-profile.md` (owner-approved 2026-10-07).
+First written from the maintainer's interview (`docs/working-standard-profile.md`,
+2026-10-07, now history); each reference cites its own sources and decisions.

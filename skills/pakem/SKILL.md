@@ -108,8 +108,9 @@ Secret values never pass through the agent (ADR 0015):
 
 ## 8. Proposals
 
-When a case looks like it holds beyond this project, discuss it with the owner until the
-rule is clear, then propose it from this session: draft the exact change in a framework
+When a case looks like it holds for every Pakem user, not only this project or the owner's
+own contexts (those go to the project's `AGENTS.md` or the owner's profile), discuss it
+with the owner until the rule is clear, then propose it from this session: draft the exact change in a framework
 worktree from `main` (`git worktree add <dir> origin/main` in the framework checkout,
 never the checkout itself), save `git diff` to a file, and run `pakem propose new --plan`
 (details in `instruction-maintenance`, lessons intake). The framework is public: it refuses

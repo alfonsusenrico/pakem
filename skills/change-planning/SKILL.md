@@ -83,8 +83,9 @@ research/
   evidence/<change-or-topic>/     screenshots, benchmark output, verification output
 ```
 
-- `research/` is private: excluded from client deliverables (via
-  `.git/info/exclude` or a private remote) unless the client buys the process.
+- `research/` is working material: it stays out of what a client receives, unless the
+  engagement includes it. A profile may also keep it out of the repository (via
+  `.git/info/exclude` or a private remote).
 - Reusable checks do not belong here; version them under `tests/` or
   `scripts/verify/`. Only their outputs go to `research/evidence/`.
 - Never store production data or secrets in `research/`.

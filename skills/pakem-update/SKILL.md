@@ -59,7 +59,7 @@ it silently.
 
 ### Know whose project it is
 
-Decide from the project's `AGENTS.md` (a work or organization profile block, the personal
+Decide from the project's `AGENTS.md` (a work or organization profile block, the freelance
 profile's client rules, or neither), its `## Overrides`, its git remote, and this
 session's context:
 
