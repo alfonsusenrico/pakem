@@ -33,10 +33,17 @@ if args[:2] == ["auth", "status"] or args[:1] == ["--version"]:
     print("ok"); sys.exit(0)
 if args[:2] == ["label", "create"]:
     sys.exit(0)
+if args[:2] == ["api", "user"]:
+    print("contributor"); sys.exit(0)
+if args[:1] == ["api"] and args[1].startswith("repos/"):
+    push = state / "push"
+    print(push.read_text().strip() if push.exists() else "true"); sys.exit(0)
+if args[:2] == ["repo", "fork"]:
+    sys.exit(0)
 if args[:2] == ["pr", "create"]:
     number = str(len(pulls) + 1)
     pulls[number] = {{"number": int(number), "title": option("--title"), "body": sys.stdin.read(), "state": "OPEN",
-                      "labels": [{{"name": option("--label")}}], "headRefName": option("--head"),
+                      "labels": [{{"name": option("--label")}}], "headRefName": option("--head").split(":")[-1],
                       "url": f"https://github.com/me/pakem/pull/{{number}}", "comments": []}}
     save(); print(pulls[number]["url"]); sys.exit(0)
 if args[:2] == ["pr", "list"]:
@@ -209,6 +216,26 @@ class ProposeTests(ProposeTestCase):
         self.assert_ok(self.propose("revise", "1", *self.fields()))
         changed = git(self.origin, "diff", "--name-only", "main", BRANCH, "--", "changes/", home=self.home).stdout
         self.assertEqual(changed.split(), ["changes/changed-readme-scope.md"], "a revision adds none either")
+
+    def test_without_push_access_the_proposal_comes_from_a_fork(self) -> None:
+        (self.state / "push").write_text("false")
+        fork = self.base / "fork.git"
+        git(self.base, "init", "-q", "--bare", str(fork), home=self.home)
+        git(self.framework, "config", f"url.{fork}.insteadOf", "https://github.com/contributor/pakem.git",
+            home=self.home)
+        self.assert_ok(self.propose("new", *self.fields()))
+        calls = (self.state / "calls.log").read_text()
+        self.assertIn("gh repo fork me/pakem --clone=false --remote=false", calls)
+        self.assertIn(f"--head contributor:{BRANCH}", calls, "the pull request comes from the fork")
+        self.assertIn("The README shows the project", git(fork, "show", f"{BRANCH}:skills/docs/SKILL.md",
+                                                          home=self.home).stdout)
+        with self.assertRaises(subprocess.CalledProcessError):
+            subprocess.run(["git", "-C", str(self.origin), "rev-parse", "--verify", BRANCH], check=True,
+                           capture_output=True)
+        self.diff.write_text(REVISED)
+        self.assert_ok(self.propose("revise", "1", *self.fields()))
+        self.assertIn("docs/ pages hold the depth", git(fork, "show", f"{BRANCH}:skills/docs/SKILL.md",
+                                                        home=self.home).stdout)
 
     def test_a_change_that_does_not_apply_is_refused(self) -> None:
         self.diff.write_text(DIFF.replace("Write docs.", "Something else."))
