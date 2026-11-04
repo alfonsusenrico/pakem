@@ -72,7 +72,7 @@ class Monitor:
             lambda host: af_engine.Engine(host, health_attempts=HEALTH_ATTEMPTS, notifier=af_notify.Notifier([]))
         )
         self.notifier = notifier
-        self.disk = disk or DiskWatch(notifier=lambda hosts: Fanout([self.notifier(host) for host in hosts]))
+        self.disk = disk or DiskWatch(notifier=lambda hosts: Fanout([self.notifier(host) for host in by_channels(hosts)]))
 
     def check_all(self, directory: Path) -> int:
         """One pass; 1 when any environment is unhealthy, its config is unusable, or disk is low."""
@@ -114,6 +114,16 @@ class Monitor:
             alerted = True
         af_engine.write_json(state_path, {"failures": failures, "alerted": alerted})
         return False
+
+
+def by_channels(hosts: list[af_engine.HostConfig]) -> list[af_engine.HostConfig]:
+    """One environment per channels file: the host's environments usually share one, and a
+    host-wide alert must reach each channel once, not once per environment."""
+    unique: dict[str, af_engine.HostConfig] = {}
+    for host in hosts:
+        if host.notify is not None:
+            unique.setdefault(str(host.notify), host)
+    return list(unique.values())
 
 
 class Fanout:

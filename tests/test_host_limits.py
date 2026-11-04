@@ -317,3 +317,20 @@ class HostLimitCommandTests(IsolatedTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DiskAlertChannelTests(unittest.TestCase):
+    def test_a_host_wide_alert_reaches_each_channels_file_once(self) -> None:
+        def host(project: str, notify: str | None):
+            return af_monitor.af_engine.HostConfig(project=project, environment="production", base=Path("/srv"),
+                                                   pointer=None, public_key=None,
+                                                   notify=Path(notify) if notify else None)
+
+        sent: list[tuple[str, str]] = []
+        monitor = af_monitor.Monitor(
+            notifier=lambda config: SimpleNamespace(send=lambda event, text: sent.append((config.project, event))))
+        hosts = [host("one", "/etc/af/notify.toml"), host("two", "/etc/af/notify.toml"),
+                 host("three", "/etc/af/notify.toml"), host("four", "/etc/af/team.toml"), host("five", None)]
+        monitor.disk.notifier(hosts).send("disk_low", "disk low")
+        self.assertEqual(sent, [("one", "disk_low"), ("four", "disk_low")],
+                         "one message per channels file, none for an environment without one")
