@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from support import PAKEM, REPO_ROOT, IsolatedTestCase, isolated_env, write
@@ -186,3 +187,34 @@ class ReportSummaryTests(IsolatedTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DiskUrgencyTests(unittest.TestCase):
+    def urgency(self, total_gib: float, free_gib: float, **settings) -> str:
+        block = 4096
+        info = os.statvfs_result((block, block, int(total_gib * health.GIB / block), 0,
+                                  int(free_gib * health.GIB / block), 0, 0, 0, 0, 255))
+        with unittest.mock.patch.object(health.os, "statvfs", return_value=info), \
+                unittest.mock.patch.object(health, "run", return_value=None):
+            return health.disk_facts({**health.DEFAULTS, **settings})["urgency"]
+
+    def test_urgency_follows_the_share_of_the_disk(self) -> None:
+        self.assertEqual(self.urgency(64, 12), "healthy", "a small disk with a fair share free is healthy")
+        self.assertEqual(self.urgency(64, 5), "critical")
+        self.assertEqual(self.urgency(4000, 500), "watch", "12.5%: watch on any size")
+        self.assertEqual(self.urgency(4000, 1000), "healthy")
+
+    def test_a_floor_set_for_the_device_applies(self) -> None:
+        self.assertEqual(self.urgency(64, 12, critical_free_gib=20), "critical")
+
+
+class ContainerDiskImageTests(unittest.TestCase):
+    def test_each_runtime_image_is_found_and_named(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            for relative in (".colima/_lima/_disks/colima/datadisk",
+                             "Library/Group Containers/ABC123.dev.orbstack/data/data.img"):
+                write(home / relative, "x")
+            with unittest.mock.patch.object(health, "home_dir", return_value=home):
+                found = [(owner, path.name) for owner, path in health.container_disk_images()]
+        self.assertEqual(found, [("Colima", "datadisk"), ("OrbStack", "data.img")])

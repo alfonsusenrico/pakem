@@ -2,9 +2,9 @@
 
 Status: Active
 Applies to: every finding of `pakem health check`
-Last reviewed: 2026-10-31
+Last reviewed: 2026-11-04
 Review by: 2027-04-30
-Sources: framework ADR 0016, and the health agent's audits of 2026-10-28 and 2026-10-31 on the owner's MacBook (about 30 GB reclaimed with four sessions and live test databases running)
+Sources: framework ADR 0016, and two audits of one developer laptop, 2026-10-28 and 2026-10-31 (about 30 GB reclaimed with four sessions and live test databases running)
 
 ## Zero-impact
 
@@ -31,7 +31,7 @@ Regenerable, but losing it costs a rebuild, a reinstall, or a pull.
 ## Never findings
 
 - Named Docker volumes: they hold local databases even while their containers are stopped,
-  and `docker volume ls -f dangling=true` lists them anyway (22 of 73 on the owner's Mac).
+  and `docker volume ls -f dangling=true` lists them anyway (22 of 73 on the audited laptop).
 - `target/*/deps` and `incremental` folders younger than the threshold: a live session's
   next build needs them.
 - Git working trees, untracked files, and stashes.
@@ -42,6 +42,7 @@ Regenerable, but losing it costs a rebuild, a reinstall, or a pull.
 
 ## Sizes and speed
 
-Sizes are allocated blocks, never the apparent size: Docker Desktop's disk image reported
-228 GB and occupied 21 GB. A full check takes seconds to tens of seconds, most of it summing
+Sizes are allocated blocks, never the apparent size: a container runtime's disk image is a
+sparse file (in one audit, Docker Desktop's reported 228 GB and occupied 21 GB). The check
+measures the images of Docker Desktop, Colima or Lima, and OrbStack where it finds them. A full check takes seconds to tens of seconds, most of it summing
 large build folders, because it scans only the workspace roots for known build-output names.

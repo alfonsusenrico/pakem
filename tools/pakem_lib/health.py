@@ -56,10 +56,12 @@ DEFAULTS = {
     "incremental_age_hours": 24,
     "cross_target_age_hours": 48,
     "build_cache_age_hours": 24,
+    # Urgency follows the share of the disk that is free, so it fits any disk size. The GiB
+    # floors are 0 (off) unless the owner sets them in health.toml for this device.
     "critical_free_percent": 10,
-    "critical_free_gib": 20,
+    "critical_free_gib": 0,
     "healthy_free_percent": 15,
-    "healthy_free_gib": 30,
+    "healthy_free_gib": 0,
     "scan_depth": 5,
     "last_check_max_age_hours": 24,
 }
@@ -376,6 +378,7 @@ class DockerState:
     volume_sizes: dict[str, int] = field(default_factory=dict)
     disk_image_allocated: int | None = None
     disk_image_apparent: int | None = None
+    disk_image_owner: str | None = None
 
 
 def _docker_time(text: str) -> float | None:
@@ -416,11 +419,38 @@ def docker_state(settings: dict) -> DockerState:
         last_used = _docker_time(entry.get("LastUsedAt") or entry.get("CreatedAt") or "")
         if str(entry.get("InUse")).lower() != "true" and last_used is not None and last_used < cutoff:
             state.build_cache_reclaimable = (state.build_cache_reclaimable or 0) + (parse_size(entry.get("Size", "")) or 0)
-    disk_image = home_dir() / "Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"
-    if disk_image.is_file():
-        info = disk_image.stat()
-        state.disk_image_allocated, state.disk_image_apparent = info.st_blocks * 512, info.st_size
+    for owner, image in container_disk_images():
+        info = image.stat()
+        # Sparse files: blocks give what the image occupies, st_size what it reports.
+        state.disk_image_allocated = (state.disk_image_allocated or 0) + info.st_blocks * 512
+        state.disk_image_apparent = (state.disk_image_apparent or 0) + info.st_size
+        state.disk_image_owner = owner if state.disk_image_owner in (None, owner) else "several runtimes"
     return state
+
+
+# Where container runtimes on macOS keep the disk image that holds Docker's data. Docker
+# Desktop's path is fixed; Colima (through Lima) and OrbStack have used several, so each
+# known one counts only if it exists, and an unknown layout measures nothing.
+CONTAINER_DISK_IMAGES = (
+    ("Docker Desktop", "Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
+    ("Colima", ".colima/_lima/_disks/*/datadisk"),
+    ("Colima", ".colima/_lima/*/diffdisk"),
+    ("Lima", ".lima/*/diffdisk"),
+    ("OrbStack", "Library/Group Containers/*.dev.orbstack/data/data.img"),
+    ("OrbStack", ".orbstack/data/data.img"),
+)
+
+
+def container_disk_images() -> list[tuple[str, Path]]:
+    found: list[tuple[str, Path]] = []
+    seen: set[Path] = set()
+    for owner, pattern in CONTAINER_DISK_IMAGES:
+        for path in sorted(home_dir().glob(pattern)):
+            resolved = path.resolve()
+            if path.is_file() and resolved not in seen:
+                seen.add(resolved)
+                found.append((owner, path))
+    return found
 
 
 def docker_findings(state: DockerState, settings: dict) -> list[Finding]:
@@ -607,7 +637,8 @@ def collect(full: bool = True) -> dict:
             "named_volumes_protected": docker.named_volumes,
             "anonymous_volumes": len(docker.anonymous_volumes),
             "images": len(docker.images),
-            "disk_image": ({"allocated": docker.disk_image_allocated, "apparent": docker.disk_image_apparent}
+            "disk_image": ({"allocated": docker.disk_image_allocated, "apparent": docker.disk_image_apparent,
+                            "owner": docker.disk_image_owner}
                            if docker.disk_image_allocated is not None else None),
         }
     result["sessions"] = [{"pid": process.pid, "cwd": process.cwd, "command": process.command[:120]}
@@ -655,7 +686,8 @@ def render(result: dict) -> list[str]:
                      f"{len(docker['named_volumes_protected'])} named volumes (protected), "
                      f"{docker['anonymous_volumes']} anonymous volumes, {docker['images']} images")
         if docker.get("disk_image"):
-            lines.append(f"  Docker disk image occupies {human(docker['disk_image']['allocated'])} "
+            owner = docker["disk_image"].get("owner") or "Docker"
+            lines.append(f"  {owner} disk image occupies {human(docker['disk_image']['allocated'])} "
                          f"(reports {human(docker['disk_image']['apparent'])})")
     elif docker is not None:
         lines.append("Docker: not running")
