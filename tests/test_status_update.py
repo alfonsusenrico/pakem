@@ -185,6 +185,9 @@ class UpdateTests(StatusUpdateTestCase):
         self.assert_ok(updated)
         self.assertIn("Projects with Pakem changes to align", updated.stdout)
         self.assertIn("  app: 1 change note for projects", updated.stdout)
+        listed = self.pakem("project", "follow-ups", "--json")
+        self.assert_ok(listed)
+        self.assertEqual(json.loads(listed.stdout), {"projects_to_align": ["app: 1 change note for projects"]})
 
     def test_a_failed_fetch_is_a_failed_check(self) -> None:
         self.assert_ok(self.pakem("install", "--apply", "--hosts", "claude"))

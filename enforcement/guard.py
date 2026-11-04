@@ -29,6 +29,10 @@ Within a shell command the guard denies:
 This is a guardrail against accidents, not a sandbox: scripts on disk, string
 concatenation, or encoded paths are not detected.
 
+Commit messages: subject-only conventional commits (kernel `default:commits`) unless the
+repository's AGENTS.md overrides `default:commits` in its `## Overrides`; the project's own
+format applies then, and the guard checks only --no-verify.
+
 Protected branches: for a push, the guard runs
 `git config --get-all pakem.protectedBranch` in the directory the push runs in
 (the hook's cwd, adjusted for `cd` and `git -C`), falling back to the former key
@@ -132,6 +136,7 @@ ASSIGNMENT_BUILTINS = {"export", "declare", "typeset", "local", "readonly"}
 VARIABLE_REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
 GLOB_CHARS = set("*?[")
 TRAILER_PATTERN = re.compile(r"(?i)co-authored-by|generated with")
+COMMITS_OVERRIDE = re.compile(r"^[-*]\s+`default:commits`")
 HEREDOC_SUBSTITUTION = re.compile(
     r"^\$\(\s*cat\s+<<-?\s*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n[ \t]*\2[ \t]*\n?\s*\)\s*$", re.DOTALL
 )
@@ -523,7 +528,7 @@ def analyze_git(arguments: list[str], context: Context) -> Decision:
     if subcommand == "push":
         return analyze_push(subcommand_arguments, git_cwd)
     if subcommand == "commit":
-        return analyze_commit(subcommand_arguments)
+        return analyze_commit(subcommand_arguments, commits_overridden(git_cwd))
     if subcommand in ("show", "cat-file"):
         return analyze_git_object_read(subcommand_arguments, git_cwd)
     return NO_OBJECTION
@@ -774,7 +779,30 @@ def unwrap_heredoc_message(message: str) -> str:
     return match.group(3)
 
 
-def analyze_commit(arguments: list[str]) -> Decision:
+def commits_overridden(cwd: str) -> bool:
+    """True when the repository holding `cwd` overrides `default:commits` in the `## Overrides`
+    section of its AGENTS.md: the project sets its own commit format (kernel section 1)."""
+    path = Path(cwd).resolve()
+    for directory in (path, *path.parents):
+        if (directory / ".git").exists():
+            agents = directory / "AGENTS.md"
+            break
+    else:
+        return False
+    try:
+        lines = agents.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
+    in_section = False
+    for line in lines:
+        if line.startswith("# ") or line.startswith("## "):
+            in_section = line.strip() == "## Overrides"
+        elif in_section and COMMITS_OVERRIDE.match(line):
+            return True
+    return False
+
+
+def analyze_commit(arguments: list[str], own_format: bool = False) -> Decision:
     messages: list[str] = []
     index = 0
     while index < len(arguments):
@@ -783,7 +811,7 @@ def analyze_commit(arguments: list[str]) -> Decision:
             break
         if argument == "--no-verify":
             return Decision(DENY, REASON_NO_VERIFY)
-        if argument == "--trailer" or argument.startswith("--trailer="):
+        if (argument == "--trailer" or argument.startswith("--trailer=")) and not own_format:
             return Decision(DENY, REASON_SUBJECT_ONLY)
         if argument == "--message":
             messages.append(arguments[index + 1] if index + 1 < len(arguments) else "")
@@ -807,6 +835,8 @@ def analyze_commit(arguments: list[str]) -> Decision:
                     break
         index += 1
 
+    if own_format:
+        return NO_OBJECTION
     if len(messages) > 1:
         return Decision(DENY, REASON_SUBJECT_ONLY)
     for message in messages:

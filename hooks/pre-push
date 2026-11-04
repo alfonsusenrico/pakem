@@ -7,7 +7,8 @@
 # repository configured before the rename; when both are unset they are main
 # and master.
 # Set AF_ALLOW_PROTECTED_PUSH=1 (or the older AF_ALLOW_MAIN_PUSH=1) to bypass only
-# the protected-branch documentation rule; commit messages are still checked.
+# the protected-branch documentation rule; commit messages are still checked, unless the
+# repository's AGENTS.md overrides `default:commits` (its own format applies then).
 # A new repository's first push may create a protected branch with its single root
 # commit `chore: bootstrap project` (what `pakem project init` makes and pushes).
 
@@ -16,6 +17,23 @@ SUBJECT_PATTERN='^(feat|fix|docs|refactor|test|chore|ci|perf|build|revert)(\([a-
 MAX_SUBJECT_LENGTH=72
 
 status=0
+
+# A repository whose AGENTS.md overrides `default:commits` in `## Overrides` sets its own
+# commit format; then this hook leaves commit messages to it (kernel section 1).
+commits_overridden() {
+    agents="$(git rev-parse --show-toplevel 2>/dev/null)/AGENTS.md"
+    [ -f "$agents" ] || return 1
+    awk '
+        /^# |^## / { in_section = ($0 ~ /^## Overrides[[:space:]]*$/); next }
+        in_section && /^[-*][[:space:]]+`default:commits`/ { found = 1; exit }
+        END { exit !found }
+    ' "$agents"
+}
+
+OWN_COMMIT_FORMAT=0
+if commits_overridden; then
+    OWN_COMMIT_FORMAT=1
+fi
 
 # One branch name per line; git prints each configured value on its own line.
 protected_branches=$(git config --get-all pakem.protectedBranch 2>/dev/null)
@@ -75,6 +93,7 @@ is_bootstrap_push() {
 
 check_message() {
     commit=$1
+    [ "$OWN_COMMIT_FORMAT" = 1 ] && return 0
     short=$(git rev-parse --short "$commit")
     parent_count=$(git rev-list --parents -n 1 "$commit" | awk '{ print NF - 1 }')
     if [ "$parent_count" -gt 1 ]; then

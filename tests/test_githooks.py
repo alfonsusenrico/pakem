@@ -206,6 +206,26 @@ class PrePushTests(IsolatedTestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("no body or trailers", completed.stderr)
 
+    def test_a_project_commit_format_override_allows_bodies(self) -> None:
+        self.commit("AGENTS.md", "# app\n\n## Overrides\n\n- `default:commits`: bodies explain the change.\n",
+                    "docs: own commit format")
+        git(self.repo, "checkout", "-q", "-b", "feat/body", home=self.home)
+        write(self.repo / "src" / "a.py", "a = 1\n")
+        git(self.repo, "add", "src/a.py", home=self.home)
+        git(self.repo, "commit", "-q", "-m", "Add a", "-m", "Signed-off-by: A <a@example.invalid>", home=self.home)
+        completed = self.push("feat/body")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_commit_msg_follows_the_project_override(self) -> None:
+        message = self.base / "MSG"
+        message.write_text("Add a\n\nWhy it changed.\n")
+        hook = HOOKS_DIR / "commit-msg"
+        refused = subprocess.run(["sh", str(hook), str(message)], cwd=self.repo, capture_output=True, text=True)
+        self.assertNotEqual(refused.returncode, 0)
+        write(self.repo / "AGENTS.md", "# app\n\n## Overrides\n\n- `default:commits`: bodies explain the change.\n")
+        allowed = subprocess.run(["sh", str(hook), str(message)], cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(allowed.returncode, 0, allowed.stderr)
+
     def test_fixup_is_rejected(self) -> None:
         git(self.repo, "checkout", "-q", "-b", "feat/fixup", home=self.home)
         self.commit("src/a.py", "a = 1\n", "fixup! feat: add a")

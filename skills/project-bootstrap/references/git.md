@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-10-28
+Last reviewed: 2026-11-04
 Review by: 2027-04-07
 Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Conventional Commits 1.0.0
 
@@ -10,7 +10,10 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
 - Commits: `type(scope): summary` - types feat, fix, docs, refactor, test, chore, ci,
   perf, build, revert; imperative, lower-case summary, at most 72 characters; no body,
   no trailers, no AI attribution. Rationale goes in the OpenSpec change or merge
-  request, not the commit.
+  request, not the commit. A project with another format (bodies, sign-off or ticket
+  trailers) records it under `default:commits` in `## Overrides`. The guard and the git
+  hooks then leave its messages to it. To have Claude Code add its attribution there, set
+  `attribution` in the project's `.claude/settings.json`.
 - `main` stays deployable: pipelines deploy staging from it by default. Code changes
   go through a topic branch and one merge request per finished piece of work: the agent
   commits locally and, once the work is done and the owner accepted it, pushes the
@@ -28,7 +31,8 @@ Sources: owner Working Standard Profile section 4; ADR 0004 of the framework; Co
   with `--protect-none`. The values live in the repository's
   `pakem.protectedBranch` git config and are read by the pre-push hook and
   the Claude Code and Antigravity guard; Codex rules are static and always forbid
-  force-pushing or deleting `main`, `master`, and `development`.
+  force-pushing or deleting the common names `main`, `master`, `develop`, and
+  `development`.
 - Never rewrite shared history. Ask the owner before any force push, including on
   your own topic branch.
 - Once a merge request merges, delete its branch locally and on the remote

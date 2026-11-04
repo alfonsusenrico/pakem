@@ -294,7 +294,8 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   --templates [--apply]` re-copies the older copies, and `--aligned [--apply]` records the
   installed Pakem commit and the version each changed copy was merged with. The session
   start hook adds one line while follow-ups wait, and `pakem update` ends with the known
-  projects (the weekly report's repositories and the hosts' project folders) that have some.
+  projects (the weekly report's repositories and the hosts' project folders) that have some,
+  listed by the tool it just installed. `pakem project follow-ups [--json]` prints that list.
 
 ### 4. Settings: `pakem secret`, `pakem placement`
 
@@ -407,7 +408,9 @@ Stage: `stable` for `service` (built 2026-10-22; proven by Proof 1, 2026-10-23);
 
 `pakem install | uninstall | doctor | lint | changelog | project sync | project check |
 report | schedule | hooks | enforce | eval`. These are unchanged, documented in
-the same skill.
+the same skill. The commit message checks of `enforce` (the guard) and `hooks` (commit-msg
+and pre-push) follow `default:commits`. A project that overrides it in `## Overrides` keeps
+its own format, and only `--no-verify` stays blocked.
 
 ### 7. Proposals: `pakem propose`
 
