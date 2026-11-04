@@ -5,6 +5,118 @@ versioning as defined in `AGENTS.md`.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-04
+
+### Added
+
+- A guide to writing a profile (`docs/profiles.md`): what belongs in one, its files, how
+  it defines labelled defaults, and how to install and pin it. `profiles/example` is a
+  neutral profile for a small team to start from, linted in CI. The README no longer
+  presents the maintainer's personal profile as a product feature, and marks
+  `profiles/personal` and `profiles/freelance` as the maintainer's own.
+
+### Changed
+
+- The installed skills no longer carry one person's practice as everyone's.
+  `instruction-maintenance` sends a decision to where it holds: the project, the owner's
+  profile, or the framework only when it holds for every user. The `pakem` skill proposes
+  upstream only such rules. Changing a framework checkout follows that repository's own
+  `AGENTS.md`, so a fork sets its own pace. `project-bootstrap` and `change-planning` keep
+  agent files out of a repository only when the project's profile says so, instead of for
+  every client repository. The freelance profile already does. The interview the first
+  core was written from is marked as history, and the docs no longer name the
+  maintainer's projects.
+- A device prepares and checks only what it works with. `pakem config set forges
+  github|gitlab|both` (default `github`) and `containers yes|no` (default `yes`) decide what
+  `pakem setup device` installs and `pakem setup check` checks: a GitHub-only device is no
+  longer asked to install `glab` and log in to GitLab, and one without containers is not
+  asked for Docker. A device that uses GitLab too runs `pakem config set forges both`.
+- `pakem install` without `--hosts` installs for the agent hosts found on the device
+  (`detect` in `hosts/targets.toml`: Claude Code, Codex, Antigravity), or for every host
+  when none is found yet, and names the ones it skipped. When it backs up a rules file of
+  the user's own, it says where the file went and that `pakem uninstall` brings it back.
+- `pakem config set update off` turns off the automatic update check, so no session start
+  reaches the network; `pakem update` and `pakem status --refresh` still fetch.
+- The README names `PAKEM_REPO` for installing a fork.
+- `pakem docs` works outside Indonesia. `engagement new --currency` takes any ISO 4217 code
+  (EUR, JPY, ...), written as the code and the amount unless the language has a sign for it
+  (`Rp` in Indonesian). The duty stamp on receipts is a rule per currency, the rupiah's
+  under UU 10/2020, instead of a check written for IDR. The store's `config.toml` may set
+  `paper = "Letter"` (default A4). Adding a language is one entry in each per-language table,
+  and a test names any table a language lacks.
+- Host limits come from the host itself or from the owner, never from one machine's numbers
+  (ADR 0018). The release builder's CPUs and memory, its cache cap, the disk reserve a build
+  needs, the CI runner's slice, its runners per repository, and its daily clean-up are
+  derived on every run from the host's CPUs, memory, volume size and free space, and the
+  measured size of recent builds. `pakem host limit <host> <key> <value>` sets one for a host
+  instead (written to `/etc/pakem/host.toml` by `pakem setup host`), and an environment's
+  `min_free_gb` still wins for its own builds. The builder's cache is pruned by size after
+  every build, failed or not, and the builder is re-created when its limits change.
+  `af-monitor` notifies `disk_low` (and `disk_recovered`) when free space falls below a level
+  above the reserve, or when the trend reaches the reserve within 72 hours. Fixed values
+  removed: builder 2 CPUs and 4 GB, cache kept 7 days, reserve 10 GB, runner slice at least 2
+  CPUs and 4 GiB, runner cache 10 GB, at most 8 runners per repository. The engine's default
+  `keep` now matches `release_host.py` (production 6, others 3). Hosts take it when
+  `pakem setup host` runs again.
+- More of Pakem's opinions are labelled defaults that a project overrides in `## Overrides`
+  instead of fixed rules: the prose rule against semicolon joins (`default:prose`), the
+  `research/` folder (`default:research`), PostgreSQL as the database (`default:postgres`),
+  hand-written migrations (`default:handwritten-migrations`; a project whose framework
+  generates them reviews each file instead), and light and dark themes (`default:themes`).
+  `pakem project check` accepts labels that core skills define, as well as the kernel's
+  and the pinned profiles'. The backend skill's stack is a suggestion for a new service,
+  not "the owner's backends". Change planning, the review checklist, and the capability
+  standards cite `default:openspec`, `default:commits`, and `default:mr-policy` instead of
+  restating them as unconditional, and a project that overrides `default:openspec` plans in
+  its own format with the same stages and approval. Engineering identifiers follow the
+  project's `Language:` line instead of always English.
+- Where a project's CI runs is its own recorded choice, `ci_runner` in `.pakem/project.toml`:
+  hosted (the forge's runners) or self-hosted (a Pakem runner). `pakem project init` and
+  `adopt` ask it for a private repository, defaulting to self-hosted once the device knows a
+  host with a runner and to hosted otherwise (`--ci-runner`). Public repositories always use
+  hosted runners, and Pakem refuses self-hosted for them. Facts recorded before the choice
+  keep their CI as it was. Before this, every private repository got the self-hosted runner,
+  whose jobs never start without a Pakem server.
+- `pakem release` publishes origin's default branch (`main`, `master`, `trunk`, ...) instead
+  of always `origin/main`.
+- The reusable deploy workflow no longer joins a tailnet unless the caller passes
+  `tailscale: true`. The GitLab templates' notes explain their portability choices instead
+  of naming one organization's instance. The `pakem` skill marks the release, project, and
+  proposal areas GitHub only, and `project init` and `adopt` name the GitLab templates when
+  they refuse `--forge gitlab`. The release-delivery skill no longer says tags run checks.
+- Projects: a project that calls Pakem's reusable `deploy.yml` and reaches its host through
+  a tailnet passes `tailscale: true` in its caller.
+
+### Fixed
+
+- A project that overrides `default:commits` in its `AGENTS.md` `## Overrides` keeps its own
+  commit format. The guard and the commit-msg and pre-push hooks used to refuse every body
+  and trailer anyway, so a project that needs sign-off or ticket trailers could not follow
+  its own rule. They now leave such a project's messages to it, and `--no-verify` stays
+  blocked. Codex's static rules protect the common branch names `main`, `master`,
+  `develop`, and `development` (adding git-flow's `develop`). `pakem update` lists the
+  projects to align with the tool it just installed, so the list follows the new rules, and
+  `pakem project follow-ups` prints it.
+- Projects: a project that overrides `default:commits` runs `pakem hooks install <repo>
+  --apply` again to get hooks that honour it.
+- Projects that never recorded their alignment with Pakem show their follow-ups again. The
+  fix released in 2.3.0 was undone on `main` by the next merge, whose change was drafted
+  before it, so `pakem project check` again showed such projects none of the notes the
+  2.3.0 release had consumed. `pakem propose` now refuses a drafted change that deletes a
+  change note: only a release deletes them, and such a change was drafted from an older
+  `main` and would undo what merged since.
+- `pakem health` judges free disk space by share alone (critical below 10%, healthy above
+  15%), so a small disk is no longer always critical and a large one is judged on the same
+  terms. The 20 GiB and 30 GiB floors, sized to one laptop, are 0 (off) unless
+  `critical_free_gib` or `healthy_free_gib` is set in `~/.config/pakem/health.toml`. The
+  check measures the disk image of Colima or Lima and of OrbStack where it finds one, as
+  well as Docker Desktop's, and names whose it is.
+- `pakem propose` works for a login that may not push to the framework repository, such as
+  someone who installed Pakem from upstream. It forks the repository to that login once
+  (the `pakem-fork` remote of the framework checkout), pushes the proposal's branch there,
+  and opens the pull request from the fork. `revise` pushes to the same place. A login that
+  may push, including anyone whose checkout follows their own fork, works as before.
+
 ## [2.3.0] - 2026-11-03
 
 ### Added
