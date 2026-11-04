@@ -118,8 +118,8 @@ and project files add facts and rules; they never weaken a floor.
 - Keep a local, untracked `PROJECT_STATE.md` under about 8 KB: branch and commit,
   open work, verified checks, decisions, blockers, next action
   (`default:state-untracked`). Dated history goes to a local `JOURNAL.md`.
-- Brainstorms, research, prototypes, and evidence go in `research/`, kept out of
-  client deliverables. Durable rules belong in `AGENTS.md` or specs; a change that
+- Brainstorms, prototypes, and evidence go in `research/` (`default:research`), kept out
+  of client deliverables. Durable rules belong in `AGENTS.md` or specs; a change that
   alters what `AGENTS.md` states updates it in the same change.
 
 ## 8. Skills
@@ -143,8 +143,8 @@ Load the matching skill first; if it is unavailable, say so and apply the rules 
 
 ## 9. Communication
 
-- Write concise, grammatical professional prose, without semicolon joins in user-facing
-  text. Preserve exact identifiers, errors, units, conditions, and uncertainty.
+- Write concise, grammatical, professional user-facing prose without semicolon joins
+  (`default:prose`). Preserve exact identifiers, errors, units, conditions, uncertainty.
 - Give findings and decisions, not routine tool narration. When blocked, name the
   exact blocker and the smallest input or authority needed. When the outcome and
   checks are complete, report and stop.

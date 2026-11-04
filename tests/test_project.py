@@ -289,14 +289,18 @@ class ProjectCapabilityAndFileTests(IsolatedTestCase):
                 (self.assert_ok if passes else self.assert_fails)(completed)
                 self.assertIn(needle, completed.stdout)
 
-    def test_override_labels_come_from_kernel_and_pinned_profiles(self) -> None:
+    def test_override_labels_come_from_kernel_skills_and_pinned_profiles(self) -> None:
         overrides = "Capabilities: database\n\n## Overrides\n\n"
         profile_label = self.check_with(overrides + "- `default:free-first`: a paid model, USD 2 a month.\n")
         self.assert_ok(profile_label)
         self.assertIn("0 error(s), 0 warning(s)", profile_label.stdout)
+        write(self.framework / "skills" / "backend" / "SKILL.md", "Tests use PostgreSQL (`default:postgres`).\n")
+        skill_label = self.check_with(overrides + "- `default:postgres`: the client's MySQL.\n")
+        self.assert_ok(skill_label)
+        self.assertIn("0 error(s), 0 warning(s)", skill_label.stdout)
         unknown = self.check_with(overrides + "- `default:made-up`: no such default.\n")
         self.assert_fails(unknown)
-        self.assertIn("not defined in kernel/KERNEL.md or a pinned profile", unknown.stdout)
+        self.assertIn("not defined in kernel/KERNEL.md, a core skill, or a pinned profile", unknown.stdout)
 
     def test_retired_label_warns_instead_of_failing(self) -> None:
         completed = self.check_with("Capabilities: database\n\n## Overrides\n\n- `default:no-billed`: paid replies.\n")

@@ -5,19 +5,19 @@
 [capabilities.always]
 summary = "Every project from the first commit"
 standards = [
-  "git with Conventional subject-only commits",
-  "native OpenSpec planning",
+  "git with Conventional subject-only commits (default:commits)",
+  "native OpenSpec planning (default:openspec)",
   "typed fail-fast configuration",
   "thin layering",
   "schema validation at trust boundaries",
   "formatter, linter, and CI",
   "no secrets in code",
-  "research/ folder and PROJECT_STATE.md",
+  "research/ folder (default:research) and PROJECT_STATE.md",
 ]
 
 [capabilities.database]
 summary = "Uses a database"
-standards = ["versioned hand-written migrations run as a separate step", "real disposable Postgres in tests and CI", "migration re-apply and drift check"]
+standards = ["versioned hand-written migrations run as a separate step (default:handwritten-migrations)", "real disposable database in tests and CI, PostgreSQL by default (default:postgres)", "migration re-apply and drift check"]
 
 [capabilities.deployed]
 summary = "Deployed or used by people other than the developer"

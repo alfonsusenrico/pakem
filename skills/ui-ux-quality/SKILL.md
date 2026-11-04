@@ -41,9 +41,11 @@ shared primitives, size limits, purpose-built phone composition, formatter.
   labels presented as real. Unknown is never shown as 0. Progress comes only from real
   counts.
 - No captions or explanations that do not lead to an action or a decision.
-- Copy in the audience's language; engineering identifiers stay in English.
-- Light and dark themes; the choice is persisted and follows the operating-system
-  preference until the user changes it. Check contrast in both.
+- Copy in the audience's language; engineering identifiers follow the project's
+  `Language:` line and its code conventions.
+- Light and dark themes (`default:themes`); the choice is persisted and follows the
+  operating-system preference until the user changes it. Check contrast in each theme. A
+  product with a single theme by design (a brand rule, a kiosk) overrides the label.
 - Design each theme for its own background: choose and check a light theme on light
   surfaces, never by inverting or reusing the dark one. Check every text, icon, mark and
   divider against the surface it sits on, in every theme, including content drawn by other

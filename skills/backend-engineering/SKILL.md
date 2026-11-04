@@ -5,12 +5,13 @@ description: Use when designing or implementing backend services - APIs and erro
 
 # Backend Engineering
 
-Defaults for the owner's backends. Check the project `AGENTS.md` for its stack,
-capabilities, and any `## Overrides` first.
+Defaults for backend services. Check the project `AGENTS.md` for its stack,
+capabilities, and any `## Overrides` first: the project's choices win.
 
 ## 1. Stack and structure
 
-- Default stack: Python + FastAPI + uv (especially AI services). Use NestJS when the
+- Suggested stack for a new service, when the project or team has none: Python + FastAPI
+  + uv (especially AI services). Use NestJS when the
   client or team works in TypeScript; Next.js route handlers only for small
   full-stack apps; a headless CMS when non-developers must edit content cheaply.
 - Layering: thin routes or controllers (parse, authorize, call a service, shape the
@@ -51,10 +52,13 @@ Follow [data access and migrations](references/data-and-migrations.md):
 - SQL-first thin data layer: parameterized SQL in per-domain query modules,
   explicit transactions and locks. An ORM only for mapping when the framework
   already brings one.
-- Hand-written, idempotent, forward-only migrations that cannot change silently once
-  applied; never autogenerate; never runtime schema sync. Migrations run as a separate
-  step that must succeed before new app instances start.
-- Tests run against a real disposable PostgreSQL with migrations applied.
+- Idempotent, forward-only migrations that cannot change silently once applied; never
+  runtime schema sync. Migrations run as a separate step that must succeed before new
+  app instances start. Write them by hand and never autogenerate
+  (`default:handwritten-migrations`); a project whose framework generates migrations
+  overrides it and reviews each generated file as if written by hand.
+- Tests run against a real disposable instance of the project's database with
+  migrations applied: PostgreSQL unless the project uses another (`default:postgres`).
 
 ## 4. Capability-triggered standards
 

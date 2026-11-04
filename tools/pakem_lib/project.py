@@ -226,8 +226,12 @@ def run_sync(args) -> int:
 
 
 def override_labels(framework: Framework, document) -> set[str]:
-    """Labels a project may override: the kernel's and those its pinned profiles define."""
+    """Labels a project may override: those the kernel, the core skills (their SKILL.md and
+    references), and its pinned profiles define."""
     texts = [read_text(framework.kernel_path)]
+    skills = framework.root / "skills"
+    if skills.is_dir():
+        texts += [read_text(path) for pattern in ("*/SKILL.md", "*/references/*.md") for path in sorted(skills.glob(pattern))]
     texts += [block.body for block in document.blocks if block.kind == PROFILE_KIND]
     return {label.removeprefix("default:") for text in texts for label in OVERRIDE_LABEL_PATTERN.findall(text)}
 
@@ -258,7 +262,7 @@ def _check_overrides(document, labels: set[str], report: Report) -> None:
         elif prefix.group(1) not in labels:
             report.error(
                 f"AGENTS.md line {index + 1}: unknown override label 'default:{prefix.group(1)}' "
-                "(not defined in kernel/KERNEL.md or a pinned profile)"
+                "(not defined in kernel/KERNEL.md, a core skill, or a pinned profile)"
             )
 
 

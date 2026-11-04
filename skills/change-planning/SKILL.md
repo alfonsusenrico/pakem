@@ -5,8 +5,9 @@ description: Use when turning an idea, request, or problem into an approved plan
 
 # Change Planning
 
-Path from idea to approved, verifiable work. Every project uses native OpenSpec; the
-owner approves before implementation.
+Path from idea to approved, verifiable work. Projects plan in native OpenSpec
+(`default:openspec`); one that overrides it plans in the format its `## Overrides` names,
+with the same stages and approval. The owner approves before implementation.
 
 ## 1. Stages
 
@@ -141,7 +142,8 @@ verification gate. Get it approved, then propose changes phase by phase.
   a merge request for plans or specs alone. Record the approval and its date in the
   proposal and `PROJECT_STATE.md`. Once approved, execute without asking again.
 - Keep the branch local until the owner accepts the result, unless the owner asks for
-  a backup push.
+  a backup push or the project overrides `default:mr-policy` (for example, draft merge
+  requests opened early).
 - Material changes to scope, behaviour, compatibility, or acceptance are surfaced
   and approved before they are implemented; update the active artifacts first.
 - Mark a task complete only when its implementation and its named evidence are
