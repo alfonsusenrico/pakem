@@ -7,19 +7,24 @@
 # which allows documentation-only ranges and whatever the project's
 # pakem.protectedBranch configuration permits. Execpolicy rules are
 # static and cannot read that configuration, so force-push (+) and delete (:)
-# refspecs are forbidden for the usual protected names everywhere.
+# refspecs are forbidden everywhere for the common default and integration branch names
+# (main, master, and git-flow's develop or development).
 DESTRUCTIVE_PROTECTED_REFSPECS = [
     "+main",
     "+master",
+    "+develop",
     "+development",
     ":main",
     ":master",
+    ":develop",
     ":development",
     "+HEAD:main",
     "+HEAD:master",
+    "+HEAD:develop",
     "+HEAD:development",
     ":refs/heads/main",
     ":refs/heads/master",
+    ":refs/heads/develop",
     ":refs/heads/development",
 ]
 
@@ -28,7 +33,7 @@ FORCE_FLAGS = ["--force", "-f", "--force-with-lease", "--force-if-includes"]
 prefix_rule(
     pattern = ["git", "push", ["origin", "upstream"], DESTRUCTIVE_PROTECTED_REFSPECS],
     decision = "forbidden",
-    justification = "Force-pushing or deleting main, master, or development rewrites deployed history; ask the owner.",
+    justification = "Force-pushing or deleting main, master, develop, or development rewrites deployed history; ask the owner.",
     match = [
         "git push origin +main",
         "git push origin :main",

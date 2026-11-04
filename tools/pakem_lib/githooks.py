@@ -18,6 +18,7 @@ PREVIOUS_HOOK_SHA256 = {
     "commit-msg": frozenset({
         "7f6c0591b4a05cfd1d6cbbdb0c3a9fd2fd8b29ae488c586fa3c6888e7dd918c8",
         "d8b113050ef1fcfd3fb7a0aa3b6d2ebad91e86f7b0eeb1b6f03c6ab7ec4551ae",
+        "28f84a85f25005d0a4df687ca769c11a393437b507a212c34a457c1ee341aa5c",
     }),
     "pre-push": frozenset({
         "85dc3f0b251ca35538d99c0c558c245b8c6f8fe5cab19efeb7e660c9f1fe9ee8",
@@ -25,6 +26,7 @@ PREVIOUS_HOOK_SHA256 = {
         "fe19b8b42273b109961f256870a9188ccdad85768ead47173be3713a3132c97e",
         "df05f48c534cdeceffadb010400acc636f513d28409a3917e971bbdb835a59aa",
         "b10b30d3853475ecf9cd81f36c715f2aa764b0411ed594e68adcd43ab1ffa73f",
+        "ef55e93570ad62f47b4f9ce844dbab435351ad7699bdd5def8b8a948a8c1c644",
     }),
 }
 PROTECTED_BRANCH_KEY = "pakem.protectedBranch"

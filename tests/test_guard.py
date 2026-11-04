@@ -229,6 +229,25 @@ class GuardShellTests(IsolatedTestCase):
                 }
                 self.assertEqual(antigravity_decision(run_guard("antigravity", payload)), expected)
 
+    def test_a_project_commit_format_override_lifts_the_message_checks(self) -> None:
+        def decision(command: str, cwd: Path):
+            payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(cwd)}
+            return claude_decision(run_guard("claude", payload))
+
+        body = "git commit -m 'feat: x' -m 'Why it changed.'"
+        trailer = "git commit -m 'feat: x' --trailer 'Signed-off-by: A <a@example.invalid>'"
+        mentioned = "# app\n\nWe never use `default:commits` here.\n\n## Overrides\n\n- `default:branching`: x.\n"
+        (self.repo / "AGENTS.md").write_text(mentioned)
+        self.assertEqual(decision(body, self.repo), DENY, "only a bullet under ## Overrides counts")
+        (self.repo / "AGENTS.md").write_text(
+            "# app\n\n## Overrides\n\n- `default:commits`: the client requires sign-off trailers (2026-11-04).\n")
+        (self.repo / "src").mkdir()
+        for command in (body, trailer):
+            with self.subTest(command=command):
+                self.assertIsNone(decision(command, self.repo))
+                self.assertIsNone(decision(command, self.repo / "src"), "found from a subdirectory too")
+        self.assertEqual(decision("git commit --no-verify -m 'feat: x'", self.repo), DENY, "hooks still run")
+
     def test_bare_push_uses_current_branch(self) -> None:
         on_topic = {"tool_name": "Bash", "tool_input": {"command": "git push"}, "cwd": str(self.repo)}
         self.assertIsNone(claude_decision(run_guard("claude", on_topic)))

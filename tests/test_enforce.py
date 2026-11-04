@@ -157,7 +157,7 @@ PLAIN_REFSPEC_FORMS = ("{}", "HEAD:{}", "refs/heads/{}", "HEAD:refs/heads/{}")
 class CodexRulesContentTests(unittest.TestCase):
     def test_every_destructive_refspec_form_is_listed_for_each_protected_branch(self) -> None:
         text = CODEX_RULES.read_text()
-        for branch in ("main", "master", "development"):
+        for branch in ("main", "master", "develop", "development"):
             for form in DESTRUCTIVE_REFSPEC_FORMS:
                 with self.subTest(refspec=form.format(branch)):
                     self.assertIn(f'"{form.format(branch)}",', text)
@@ -185,14 +185,14 @@ class CodexRulesSyntaxTests(unittest.TestCase):
         self.assertIsNone(self.decision("git", "commit", "-m", "feat: x"))
 
     def test_plain_pushes_to_protected_branches_are_left_to_the_hook(self) -> None:
-        for branch in ("main", "master", "development"):
+        for branch in ("main", "master", "develop", "development"):
             for form in PLAIN_REFSPEC_FORMS:
                 refspec = form.format(branch)
                 with self.subTest(refspec=refspec):
                     self.assertIsNone(self.decision("git", "push", "origin", refspec))
 
     def test_force_and_delete_of_protected_branches_are_forbidden(self) -> None:
-        for branch in ("main", "master", "development"):
+        for branch in ("main", "master", "develop", "development"):
             for form in DESTRUCTIVE_REFSPEC_FORMS:
                 refspec = form.format(branch)
                 with self.subTest(refspec=refspec):

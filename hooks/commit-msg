@@ -1,5 +1,6 @@
 #!/bin/sh
-# Pakem commit-msg hook: subject-only conventional commits.
+# Pakem commit-msg hook: subject-only conventional commits (`default:commits`), unless the
+# repository's AGENTS.md overrides that label in `## Overrides`.
 # Self-contained on purpose (it is copied into each repository's .githooks/).
 
 # Keep SUBJECT_PATTERN identical to the copy in hooks/pre-push; tests assert it.
@@ -28,6 +29,22 @@ cleaned=$(awk '
 ' "$message_file")
 
 subject=$(printf '%s\n' "$cleaned" | sed -n '1p')
+
+# A repository whose AGENTS.md overrides `default:commits` in `## Overrides` sets its own
+# commit format; then this hook leaves commit messages to it (kernel section 1).
+commits_overridden() {
+    agents="$(git rev-parse --show-toplevel 2>/dev/null)/AGENTS.md"
+    [ -f "$agents" ] || return 1
+    awk '
+        /^# |^## / { in_section = ($0 ~ /^## Overrides[[:space:]]*$/); next }
+        in_section && /^[-*][[:space:]]+`default:commits`/ { found = 1; exit }
+        END { exit !found }
+    ' "$agents"
+}
+
+if commits_overridden; then
+    exit 0
+fi
 
 case "$subject" in
     "Merge "* | 'Revert "'*)

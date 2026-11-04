@@ -234,12 +234,26 @@ def run_update(args) -> int:
         if steps:
             # ADR 0017: the projects whose agents have Pakem changes to align; each agent sees
             # the same at its next session start.
-            pending = projects_to_align(framework)
+            pending = installed_follow_ups(framework)
             result["projects_to_align"] = pending
             if pending:
                 lines.append("Projects with Pakem changes to align (their agents see this at session start):")
                 lines += [f"  {line}" for line in pending]
         return _finish(args, result, lines)
+
+
+def installed_follow_ups(framework: Framework) -> list[str]:
+    """The projects to align, by the tool just installed: this process still runs the code it
+    started with, which may predate the update and its rules for follow-ups."""
+    completed = subprocess.run(
+        [sys.executable, str(framework.root / "tools" / "pakem"), "--root", str(framework.root),
+         "project", "follow-ups", "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    try:
+        return list(json.loads(completed.stdout)["projects_to_align"])
+    except (ValueError, KeyError, TypeError):
+        return projects_to_align(framework)
 
 
 def _finish(args, result: dict, lines: list[str]) -> int:

@@ -23,6 +23,7 @@ from .host import run_host_add, run_host_check, run_host_limit, run_host_runner,
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
+from .followups import projects_to_align
 from .gaps import STAGES, gaps_report, run_decide
 from .health import add_parser as add_health_parser
 from .health import run_health
@@ -397,6 +398,10 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("repo", nargs="?", help="repository directory (default: current directory)")
     check.add_argument("--gaps", action="store_true", help="list the project's gaps and their decisions instead")
     check.add_argument("--json", action="store_true", help="machine-readable result (with --gaps)")
+    follow_ups = project_commands.add_parser(
+        "follow-ups", help="the known projects with Pakem changes to align (report.toml repos, hosts' projects)"
+    )
+    follow_ups.add_argument("--json", action="store_true", help="machine-readable list")
     init = project_commands.add_parser("init", help="start a new project: files, CI, hooks, GitHub repository")
     init.add_argument("directory", help="where the new repository goes (its name is the project name)")
     init.add_argument("--name", help="project name (default: the directory name)")
@@ -615,6 +620,10 @@ def dispatch(args: argparse.Namespace) -> int:
         return gaps_report(Path(args.repo or ".").resolve(), args.json)
     if args.command == "project" and args.project_command == "check":
         return run_check(args)
+    if args.command == "project" and args.project_command == "follow-ups":
+        pending = projects_to_align(Framework(Path(args.root)))
+        print(json.dumps({"projects_to_align": pending}, indent=2) if args.json else "\n".join(pending))
+        return 0
     if args.command == "project" and args.project_command == "init":
         return run_project_init(args)
     if args.command == "project" and args.project_command == "adopt":
