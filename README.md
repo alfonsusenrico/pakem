@@ -102,6 +102,18 @@ shows the whole plan, and changes nothing until you say yes:
 **To change anything later, run the same one-liner again** (or `pakem setup`): every
 question offers your current answer, so you change only what you need.
 
+**Moving to a new device?** On the old one, run `pakem migrate export` (add
+`--agent-sessions` to bring Claude Code's memory and conversations). It writes one private
+file with what git does not carry: your Pakem settings, your install choices, each
+project's place, remote, and branch with its `PROJECT_STATE.md` and `JOURNAL.md`, your
+profile repositories, and your documents store. Move it yourself, then run the one-liner
+on the new device and give it the file at the first question (or `pakem setup --import
+FILE`). Projects are cloned to the same places under your home folder, nothing already
+there is overwritten, and every later question starts from the old device's answers. Then
+open a fresh agent session in a project: it continues from its `PROJECT_STATE.md`. The new
+device gets its own key, so let it release on each server (the setup offers it), and
+remove the old one's with `pakem host revoke-device <host> --device <old name>`.
+
 Prefer to read it first? [`install.sh`](install.sh) is short, or run it with
 `sh -s -- --dry-run`. Pin a version with `PAKEM_VERSION=v2.0.0`, install your own fork with
 `PAKEM_REPO=<its git URL>`, or use a checkout you already have with `sh -s -- --source DIR`.
@@ -127,6 +139,7 @@ acting, and take `--plan` to preview and `--yes` to skip the question.
 | `pakem status` | Whether this device runs the latest merged Pakem, and whether this project's pins match |
 | `pakem update` | Install the latest merged Pakem and list the files agents must re-read |
 | `pakem setup` | Set up or reconfigure this device, guided (the installer ends here) |
+| `pakem migrate` | Carry a workspace to a new device: `export` there, `import` here (or in `pakem setup`) |
 | `pakem setup device` | Prepare a fresh machine in one go; other commands prepare what they need when they run (`setup key` makes the device key, `setup check` only lists) |
 | `pakem setup host` | Prepare a server from your terminal: `pakem setup host <name>` once an agent recorded it with `pakem host add` (or run it bare and answer its questions). Installs the release engine, this device's key, and permission to release its projects |
 | `pakem host runner` | Register a private repository with a server's CI runner |

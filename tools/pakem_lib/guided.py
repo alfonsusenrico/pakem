@@ -3,6 +3,8 @@
 The one-line installer ends here, and running it again (or `pakem setup`) reconfigures:
 every question offers the device's current answer, and only what changes is done again.
 
+    0. Moving from another device: import its bundle (`pakem migrate export` there) first,
+       so every later question starts from the old device's answers.
     1. Updates: follow Pakem's releases, or `main`.
     2. Agents: the coding agents found on this device.
     3. Profiles: git repositories or folders, cloned once; or a new one from the example.
@@ -23,6 +25,7 @@ in to a forge and the key's passphrase happen in the owner's own terminal.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -34,7 +37,8 @@ from .common import CommandRefused, Framework, PakemError, display_path, expand_
 from .device_config import SETTINGS, load_config, save_setting
 from .host import load_hosts
 from .hosts import load_targets
-from .manifest import load_manifest
+from .manifest import load_manifest, state_dir
+from .migrate import MIGRATED_INSTALL, plan_import, read_bundle
 from .profiles import PROFILE_NAME_PATTERN, load_profile
 from .requirements import LOGINS, assess, device_needs, prepare
 from .source import has_uncommitted_changes
@@ -110,8 +114,21 @@ def ask_follow(framework: Framework, prompt: Prompter, flag: str | None) -> str 
                                  current)
 
 
+def install_options(manifest: dict) -> dict:
+    """This device's install choices, or, on a device not installed yet, an imported bundle's."""
+    options = manifest.get("install_options")
+    if isinstance(options, dict):
+        return options
+    migrated = state_dir() / MIGRATED_INSTALL
+    try:
+        data = json.loads(migrated.read_text(encoding="utf-8")) if migrated.is_file() else {}
+    except ValueError:
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+
 def installed_hosts(manifest: dict) -> list[str]:
-    options = manifest.get("install_options") if isinstance(manifest.get("install_options"), dict) else {}
+    options = install_options(manifest)
     if options.get("hosts"):
         return [host for host in str(options["hosts"]).split(",") if host]
     return sorted({host for entry in manifest.get("entries", []) for host in str(entry.get("host", "")).split(",")
@@ -187,8 +204,8 @@ def start_profile(framework: Framework, prompt: Prompter, profiles_dir: Path) ->
 
 def ask_profiles(framework: Framework, prompt: Prompter, flags: list[str] | None, profiles_dir: Path,
                  manifest: dict) -> list[Path]:
-    options = manifest.get("install_options") if isinstance(manifest.get("install_options"), dict) else {}
-    current = [Path(path) for path in options.get("profiles") or []]
+    options = install_options(manifest)
+    current = [Path(path) for path in options.get("profiles") or [] if Path(path).is_dir()]
     if flags is not None:
         entries = flags
     else:
@@ -253,6 +270,25 @@ def ask_servers(prompt: Prompter, flags: list[str] | None) -> list[str | None]:
     while prompt.confirm("Add a new server (pakem setup host asks for its details)?", not recorded and not chosen):
         chosen.append(None)
     return chosen
+
+
+def import_first(framework: Framework, args, prompt: Prompter, run: Callable[[list[str]], int]) -> None:
+    """Step 0: a bundle from the old device, imported before any question, so the answers
+    it brings (agents, profiles, settings, servers) are the defaults that follow."""
+    bundle = args.import_bundle
+    if bundle is None and prompt.interactive and not load_manifest().get("framework_version"):
+        bundle = prompt.text("Moving from another device? The bundle from `pakem migrate export` there "
+                             "(empty to skip)", "") or None
+    if bundle is None:
+        return
+    manifest, _ = read_bundle(expand_user_path(bundle))
+    prompt.write("Importing the old device's workspace:")
+    for line in plan_import(manifest):
+        prompt.write(f"  {line}")
+    if not args.yes and not prompt.confirm("Import it now (nothing here is overwritten)?", True):
+        return
+    if run(tool_command(framework, "migrate", "import", str(expand_user_path(bundle)), "--yes")) != 0:
+        raise PakemError("importing the bundle failed. See the lines above")
 
 
 def build_plan(framework: Framework, args, prompt: Prompter) -> Plan:
@@ -330,6 +366,7 @@ def run_guided(args, prompt: Prompter | None = None, run: Callable[[list[str]], 
     # --yes takes every default and the flags as the answers, and asks nothing.
     prompt = prompt or Prompter(interactive and not args.yes)
     prompt.write(f"pakem setup: Pakem {framework.version()} in {display_path(framework.root)}")
+    import_first(framework, args, prompt, run)
     plan = build_plan(framework, args, prompt)
     prompt.write("\nThe plan:")
     for line in describe(plan):
@@ -386,6 +423,8 @@ def run_guided(args, prompt: Prompter | None = None, run: Callable[[list[str]], 
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--import", dest="import_bundle", metavar="FILE",
+                        help="first import the bundle `pakem migrate export` wrote on your old device")
     parser.add_argument("--yes", action="store_true",
                         help="take every default and the flags as the answers, and apply the plan without asking")
     parser.add_argument("--follow", choices=(FOLLOW_RELEASES, FOLLOW_MAIN), help="what updates follow")

@@ -25,6 +25,8 @@ from .host import run_host_add, run_host_check, run_host_limit, run_host_runner,
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
 from .lint import run_lint
+from .migrate import add_parser as add_migrate_parser
+from .migrate import run_migrate
 from .followups import projects_to_align
 from .gaps import STAGES, gaps_report, run_decide
 from .health import add_parser as add_health_parser
@@ -439,6 +441,7 @@ def build_parser() -> argparse.ArgumentParser:
         starting.add_argument("--json", action="store_true", help="machine-readable result")
 
     add_propose_parser(commands)
+    add_migrate_parser(commands)
     add_docs_parser(commands)
     add_health_parser(commands)
 
@@ -580,6 +583,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_update(args)
     if args.command == "config":
         return run_config(args)
+    if args.command == "migrate":
+        return run_migrate(args)
     if args.command == "setup" and args.setup_command is None:
         return run_guided(args)
     if args.command == "setup" and args.setup_command == "device":
