@@ -67,6 +67,16 @@ class Facts:
     environments: list[str] = field(default_factory=list)
     capabilities: list[str] = field(default_factory=list)
     delivery_note: str = ""
+    # "hosted" or "self-hosted"; empty in facts recorded before the choice existed.
+    ci_runner: str = ""
+
+    @property
+    def self_hosted_ci(self) -> bool:
+        """CI on a self-hosted Pakem runner: the project's choice, or, for facts recorded before
+        it was asked, every private repository (as Pakem wrote their CI then)."""
+        if self.ci_runner:
+            return self.ci_runner == "self-hosted"
+        return self.visibility == "private"
 
     @property
     def releases_here(self) -> bool:

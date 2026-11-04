@@ -77,8 +77,8 @@ work.
 - An idempotent tunnel configuration script that changes only its own route and does not
   restart a shared tunnel on every deploy.
 - GitHub: composite actions or reusable workflows pinned by SHA. GitLab: hidden jobs with
-  `extends`, `resource_group`, and static cache keys (the org instance rejects file-derived
-  cache keys and sets the commit-branch variable inconsistently).
+  `extends`, `resource_group`, and static cache keys (some instances reject file-derived
+  cache keys, and the commit-branch variable is unset in merge request pipelines).
 - Dependabot or Renovate configuration for actions, Docker base images, and pip/npm.
 
 ## 6. Gaps in current pipelines this phase must close
@@ -128,7 +128,7 @@ production assertions), host-generated secrets kept on the host, both owner mode
 
 Deviations from sections 1 to 8, by owner decision or recorded as open work:
 
-1. **Serialization on GitLab.** No `resource_group` (the org instance lacks it); the host
+1. **Serialization on GitLab.** No `resource_group` (not every instance has it); the host
    lock serializes deployments and a second deploy waits `AF_LOCK_WAIT_SECONDS`, then
    fails with exit 75.
 2. **Build.** Images are built on the host once per commit (owner decision; a registry is

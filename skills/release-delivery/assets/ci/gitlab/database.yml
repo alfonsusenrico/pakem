@@ -4,8 +4,8 @@
 # REQUIRE_DB=1 so they fail instead of skipping when the database is absent.
 # Use: include this file, then `extends: .af:database` and set MIGRATE_CMD and TEST_CMD.
 # Node projects also set AF_DATABASE_IMAGE to a Node image and INSTALL_CMD to `npm ci`.
-# Avoid on the org instance: cache keys derived from files (rejected) and the commit-branch
-# variable (set inconsistently); jobs use CI_COMMIT_REF_NAME.
+# Portable across GitLab instances: no cache keys derived from files (some instances reject
+# them) and CI_COMMIT_REF_NAME (the commit-branch variable is unset in merge request pipelines).
 
 .af:database:
   image: $AF_DATABASE_IMAGE

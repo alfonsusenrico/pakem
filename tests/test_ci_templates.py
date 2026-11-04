@@ -245,7 +245,7 @@ class GitLabTemplateTests(unittest.TestCase):
             {"verify-python.yml", "verify-node.yml", "security.yml", "database.yml", "deploy.yml", "ci.example.yml"},
         )
 
-    def test_avoids_constructs_the_org_instance_rejects(self) -> None:
+    def test_avoids_constructs_some_instances_reject(self) -> None:
         for path in gitlab_files():
             text = path.read_text()
             with self.subTest(path=path.name):

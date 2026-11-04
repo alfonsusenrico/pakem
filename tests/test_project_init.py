@@ -38,8 +38,9 @@ echo "$(basename "$0") $*" >> "{log}"
 [ -e "{state}/tool-fails" ] && { echo "network unreachable" >&2; exit 1; }
 exit 0
 """
-SERVICE = ("--description", "Demo service", "--visibility", "private", "--kind", "service", "--delivery", "us",
-           "--environments", "staging,production", "--stack", "python", "--capabilities", "database")
+SERVICE = ("--description", "Demo service", "--visibility", "private", "--ci-runner", "self-hosted", "--kind",
+           "service", "--delivery", "us", "--environments", "staging,production", "--stack", "python",
+           "--capabilities", "database")
 
 
 def load_contracts():
@@ -77,6 +78,30 @@ class ProjectTestCase(IsolatedTestCase):
 
 
 class InitTests(ProjectTestCase):
+    def test_a_private_repository_without_a_runner_defaults_to_hosted_ci(self) -> None:
+        flags = tuple(flag for flag in SERVICE if flag not in ("--ci-runner", "self-hosted"))
+        self.init(*flags)
+        facts = tomllib.loads((self.repo / ".pakem" / "project.toml").read_text())
+        self.assertEqual(facts["ci_runner"], "hosted", "no host with a runner on this device")
+        ci = (self.repo / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertNotIn("runs-on: pakem", ci)
+        self.assertIn('runner: "ubuntu-24.04"', ci)
+        self.assertFalse((self.repo / ".github" / "actionlint.yaml").exists())
+
+    def test_a_recorded_runner_host_makes_self_hosted_the_default(self) -> None:
+        write(self.home / ".config" / "pakem" / "hosts.toml",
+              '[hosts."box"]\ntarget = "admin@203.0.113.7"\nrunner = true\n')
+        flags = tuple(flag for flag in SERVICE if flag not in ("--ci-runner", "self-hosted"))
+        self.init(*flags)
+        facts = tomllib.loads((self.repo / ".pakem" / "project.toml").read_text())
+        self.assertEqual(facts["ci_runner"], "self-hosted")
+
+    def test_a_public_repository_never_gets_a_self_hosted_runner(self) -> None:
+        flags = tuple("public" if flag == "private" else flag for flag in SERVICE)
+        refused = self.init(*flags)
+        self.assert_fails(refused, code=6)
+        self.assertIn("hosted runners only", refused.stderr)
+
     def test_a_private_service_gets_every_standard_file_and_is_pushed(self) -> None:
         completed = self.init()
         self.assert_fails(completed, code=3)
@@ -423,7 +448,7 @@ class AdoptTests(ProjectTestCase):
 
     def adopt(self, *extra: str) -> subprocess.CompletedProcess:
         return self.run_pakem("project", "adopt", str(self.repo), "--description", "Demo", "--visibility", "private",
-                              *extra)
+                              "--ci-runner", "self-hosted", *extra)
 
     def test_adopt_adds_only_missing_files_on_its_own_branch(self) -> None:
         completed = self.adopt("--yes")

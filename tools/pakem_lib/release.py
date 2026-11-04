@@ -58,7 +58,8 @@ from .service_project import (
 
 NAMESPACE = "pakem-release"
 REQUEST_SCHEMA = "pakem.release-request/v1"
-MAIN = "origin/main"
+# The branch a release publishes: origin's default branch, as the remote names it.
+FALLBACK_BRANCH = "origin/main"
 VERSION = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 GITHUB_REMOTE = re.compile(r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+)/(.+?)(?:\.git)?/?$")
 DELIVERY_LINE = re.compile(r"\bDelivery:?\**\s*:?\s*\**\s*(us|others|nobody)\b", re.IGNORECASE)
@@ -112,9 +113,22 @@ def github_repository(project: Project) -> str:
     return f"{match[1]}/{match[2]}"
 
 
+def default_branch(project: Project) -> str:
+    """origin's default branch (`origin/main`, `origin/master`, `origin/trunk`, ...), read from
+    origin's HEAD and set from the remote when the clone lacks it; origin/main when neither says."""
+    def head():
+        completed = run_git(project.root, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD", check=False)
+        return completed.stdout.strip() if completed.returncode == 0 else ""
+    branch = head()
+    if not branch:
+        run_git(project.root, "remote", "set-head", "origin", "--auto", check=False)
+        branch = head()
+    return branch or FALLBACK_BRANCH
+
+
 def main_commit(project: Project) -> str:
     run_git(project.root, "fetch", "--quiet", "origin")
-    return run_git(project.root, "rev-parse", f"{MAIN}^{{commit}}").stdout.strip()
+    return run_git(project.root, "rev-parse", f"{default_branch(project)}^{{commit}}").stdout.strip()
 
 
 def resolve_commit(project: Project, revision: str) -> str:
@@ -371,7 +385,7 @@ def run_release_publish(args) -> int:
             f"{project.name} declares no staging. Release it with `pakem release promote vX.Y.Z --production`"
         )
     commit = main_commit(project)
-    plan = Plan("publish", STAGING, commit, steps=[f"{MAIN} is {commit[:12]}", require_checks(project, commit)])
+    plan = Plan("publish", STAGING, commit, steps=[f"{default_branch(project)} is {commit[:12]}", require_checks(project, commit)])
     print_plan(args, project, record, plan)
     if args.plan:
         print("Plan only: nothing changed.")
@@ -414,7 +428,7 @@ def run_release_promote(args) -> int:
         steps.append(f"staging runs {commit[:12]}")
     else:
         commit = main_commit(project)
-        steps.append(f"{MAIN} is {commit[:12]} (no staging)")
+        steps.append(f"{default_branch(project)} is {commit[:12]} (no staging)")
     if tagged is not None and tagged != commit:
         raise CommandRefused(f"tag {args.version} already names {tagged[:12]}, not {commit[:12]}")
     newest = newest_version(project)

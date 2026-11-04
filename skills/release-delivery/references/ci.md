@@ -2,7 +2,7 @@
 
 Status: Active
 Applies to: every repository
-Last reviewed: 2026-11-03
+Last reviewed: 2026-11-04
 Review by: 2027-04-07
 Sources: comparison of five owner pipelines (2026-10-07); owner Working Standard Profile section 10
 
@@ -42,11 +42,12 @@ pinned versions). The deploy jobs drive the scripts in `assets/deploy/` (design 
 deviations: `assets/ci/DEPLOY_DESIGN.md`).
 
 **Where jobs run (no paid minutes unless the project or its profile approves them):** public repositories use GitHub's
-hosted runners (`runs-on: ubuntu-latest`), which are free. Private repositories use a
-self-hosted runner on a host we control (`runs-on: [self-hosted, linux, x64, pakem]`;
-setup in the deployment contracts §11 step 8), never metered hosted minutes unless the
-project approves the cost. Keep jobs cheap either way: one architecture, and cancel
-superseded runs.
+hosted runners (`runs-on: ubuntu-latest`), which are free, and never a self-hosted one. A
+private repository records its choice as `ci_runner`: GitHub's hosted runners within the
+plan's included minutes, or a self-hosted Pakem runner on a host the owner controls
+(`runs-on: pakem`; setup in the deployment contracts §11 step 8), which costs no minutes.
+Metered minutes beyond the plan need the project's or profile's approval. Keep jobs cheap
+either way: one architecture, and cancel superseded runs.
 
 **Documentation-only pull requests** (top-level `*.md`, `docs/`, `openspec/` and nothing
 else) skip the heavy jobs inside the workflow: a small `changes` job decides, the heavy jobs

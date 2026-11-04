@@ -31,12 +31,14 @@ never work around it. `pakem help` shows each area's stage.
 | Status and updates | stable | `status`, `update`, `config` |
 | Device | stable | `setup device`, `setup key` (owner), `setup check` |
 | Host | stable | `host add`, `host limit`, `setup host` (owner), `setup check --host`, `host runner` |
-| Release (services) | stable | `release publish`, `promote`, `rollback`, `history`, `status`, `host allow-device`, `host revoke-device` |
+| Release (services) | stable on GitHub | `release publish`, `promote`, `rollback`, `history`, `status`, `host allow-device`, `host revoke-device` |
 | Settings (services) | draft | `settings status`, `placement set`, `placement list`, `secret set`, `secret list` |
-| Project | experimental | `project init`, `project adopt`, `project check --gaps`, `decide` |
-| Proposals | experimental | `propose new`, `revise`, `list`, `show`, `reject` |
+| Project | experimental, GitHub only | `project init`, `project adopt`, `project check --gaps`, `decide` |
+| Proposals | experimental, GitHub only | `propose new`, `revise`, `list`, `show`, `reject` |
 
 Experimental areas: prefer `pakem` too, but check its result closely and report surprises.
+A GitLab project uses the release-delivery templates and its own pipeline until GitLab
+support exists; `pakem` refuses those commands there rather than guessing.
 
 ## 3. Status and updates
 

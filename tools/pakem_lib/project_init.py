@@ -77,8 +77,10 @@ VISIBILITIES = ("private", "public")
 ENVIRONMENT_SETS = {"production": ["production"], "staging,production": ["staging", "production"]}
 BOOTSTRAP_SUBJECT = "chore: bootstrap project"
 ADOPT_BRANCH = "chore/adopt-pakem"
-# CI jobs on private repositories run on the owner's self-hosted runner (ADR 0010). One custom
-# label: the templates pass `runner` to `runs-on` as a single string, and only that runner has it.
+# Where CI runs is the project's fact `ci_runner` (ADR 0010): the forge's hosted runners, or a
+# self-hosted Pakem runner, which only a private repository may use. One custom label: the
+# templates pass `runner` to `runs-on` as a single string, and only that runner has it.
+CI_RUNNERS = ("hosted", "self-hosted")
 SELF_HOSTED = "pakem"
 HOSTED = "ubuntu-24.04"
 PYTHON_DEV_TOOLS = ("ruff", "pyright", "pytest")
@@ -103,6 +105,8 @@ def _questions(capability_names: list[str]) -> list[Question]:
     return [
         Question("description", "One line: what does the project do, and for whom?"),
         Question("visibility", "Repository visibility", VISIBILITIES, "private"),
+        Question("ci_runner", "Where a private repository's CI runs: hosted (the forge's runners, within your "
+                 "plan's minutes) or self-hosted (a Pakem runner on your server)", CI_RUNNERS, default_ci_runner()),
         Question("kind", "Release kind: service (runs on a host), artifact (downloads), none", KINDS, "service"),
         Question("delivery", "Who releases it: us, others (a team or client), nobody", DELIVERIES, "us"),
         Question("delivery_note", "Who releases it, and where does our work end?"),
@@ -110,6 +114,11 @@ def _questions(capability_names: list[str]) -> list[Question]:
         Question("stack", "Stack", STACKS, "python"),
         Question("capabilities", f"Capabilities, comma-separated ({', '.join(capability_names)}; or none)", (), "none"),
     ]
+
+
+def default_ci_runner() -> str:
+    """Self-hosted once this device knows a host with a Pakem runner, else hosted."""
+    return "self-hosted" if any(record.runner for record in load_hosts().values()) else "hosted"
 
 
 def _ask(question: Question) -> str:
@@ -130,7 +139,16 @@ def gather_answers(args, known: dict[str, str], capability_names: list[str]) -> 
     for question in _questions(capability_names):
         if question.key == "delivery_note" and answers.get("delivery") != "others":
             continue
+        if question.key == "ci_runner" and answers.get("visibility") == "public":
+            # A public repository's pull requests could run any fork's code on a self-hosted runner.
+            if getattr(args, "ci_runner", None) == "self-hosted":
+                raise CommandRefused("a public repository's CI runs on hosted runners only: its pull requests "
+                                     "could run any fork's code on a self-hosted one")
+            answers["ci_runner"] = "hosted"
+            continue
         value = getattr(args, question.key, None) or known.get(question.key)
+        if value is None and question.key == "ci_runner" and not sys.stdin.isatty():
+            value = question.default
         if value is None and question.key == "visibility" and getattr(args, "public", False):
             value = "public"
         if value is None:
@@ -162,6 +180,7 @@ def build_facts(name: str, repository: str, answers: dict[str, str], capability_
         name=name, forge="github", repository=repository, visibility=answers["visibility"], kind=answers["kind"],
         delivery=answers["delivery"], stack=answers["stack"], environments=ENVIRONMENT_SETS[answers["environments"]],
         capabilities=sorted(capabilities), delivery_note=answers.get("delivery_note", ""),
+        ci_runner=answers["ci_runner"],
     )
 
 
@@ -220,7 +239,7 @@ DOCS_ONLY_PATTERN = "(^[^/]+\\.md$|^docs/|^openspec/)"
 
 
 def ci_text(facts: Facts) -> str:
-    runner = SELF_HOSTED if facts.visibility == "private" else HOSTED
+    runner = SELF_HOSTED if facts.self_hosted_ci else HOSTED
     directory = {"python": "python_dir", "node": "node_dir"}[facts.stack]
     lines = [
         "# CI for pull requests and pushes to main (Pakem CI templates; ADR 0010).",
@@ -402,7 +421,7 @@ def standard_files(framework: Framework, facts: Facts, description: str, client_
         files.add("CHANGELOG.md", _template(framework, "skills/project-bootstrap/assets/project/CHANGELOG.md.tmpl"))
     if not client_ci:
         files.add(".github/workflows/ci.yml", ci_text(facts))
-        if facts.visibility == "private":
+        if facts.self_hosted_ci:
             # The security job's actionlint must know the self-hosted runner's label.
             files.add(".github/actionlint.yaml", f"self-hosted-runner:\n  labels: [{SELF_HOSTED}]\n")
         for name in ci_workflows(facts):
@@ -525,7 +544,7 @@ def follow_up_actions(facts: Facts, repo: Path) -> list[str]:
     """Owner-only steps still missing; what GitHub or this device already shows is skipped."""
     actions = []
     runner_hosts = [record.name for record in load_hosts().values() if record.runner]
-    needs_runner = facts.visibility == "private" and not uses_client_ci(repo)
+    needs_runner = facts.self_hosted_ci and not uses_client_ci(repo)
     if needs_runner and not runner_registered(facts.repository):
         if runner_hosts:
             actions.append(
@@ -621,7 +640,8 @@ def interrupted_init(repo: Path) -> str | None:
 def run_project_init(args) -> int:
     framework = Framework(Path(args.root))
     if args.forge != "github":
-        raise CommandRefused("GitLab projects come with the GitLab area. Not built yet")
+        raise CommandRefused("pakem project supports GitHub only for now. A GitLab project uses the GitLab CI "
+                             "templates in skills/release-delivery/assets/ci/gitlab (see their README)")
     repo = Path(args.directory).resolve()
     resume = None
     known: dict[str, str] = {}
@@ -634,6 +654,7 @@ def run_project_init(args) -> int:
             "visibility": existing.visibility, "kind": existing.kind, "delivery": existing.delivery,
             "stack": existing.stack, "environments": ",".join(existing.environments),
             "capabilities": ",".join(existing.capabilities) or "none", "delivery_note": existing.delivery_note,
+            "ci_runner": existing.ci_runner or ("self-hosted" if existing.self_hosted_ci else "hosted"),
         }
     name = args.name or (existing.name if resume else repo.name)
     if not NAME.match(name):
@@ -852,6 +873,9 @@ def github_visibility(args, repository: str, repo: Path) -> str:
 
 
 def run_project_adopt(args) -> int:
+    if args.forge != "github":
+        raise CommandRefused("pakem project supports GitHub only for now. A GitLab project uses the GitLab CI "
+                             "templates in skills/release-delivery/assets/ci/gitlab (see their README)")
     framework = Framework(Path(args.root))
     repo = Path(args.directory).resolve()
     if not is_git_work_tree(repo):
@@ -864,6 +888,7 @@ def run_project_adopt(args) -> int:
             "visibility": existing.visibility, "kind": existing.kind, "delivery": existing.delivery,
             "stack": existing.stack, "environments": ",".join(existing.environments),
             "capabilities": ",".join(existing.capabilities) or "none", "delivery_note": existing.delivery_note,
+            "ci_runner": existing.ci_runner or ("self-hosted" if existing.self_hosted_ci else "hosted"),
         })
         repository = repository or existing.repository
     if args.repository:

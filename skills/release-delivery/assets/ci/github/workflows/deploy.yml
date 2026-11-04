@@ -39,9 +39,9 @@ on:
         type: string
         default: ""
       tailscale:
-        description: Join the tailnet with the TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET OAuth client.
+        description: Join the tailnet with the TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET OAuth client (when the host is reachable only there).
         type: boolean
-        default: true
+        default: false
       tailscale_tags:
         description: Tags the OAuth client assigns to the runner node.
         type: string
