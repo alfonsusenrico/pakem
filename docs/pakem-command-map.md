@@ -431,6 +431,10 @@ place and the owner's merge is the acceptance).
   `reject` with the reason). After a merge the agent tells the owner `pakem update` is
   due and runs it only on the owner's instruction or with `update = "apply"` (ADR 0011
   decision 7).
+- **Where it goes:** the framework checkout's `origin` repository. When the gh login may
+  not push there (Pakem installed from upstream), `new` forks it to the login once (the
+  `pakem-fork` remote), pushes the branch to the fork, and opens the pull request from it;
+  `revise` pushes to the same place.
 - **`pakem propose new --title --rule --case --why-general --home
   kernel|skill|reference|template|tooling|adr --change-file DIFF [--evidence ...]
   [--replaces] [--enforcement] [--project] [--type] [--plan] [--yes] [--new-subject]`:**

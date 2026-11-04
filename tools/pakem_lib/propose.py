@@ -18,6 +18,10 @@ decision 2026-10-23: one place to review the reasoning and the change together):
 - The owner's merge accepts it; then `pakem update`, on the owner's instruction, loads it
   for every agent (ADR 0007 as amended 2026-10-22). Version releases still batch the CHANGELOG.
 
+A login that may push to the framework repository pushes the proposal's branch there. Any
+other login (someone who installed Pakem from upstream) pushes it to its own fork, made once,
+and opens the pull request from the fork, as GitHub contributions work.
+
 The framework repository is public, so a proposal's text and change are scanned for private
 names, the owner's hosts, addresses, and home paths first, and the text is shown before
 anything is pushed.
@@ -49,6 +53,8 @@ TEST_COMMAND = (sys.executable, "-m", "unittest", "discover", "-s", "tests")
 SLUG_WORDS = 6
 COMMIT_TYPES = ("docs", "feat", "fix", "refactor", "ci", "chore")
 SUBJECT_LIMIT = 72
+# The remote a proposal branch is pushed to when the login may not push to the framework's own.
+FORK_REMOTE = "pakem-fork"
 
 
 @dataclass
@@ -113,6 +119,38 @@ def framework_repository(framework: Framework) -> str:
     if not match:
         raise PakemError(f"the framework checkout's origin is not on GitHub ({remote or 'none'})")
     return f"{match[1]}/{match[2]}"
+
+
+@dataclass(frozen=True)
+class PushTarget:
+    """Where a proposal branch goes: `origin`, or this login's fork (its owner heads the PR)."""
+
+    remote: str
+    fork_owner: str | None = None
+
+    def head(self, branch: str) -> str:
+        return f"{self.fork_owner}:{branch}" if self.fork_owner else branch
+
+    def describe(self, repository: str) -> str:
+        if self.fork_owner:
+            return f"your fork {self.fork_owner}/{repository.split('/', 1)[1]}, with the pull request on {repository}"
+        return f"the public repository {repository}"
+
+
+def push_target(framework: Framework, repository: str) -> PushTarget:
+    """The framework repository when this gh login may push there, else the login's fork of it,
+    created once and kept as the `pakem-fork` remote of the framework checkout."""
+    if gh("api", f"repos/{repository}", "--jq", ".permissions.push").stdout.strip() == "true":
+        return PushTarget("origin")
+    login = gh("api", "user", "--jq", ".login").stdout.strip()
+    gh("repo", "fork", repository, "--clone=false", "--remote=false")
+    url = f"https://github.com/{login}/{repository.split('/', 1)[1]}.git"
+    current = run_git(framework.root, "remote", "get-url", FORK_REMOTE, check=False)
+    if current.returncode != 0:
+        run_git(framework.root, "remote", "add", FORK_REMOTE, url)
+    elif current.stdout.strip() != url:
+        run_git(framework.root, "remote", "set-url", FORK_REMOTE, url)
+    return PushTarget(FORK_REMOTE, login)
 
 
 def gh(*arguments: str, data: str | None = None) -> subprocess.CompletedProcess:
@@ -252,16 +290,17 @@ def run_propose_new(args) -> int:
         print(f"Plan only: the change applies to main. Branch {proposal.branch} and the pull request were not made.")
         return EXIT_DONE
     print(proposal.body())
-    print(f"Pushes branch {proposal.branch} to the public repository {repository} and opens this pull request.")
+    target = push_target(framework, repository)
+    print(f"Pushes branch {proposal.branch} to {target.describe(repository)} and opens this pull request.")
     confirm_steps(args.yes, "pakem propose new")
     with Worktree(framework, f"proposal-{proposal.slug}") as worktree:
         run_git(framework.root, "worktree", "add", "--quiet", "-B", proposal.branch, str(worktree), "origin/main")
         apply_change(worktree, proposal)
         check_change(worktree)
         run_git(worktree, "commit", "--quiet", "-m", proposal.subject())
-        run_git(worktree, "push", "--quiet", "-u", "origin", proposal.branch)
+        run_git(worktree, "push", "--quiet", "-u", target.remote, proposal.branch)
         ensure_labels(repository)
-        created = gh("pr", "create", "--repo", repository, "--base", "main", "--head", proposal.branch,
+        created = gh("pr", "create", "--repo", repository, "--base", "main", "--head", target.head(proposal.branch),
                      "--label", LABEL, "--title", proposal.subject(), "--body-file", "-",
                      data=proposal.body())
     print(f"Proposal for the owner's review (merge to accept): {created.stdout.strip()}")
@@ -288,12 +327,15 @@ def run_propose_revise(args) -> int:
     proposal = proposal_from_args(args)
     refuse_private_text(proposal)
     print(proposal.body())
-    print(f"Pushes a new commit to {current['headRefName']} on the public repository {repository}.")
+    target = push_target(framework, repository)
+    print(f"Pushes a new commit to {current['headRefName']} on {target.describe(repository)}.")
     confirm_steps(args.yes, "pakem propose revise")
     branch = current["headRefName"]
     run_git(framework.root, "fetch", "--quiet", "origin")
+    if target.remote != "origin":
+        run_git(framework.root, "fetch", "--quiet", target.remote)
     with Worktree(framework, f"proposal-{args.number}") as worktree:
-        run_git(framework.root, "worktree", "add", "--quiet", "-B", branch, str(worktree), f"origin/{branch}")
+        run_git(framework.root, "worktree", "add", "--quiet", "-B", branch, str(worktree), f"{target.remote}/{branch}")
         run_git(worktree, "merge", "--quiet", "--no-edit", "origin/main")
         earlier = run_git(worktree, "diff", "origin/main", "HEAD").stdout
         if earlier.strip():
@@ -304,7 +346,7 @@ def run_propose_revise(args) -> int:
         apply_change(worktree, proposal)
         check_change(worktree)
         run_git(worktree, "commit", "--quiet", "-m", proposal.subject("revise "))
-        run_git(worktree, "push", "--quiet", "origin", branch)
+        run_git(worktree, "push", "--quiet", target.remote, branch)
     gh("pr", "edit", str(args.number), "--repo", repository, "--title", proposal.subject(),
        "--body-file", "-", data=proposal.body())
     gh("pr", "comment", str(args.number), "--repo", repository, "--body", "Revised after the owner's review.")
