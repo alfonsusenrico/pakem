@@ -1,0 +1,6 @@
+# Example profile for Pakem: a small team's projects (contract: tools/pakem_lib/profiles.py).
+# Copy this directory into your own repository and change every rule to your context.
+name = "example"
+version = "1.0.0"
+requires_framework = ">=2.0,<4.0"
+digest = "digest.md"

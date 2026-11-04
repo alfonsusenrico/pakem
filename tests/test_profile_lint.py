@@ -6,7 +6,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from support import FIXTURE_REFERENCE, IsolatedTestCase, write
+from support import FIXTURE_REFERENCE, REPO_ROOT, IsolatedTestCase, write
 
 PROFILE_SKILL = textwrap.dedent(
     """\
@@ -303,3 +303,14 @@ class DoctorProfileTests(ProfileLintTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShippedProfileTests(IsolatedTestCase):
+    def test_the_example_profile_is_a_clean_starting_point(self) -> None:
+        example = REPO_ROOT / "profiles" / "example"
+        completed = self.pakem("lint", "--profile", str(example), root=REPO_ROOT)
+        self.assert_ok(completed)
+        self.assertIn("0 error(s)", completed.stdout)
+        digest = (example / "digest.md").read_text()
+        self.assertIn("`default:approved-tools`", digest, "it shows how a profile defines a label")
+        self.assertTrue((REPO_ROOT / "docs" / "profiles.md").is_file(), "the guide it points to exists")

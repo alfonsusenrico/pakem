@@ -270,7 +270,7 @@ def _check_profile_pinned(document, report: Report) -> None:
     if not any(block.kind == PROFILE_KIND for block in document.blocks):
         report.warn(
             "AGENTS.md pins no profile. Pin the project's context profile with "
-            "`pakem project sync <repo> --profile <dir> --apply`"
+            "`pakem project sync <repo> --profile <dir> --apply` (write one from docs/profiles.md)"
         )
 
 
