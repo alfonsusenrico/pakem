@@ -20,8 +20,8 @@ Sources: owner baseline (2026-09); owner Working Standard Profile
 
 ## Tests and evidence
 - Regression test for each fixed defect (fails before, passes after).
-- Database code tested against real Postgres; database tests did not skip.
-- UI changes: widths, themes, keyboard, 200% text, contrast evidence.
+- Database code tested against a real instance of the project's database; database tests did not skip.
+- UI changes: widths, each theme the product has, keyboard, 200% text, contrast evidence.
 - LLM changes: evals re-run and compared.
 
 ## Maintainability
@@ -32,6 +32,7 @@ Sources: owner baseline (2026-09); owner Working Standard Profile
 - Formatter-clean; no unrelated formatting churn.
 
 ## Delivery
-- Conventional subject-only commits; topic branch; no AI attribution.
+- Commits follow the project's format: Conventional, subject-only, no AI attribution unless it
+  overrides `default:commits`. Topic branch.
 - `AGENTS.md` capabilities, docs, and runbooks updated when behaviour or operations changed.
 - `PROJECT_STATE.md` reflects the new state.
