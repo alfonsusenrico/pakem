@@ -15,7 +15,7 @@ it is installed into each host by `tools/pakem install`, not loaded from here.
 - Tests: `python3 -m unittest discover -s tests -v`
 - Lint: `tools/pakem lint` (must report 0 errors before any commit)
 - Install preview: `tools/pakem install` (dry run; `--apply` only with owner approval)
-- CI: `.github/workflows/ci.yml` runs lint, with the in-repo profiles, and the unit tests
+- CI: `.github/workflows/ci.yml` runs lint, with `profiles/example`, and the unit tests
   on Python 3.11 and 3.14 for every pull request and `main`, on GitHub-hosted runners;
   sandbox tests stay opt-in.
 - Python 3.11+ standard library only for `tools/`, `enforcement/`, skill scripts.
