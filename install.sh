@@ -4,15 +4,16 @@
 #   curl -fsSL https://raw.githubusercontent.com/alfonsusenrico/pakem/main/install.sh | sh
 #
 # Downloads a Pakem release into ~/.local/share/pakem/source, adds the `pakem` and `pk`
-# commands to ~/.local/bin, then shows the plan for installing the kernel and skills
-# into your coding agents and asks before applying it. It never uses sudo and changes
-# nothing outside your home directory.
+# commands to ~/.local/bin, then hands over to `pakem setup`, which asks about your agents,
+# profiles, and device, shows the plan, and asks before applying it. Run it again to
+# reconfigure: every question offers your current answer. It never uses sudo itself.
 #
 # Options (after `sh -s --` when piped):
 #   --dry-run        show what would happen and change nothing
-#   --yes            apply the agent install without asking
-#   --no-agents      install the commands only
+#   --yes            take every default and apply the plan without asking
+#   --no-agents      install the commands only (run `pakem setup` later)
 #   --version vX.Y.Z install that release instead of the latest
+#   --source DIR     use an existing Pakem checkout (for example one that follows main)
 # Environment: PAKEM_VERSION (same as --version), PAKEM_HOME (default ~/.local/share/pakem),
 # PAKEM_BIN (default ~/.local/bin), PAKEM_REPO (default the GitHub repository).
 set -eu
@@ -21,6 +22,7 @@ REPO="${PAKEM_REPO:-https://github.com/alfonsusenrico/pakem.git}"
 HOME_DIR="${PAKEM_HOME:-$HOME/.local/share/pakem}"
 BIN_DIR="${PAKEM_BIN:-$HOME/.local/bin}"
 SOURCE="$HOME_DIR/source"
+OWN_SOURCE=0
 VERSION="${PAKEM_VERSION:-}"
 DRY_RUN=0
 ASSUME_YES=0
@@ -38,6 +40,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY_RUN=1 ;;
     --yes) ASSUME_YES=1 ;;
     --no-agents) AGENTS=0 ;;
+    --source) shift; [ $# -gt 0 ] || fail "--source needs a directory"; SOURCE="$1"; OWN_SOURCE=1 ;;
     --version) shift; [ $# -gt 0 ] || fail "--version needs a value"; VERSION="$1" ;;
     -h|--help) sed -n '2,19p' "$0" 2>/dev/null || true; exit 0 ;;
     *) fail "unknown option: $1" ;;
@@ -76,33 +79,41 @@ if [ -n "$missing" ]; then
 fi
 say "  git: $(git --version | cut -d' ' -f3)   python: $("$PYTHON" -c 'import platform; print(platform.python_version())')"
 
-step "Choosing the release"
-if [ -z "$VERSION" ]; then
-  VERSION="$(git ls-remote --tags --refs "$REPO" 'v*' 2>/dev/null |
-    "$PYTHON" -c '
+if [ "$OWN_SOURCE" -eq 1 ]; then
+  step "Using the checkout $SOURCE"
+  [ -f "$SOURCE/tools/pakem" ] || fail "$SOURCE is not a Pakem checkout (no tools/pakem)"
+elif [ -d "$SOURCE/.git" ] && [ "$(git -C "$SOURCE" symbolic-ref --quiet --short HEAD 2>/dev/null)" = main ]; then
+  # A checkout that follows main (`pakem setup --follow main`) keeps following it.
+  step "Keeping $SOURCE on main (pakem update moves it)"
+else
+  step "Choosing the release"
+  if [ -z "$VERSION" ]; then
+    VERSION="$(git ls-remote --tags --refs "$REPO" 'v*' 2>/dev/null |
+      "$PYTHON" -c '
 import re, sys
 tags = [line.strip().rsplit("/", 1)[-1] for line in sys.stdin if line.strip()]
 releases = [t for t in tags if re.fullmatch(r"v\d+\.\d+\.\d+", t)]
 releases.sort(key=lambda t: tuple(int(n) for n in t[1:].split(".")))
 print(releases[-1] if releases else "")')"
-  [ -n "$VERSION" ] || fail "no release found at $REPO"
-fi
-case "$VERSION" in
-  v[0-9]*.[0-9]*.[0-9]*) ;;
-  *) fail "version must look like v2.0.0, not $VERSION" ;;
-esac
-say "  release: $VERSION"
+    [ -n "$VERSION" ] || fail "no release found at $REPO"
+  fi
+  case "$VERSION" in
+    v[0-9]*.[0-9]*.[0-9]*) ;;
+    *) fail "version must look like v2.0.0, not $VERSION" ;;
+  esac
+  say "  release: $VERSION"
 
-step "Downloading Pakem $VERSION"
-if [ -d "$SOURCE/.git" ]; then
-  say "  updating $SOURCE"
-  run git -C "$SOURCE" fetch --quiet --tags origin
-else
-  [ ! -e "$SOURCE" ] || fail "$SOURCE exists and is not a Pakem checkout. Move it away first"
-  run mkdir -p "$HOME_DIR"
-  run git clone --quiet "$REPO" "$SOURCE"
+  step "Downloading Pakem $VERSION"
+  if [ -d "$SOURCE/.git" ]; then
+    say "  updating $SOURCE"
+    run git -C "$SOURCE" fetch --quiet --tags origin
+  else
+    [ ! -e "$SOURCE" ] || fail "$SOURCE exists and is not a Pakem checkout. Move it away first"
+    run mkdir -p "$HOME_DIR"
+    run git clone --quiet "$REPO" "$SOURCE"
+  fi
+  run git -C "$SOURCE" -c advice.detachedHead=false checkout --quiet "$VERSION"
 fi
-run git -C "$SOURCE" -c advice.detachedHead=false checkout --quiet "$VERSION"
 
 step "Adding the pakem and pk commands"
 run mkdir -p "$BIN_DIR"
@@ -126,27 +137,20 @@ case ":$PATH:" in
 esac
 
 if [ "$AGENTS" -eq 0 ]; then
-  step "Done. Agent install skipped (--no-agents). Run: pakem install"
+  step "Done. Setup skipped (--no-agents). Run: pakem setup"
   exit 0
 fi
 
-step "Installing into your coding agents"
+step "Setting up this device"
 if [ "$DRY_RUN" -eq 1 ]; then
-  say "  would show the plan with: pakem install, then apply it with: pakem install --apply"
+  say "  would run: pakem setup"
   exit 0
 fi
-"$PYTHON" "$SOURCE/tools/pakem" install
-answer=""
 if [ "$ASSUME_YES" -eq 1 ]; then
-  answer=y
-elif [ -r /dev/tty ]; then
-  printf '\nApply this plan? [y/N] '
-  read -r answer < /dev/tty || answer=""
+  "$PYTHON" "$SOURCE/tools/pakem" setup --yes
+elif (exec < /dev/tty) 2>/dev/null; then
+  # Piped from curl, standard input is the script: the questions read the terminal.
+  "$PYTHON" "$SOURCE/tools/pakem" setup < /dev/tty
+else
+  step "Commands installed. Without a terminal, finish with: pakem setup --yes (or run pakem setup in a terminal)"
 fi
-case "$answer" in
-  y|Y|yes|YES)
-    "$PYTHON" "$SOURCE/tools/pakem" install --apply
-    step "Done. Open your coding agent and say: \"Set up this project with Pakem.\"" ;;
-  *)
-    step "Commands installed, agents unchanged. Apply later with: pakem install --apply" ;;
-esac

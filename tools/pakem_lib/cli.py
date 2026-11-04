@@ -19,6 +19,8 @@ from .enforce import ENFORCE_HOSTS, run_enforce
 from .evals import HOSTS as EVAL_HOSTS
 from .evals import MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS, run_eval
 from .githooks import run_hooks_install
+from .guided import add_arguments as add_guided_arguments
+from .guided import run_guided
 from .host import run_host_add, run_host_check, run_host_limit, run_host_runner, run_setup_host
 from .installer import run_install, run_uninstall
 from .legacy_install import migrate
@@ -194,8 +196,11 @@ def build_parser() -> argparse.ArgumentParser:
     update.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     update.add_argument("--json", action="store_true", help="machine-readable result")
 
-    setup = commands.add_parser("setup", help="prepare this device (installs only after one confirmation)")
-    setup_commands = setup.add_subparsers(dest="setup_command", required=True)
+    setup = commands.add_parser(
+        "setup", help="set up or reconfigure this device, guided (the installer ends here); or one part of it"
+    )
+    add_guided_arguments(setup)
+    setup_commands = setup.add_subparsers(dest="setup_command")
     setup_device = setup_commands.add_parser(
         "device", help="prepare everything a device can need in one go (commands also prepare their own needs)"
     )
@@ -575,6 +580,8 @@ def dispatch(args: argparse.Namespace) -> int:
         return run_update(args)
     if args.command == "config":
         return run_config(args)
+    if args.command == "setup" and args.setup_command is None:
+        return run_guided(args)
     if args.command == "setup" and args.setup_command == "device":
         return run_setup_device(args)
     if args.command == "setup" and args.setup_command == "key":

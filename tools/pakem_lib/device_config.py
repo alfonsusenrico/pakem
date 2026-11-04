@@ -66,6 +66,17 @@ def _render(settings: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def save_setting(key: str, value: str) -> None:
+    allowed, _ = SETTINGS[key]
+    if value not in allowed:
+        raise PakemError(f"{key} must be one of {', '.join(allowed)}, not {value!r}")
+    settings = load_config()
+    if settings.get(key) == value:
+        return
+    settings[key] = value
+    write_text_atomically(config_path(), _render(settings))
+
+
 def _require_key(key: str) -> None:
     if key not in SETTINGS:
         raise PakemError(f"unknown setting {key!r}; known: {', '.join(sorted(SETTINGS))}")
@@ -87,8 +98,6 @@ def run_config(args) -> int:
     allowed, _ = SETTINGS[args.key]
     if args.value not in allowed:
         raise PakemError(f"{args.key} must be one of {', '.join(allowed)}, not {args.value!r}")
-    settings = load_config()
-    settings[args.key] = args.value
-    write_text_atomically(config_path(), _render(settings))
+    save_setting(args.key, args.value)
     print(f"{args.key} = {args.value}  ({display_path(config_path())})")
     return 0
