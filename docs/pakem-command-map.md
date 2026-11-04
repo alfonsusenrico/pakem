@@ -118,6 +118,16 @@ Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requ
   with the command to run again, and the rest completes), and ends with
   `pakem setup check`. Without a terminal it needs `--yes`, which takes every default and
   the flags as the answers.
+- `pakem migrate export [--to FILE] [--agent-sessions] [--plan]` writes one private bundle
+  (mode 0600) of what git does not carry: the device settings in `~/.config/pakem` (never
+  `device.toml`; servers without the old device's allowed projects), the install choices,
+  each known project's path, remote, and branch with its `PROJECT_STATE.md` and
+  `JOURNAL.md`, the profile repositories, the documents store, and with `--agent-sessions`
+  each project's Claude Code folder. Paths under the home folder travel as `~/...`. No
+  secret, key, or `.env` file goes in. `pakem migrate import FILE [--plan] [--yes]` clones
+  what is missing to the same places, puts back what the device lacks, keeps state files
+  untracked, and overwrites nothing. `pakem setup --import FILE`, or the setup's first
+  question on a fresh device, imports before anything else is asked.
 - `pakem setup device [--plan] [--yes] [--json]`: prepares at once every need of the device's
   settings (`forges`, `containers`), for a fresh machine.
 - `pakem setup check [--json]`: lists every need without changing anything; exit `0` all
