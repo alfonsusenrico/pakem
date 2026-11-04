@@ -47,8 +47,8 @@ same way.
   your word, nothing the agent did not create is deleted without asking, and an agent
   never merges its own work.
 - **No spending without approval.** Agents use no paid service, plan, or metered usage
-  that the project or its profile has not approved. The personal profile prefers free
-  options and proposes a paid one with its cost.
+  that the project or its profile has not approved. A profile can go further, for example
+  preferring free options and proposing a paid one with its cost.
 - **Skills for real work.** Debugging, planning, backend, UI, GenAI, releases, reviews,
   handoffs, sensitive operations. Each is loaded only when the task needs it.
 - **Plans you agree on first.** Specs are written with you, approved in the session, and
@@ -147,8 +147,9 @@ flowchart LR
 - **Adaptive edges.** What only a project can decide (how it is deployed, what "healthy"
   means, which services it may pay for) is asked once, recorded in the project, and
   never guessed.
-- **Profiles** add rules for a company or for client work on top of your own, without
-  changing the core.
+- **Profiles** add the rules of one context (your own projects, a company, client work) on
+  top of the core, without changing it. Write yours from
+  [the profile guide](docs/profiles.md) and [`profiles/example`](profiles/example).
 - **Overrides** let a project change a labelled default, with its reason written down.
   Floors cannot be overridden.
 
