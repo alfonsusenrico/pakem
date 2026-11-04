@@ -42,8 +42,10 @@ as one session's knowledge (2026-10-31).
      -d cwd` for session folders (`-a` keeps it under a second), `lsof -iTCP -sTCP:LISTEN
      -P -n` for ports. Linux and WSL: `/proc` and `/sys` (`meminfo`, `loadavg`,
      `power_supply`, `thermal`, `<pid>/cwd`, `net/tcp`), no external tools.
-   - Urgency from free space on the data volume: critical below 10% or 20 GiB, healthy
-     above 15% and 30 GiB, watch in between (configurable).
+   - Urgency from free space on the data volume: critical below 10%, healthy above 15%,
+     watch in between (configurable). *Amended 2026-11-04 (owner):* the 20 GiB and 30 GiB
+     floors, sized to one laptop, are off by default (`critical_free_gib`,
+     `healthy_free_gib` in `health.toml`), so a small disk is not always critical.
    - The module never reads or names secret files: a shell one-liner mentioning `.env`
      is blocked by the guard, and the check has no reason to look at them.
 3. **Three tiers**, set by the tool only where the rule is unambiguous:
