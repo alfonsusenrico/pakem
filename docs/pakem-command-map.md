@@ -77,7 +77,7 @@ Stage: `stable` (built 2026-10-22; proven by Proof 1, 2026-10-23).
 - A host that offers no session hook gets a kernel line asking agents to run
   `pakem status` at session start; every supported host has one today.
 
-### 1. Device: `pakem setup device`, `pakem setup key`, `pakem setup check`
+### 1. Device: `pakem setup`, `pakem setup device`, `pakem setup key`, `pakem setup check`
 
 Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requirements and key passphrase
 2026-10-22).
@@ -104,6 +104,17 @@ Stage: `stable` (proven by Proof 1, 2026-10-23; built 2026-10-22; on-demand requ
   system: the macOS Keychain unlocks it without prompts (with Apple's `ssh-add`); Linux
   and WSL need `ssh-add` once per login or boot. `pakem setup key --no-passphrase` is
   only for a device nobody can unlock (a headless machine), recorded in `device.toml`.
+- `pakem setup` (guided; the one-line installer ends here, and running either again
+  reconfigures): asks, with the device's current answer as each default, what updates
+  follow (`--follow releases|main`), which agents to set up (`--hosts`), which profiles
+  (`--profile DIR_OR_GIT_URL`, repeatable; git repositories are cloned under
+  `--profiles-dir`, default `~/.local/share/pakem/profiles`, and every folder in them with a
+  `profile.toml` is a profile; or a new profile started from `profiles/example`), and the
+  device settings (`--forges`, `--containers`, `--update`). It shows the plan, asks once,
+  then installs the kernel and skills, prepares the tools, forge logins, and device key
+  (`--no-tools` skips them), turns on each agent's guardrails (`--no-guardrails` skips
+  them), and ends with `pakem setup check`. Without a terminal it needs `--yes`, which
+  takes every default and the flags as the answers.
 - `pakem setup device [--plan] [--yes] [--json]`: prepares at once every need of the device's
   settings (`forges`, `containers`), for a fresh machine.
 - `pakem setup check [--json]`: lists every need without changing anything; exit `0` all

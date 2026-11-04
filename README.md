@@ -75,18 +75,35 @@ same way.
 curl -fsSL https://raw.githubusercontent.com/alfonsusenrico/pakem/main/install.sh | sh
 ```
 
-The installer:
+Install your coding agents and your editor first; Pakem sets up the agents it finds. You
+need `git` and Python 3.11 or newer, and the installer says how to get them if missing.
 
-1. checks for `git` and Python 3.11 or newer, and tells you how to get them if missing;
-2. downloads the latest Pakem release into `~/.local/share/pakem/source`;
-3. adds the `pakem` command (and its short alias `pk`) to `~/.local/bin`;
-4. installs the kernel and skills into every coding agent it finds, after showing you
-   the plan and asking first.
+The installer downloads the latest release into `~/.local/share/pakem/source`, adds the
+`pakem` command (and its short alias `pk`) to `~/.local/bin`, and then guides you through
+`pakem setup`. It asks only what it cannot find out, offers a default for each answer,
+shows the whole plan, and changes nothing until you say yes:
+
+1. **Updates:** follow Pakem's releases (recommended) or its `main` branch.
+2. **Agents:** the coding agents it found (Claude Code, Codex, Antigravity).
+3. **Profiles:** git repositories or folders of your profiles, cloned once; or a new one
+   started from the example ([writing a profile](docs/profiles.md)). Skip it to start
+   without one.
+4. **Device:** the forges you use (GitHub, GitLab, or both), whether this device runs
+   containers, and whether agents may update Pakem themselves.
+5. **Install** the kernel and skills into those agents, with your profiles.
+6. **Tools and logins:** installs what is missing (Homebrew on macOS, apt on Linux), signs
+   you in to your forges in your terminal, and makes this device's own release key.
+7. **Guardrails:** each agent's hooks that block risky commands and start every session
+   with Pakem's status.
+
+**To change anything later, run the same one-liner again** (or `pakem setup`): every
+question offers your current answer, so you change only what you need.
 
 Prefer to read it first? [`install.sh`](install.sh) is short, or run it with
-`sh -s -- --dry-run`. Pin a version with `PAKEM_VERSION=v2.0.0`, or install your own fork
-with `PAKEM_REPO=<its git URL>`. Agents you add later get Pakem with
-`pakem install --hosts <id> --apply` (ids in `hosts/targets.toml`).
+`sh -s -- --dry-run`. Pin a version with `PAKEM_VERSION=v2.0.0`, install your own fork with
+`PAKEM_REPO=<its git URL>`, or use a checkout you already have with `sh -s -- --source DIR`.
+Without a terminal (an agent or a script), `sh -s -- --yes` takes every default, and
+`pakem setup --yes --profile <dir or git URL> --hosts claude` sets the answers as flags.
 
 To remove Pakem: `pakem uninstall --apply` (restores your agents' files), then delete
 `~/.local/share/pakem` and the two commands in `~/.local/bin`.
@@ -106,6 +123,7 @@ acting, and take `--plan` to preview and `--yes` to skip the question.
 |---|---|
 | `pakem status` | Whether this device runs the latest merged Pakem, and whether this project's pins match |
 | `pakem update` | Install the latest merged Pakem and list the files agents must re-read |
+| `pakem setup` | Set up or reconfigure this device, guided (the installer ends here) |
 | `pakem setup device` | Prepare a fresh machine in one go; other commands prepare what they need when they run (`setup key` makes the device key, `setup check` only lists) |
 | `pakem setup host` | Prepare a server from your terminal: `pakem setup host <name>` once an agent recorded it with `pakem host add` (or run it bare and answer its questions). Installs the release engine, this device's key, and permission to release its projects |
 | `pakem host runner` | Register a private repository with a server's CI runner |
