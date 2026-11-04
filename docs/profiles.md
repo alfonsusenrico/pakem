@@ -6,9 +6,8 @@ rules on top of the core and never weakens a floor (kernel section 2). Each proj
 one context profile, plus any organization or client profile, in its `AGENTS.md`.
 
 Start from [`profiles/example`](../profiles/example), a neutral profile for a small team.
-`profiles/personal` and `profiles/freelance` are the maintainer's own. Read them as
-examples, and don't pin them for your own work: they name the maintainer's gateway,
-runner, and email.
+It is the only profile in this repository: the maintainer's own live in a private
+repository, as yours should when they name your hosts, services, or people.
 
 ## What belongs in a profile
 

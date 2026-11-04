@@ -26,6 +26,12 @@ Amended by ADR 0012: the core also stays free of the owner's personal preference
 kernel rule must hold in personal, work, and client repositories alike, and
 `profiles/personal` splits into `personal` and `freelance`.
 
+Amended 2026-11-04 (owner decision): the `personal` and `freelance` profiles moved, with
+their history, to the owner's own private repository, as this ADR first intended for
+every profile. They name the owner's gateway, runner, and identity, which a public
+framework other people install should not carry. This repository keeps only
+`profiles/example`, a neutral starting point for anyone's profile (`docs/profiles.md`).
+
 ## Consequences
 
 The core can follow the owner across employers and clients. Each profile needs its
