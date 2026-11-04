@@ -127,8 +127,8 @@ gathering be target-oriented, with a firm finish, so agents do not interview in 
   instead of describing manual steps.
 - `AGENTS.md` is written when onboarding is settled and kept current in the same change
   that alters it (kernel section 7); `pakem project check` flags what it can verify.
-- Proof: once setup, init and release are stable, llm-gateway and personal-agent are
-  revised to the standard using only `pakem`; then portfolio and cash-flow-tracker. A step
+- Proof: once setup, init and release are stable, two of the owner's services are
+  revised to the standard using only `pakem`; then two more. A step
   that needs a manual command is a gap in `pakem`, not in the project.
 - Release kinds: deployed services, distributed artifacts (executables), and projects
   with no release share checks, versions and tags; only delivery differs.

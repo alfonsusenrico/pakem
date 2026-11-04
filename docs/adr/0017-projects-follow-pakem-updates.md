@@ -14,7 +14,7 @@ changes since 2.2.0 on 2026-11-03). So the owner wrote handoffs by hand after ea
 and projects drifted.
 
 On 2026-11-03 a review of every project found it: no personal project pinned a profile,
-two still carried the retired `default:no-billed`, brand-studio ran the previous
+two still carried the retired `default:no-billed`, one ran the previous
 `security.yml`, and three projects held older copies of `deploy/af` scripts. Thirteen
 handoffs were written by hand for one round of CI changes. The owner asked that agents
 learn of updates, and what to do after them, without that.

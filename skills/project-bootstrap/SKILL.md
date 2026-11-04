@@ -22,10 +22,9 @@ capabilities, and stack. Record the decision in `research/notes/`.
    [gitignore snippet](assets/project/gitignore.snippet)); follow
    [git conventions](references/git.md).
 2. **Private artifacts**: add `PROJECT_STATE.md` and `JOURNAL.md` to
-   `.git/info/exclude`. For client repositories also exclude `AGENTS.md`,
-   `openspec/`, and `research/` (or keep them in a private remote) unless the client
-   buys the process; for own and organization repositories commit `AGENTS.md` and
-   `openspec/`.
+   `.git/info/exclude`. Commit `AGENTS.md` and `openspec/` unless the project's profile
+   keeps the agent's working files out of the repository (as a client engagement may);
+   then exclude them and `research/` too, or keep them in a private remote.
 3. **AGENTS.md** from the [template](assets/project/AGENTS.md.tmpl): purpose,
    `Capabilities:` (see section 3), commands, architecture map, project rules,
    design surface, overrides, references. Keep project content under 8,000

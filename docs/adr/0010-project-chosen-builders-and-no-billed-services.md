@@ -28,7 +28,7 @@ The owner's response set two requirements:
 
 The owner also wants checks on every push, merge request, and tag before any deployment,
 as the work GitLab pipelines run them. Both existing personal pipelines that keep this
-(cash-flow-tracker, portfolio) use their own Actions scripts on hosted runners: free on a
+(two of the owner's projects) use their own Actions scripts on hosted runners: free on a
 public repository, metered on a private one.
 
 What ADR 0009 got right stays: one release engine on every host, signed release records,

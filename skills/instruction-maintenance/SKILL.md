@@ -26,10 +26,11 @@ and backed by mechanical checks where possible.
 **One source of knowledge.** Every agent on every device reads the same framework,
 installed by `pakem install` and pinned by each project; that is what keeps agents and
 projects consistent. When the owner decides something that applies beyond one session,
-write it into the framework (kernel, skill, or ADR) in the same piece of work, and into
-the project's `AGENTS.md` when it is project-specific. An agent's own memory may keep a
-reminder, never the rule itself. Small drift between agents is acceptable; a
-contradiction is a defect to fix in the framework.
+write it, in the same piece of work, where it holds: the project's `AGENTS.md` for one
+project, the owner's profile for every project in one context, and the framework itself
+(kernel, skill, or ADR, through `pakem propose`) only when it holds for everyone who uses
+Pakem. An agent's own memory may keep a reminder, never the rule itself. Small drift
+between agents is acceptable; a contradiction is a defect to fix where the rule lives.
 
 Never put repository overviews or directory dumps in instruction files; agents can
 read the tree. Never restate the kernel or a skill in a project file.
@@ -82,7 +83,8 @@ adding or recommending skills, plugins, or tools.
 
 ## 7. Changing the framework itself
 
-The framework is stable: change it only for a problem a real project hit, through an
+Follow the framework repository's own `AGENTS.md` (upstream's, or your fork's). Upstream,
+the framework is stable: change it only for a problem a real project hit, through an
 accepted `pakem propose` proposal (its own pull request), with ADRs only for real
 trade-offs. The `pakem` tool releases whenever an area is proven; kernel and skill text
 waits for the next release, batched at most once a month. Each change is a fragment in

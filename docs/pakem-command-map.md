@@ -540,8 +540,8 @@ asked one by one.
 1. `pakem setup device`, then `pakem setup host` (folding in `af_bootstrap.sh`), then
    `pakem release` for services, then `pakem project init` and `pakem project adopt` for GitHub
    and services, with decisions. `pakem status` and `pakem update` come first.
-2. **Proof 1:** adopt llm-gateway and personal-agent with `pakem project adopt` and
+2. **Proof 1:** adopt two existing services with `pakem project adopt` and
    release them with `pakem release`, using only `pakem` and the gap protocol.
 3. GitLab and the `artifact` kind.
-4. **Proof 2:** portfolio and cash-flow-tracker.
+4. **Proof 2:** two more of the owner's projects.
 5. Each area becomes `stable` after its proof; then the kernel rule applies to it.
