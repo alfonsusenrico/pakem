@@ -118,6 +118,15 @@ class StatusTests(StatusUpdateTestCase):
         self.assertEqual(result["status"], "up-to-date")
         self.assertIsNone(result["framework"]["fetch"]["checked_at"])
 
+    def test_update_off_skips_the_automatic_check(self) -> None:
+        self.assert_ok(self.pakem("install", "--apply"))
+        self.assert_ok(self.pakem("config", "set", "update", "off"))
+        self.push_upstream()
+        result = self.status_json()
+        self.assertIsNone(result["framework"]["fetch"]["checked_at"], "no network check by itself")
+        refreshed = self.status_json("--refresh")
+        self.assertIsNotNone(refreshed["framework"]["fetch"]["checked_at"], "an explicit --refresh still fetches")
+
     def test_branch_checkout_turns_the_check_off(self) -> None:
         self.assert_ok(self.pakem("install", "--apply"))
         git(self.framework, "checkout", "-q", "-b", "feat/topic", home=self.home)

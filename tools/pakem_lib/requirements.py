@@ -44,7 +44,7 @@ from .common import (
     toml_value,
     write_text_atomically,
 )
-from .device_config import config_dir
+from .device_config import config_dir, setting
 from .manifest import load_manifest
 
 MACOS = "macos"
@@ -103,8 +103,22 @@ NEED_ORDER = (
     "framework",
     "device-settings",
 )
-# A fresh device gets everything but Node, which only Node projects need (and prepare).
-DEVICE_NEEDS = tuple(need for need in NEED_ORDER if need != "npm")
+FORGE_NEEDS = {"github": ("gh", "github-login"), "gitlab": ("glab", "gitlab-login")}
+CONTAINER_NEEDS = ("docker", "container-runtime")
+
+
+def device_needs() -> tuple[str, ...]:
+    """What `setup device` prepares and `setup check` checks: everything but Node (only Node
+    projects need it, and prepare it), the forges this device uses (`pakem config set forges`),
+    and a container runtime unless `containers` is no."""
+    forges = setting("forges")
+    wanted = set(NEED_ORDER) - {"npm"} - {need for pair in FORGE_NEEDS.values() for need in pair}
+    for forge, needs in FORGE_NEEDS.items():
+        if forges in (forge, "both"):
+            wanted.update(needs)
+    if setting("containers") == "no":
+        wanted -= set(CONTAINER_NEEDS)
+    return tuple(need for need in NEED_ORDER if need in wanted)
 
 
 @dataclass

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,17 @@ class HostTarget:
     max_chars: int | None
     max_bytes: int | None
     must_not_exist: tuple[Path, ...]
+    # Signs the agent host is on this device: paths (~/...) that exist, or commands on PATH.
+    detect: tuple[str, ...] = ()
+
+    def present(self) -> bool:
+        for sign in self.detect:
+            if sign.startswith(("~", "/")):
+                if expand_user_path(sign).exists():
+                    return True
+            elif shutil.which(sign):
+                return True
+        return False
 
 
 def _require_string(table: dict, key: str, host_id: str) -> str:
@@ -71,13 +83,17 @@ def load_targets(path: Path) -> dict[str, HostTarget]:
             must_not_exist=tuple(
                 expand_user_path(item) for item in _optional_string_list(table, "must_not_exist", host_id)
             ),
+            detect=tuple(_optional_string_list(table, "detect", host_id)),
         )
     return targets
 
 
 def select_hosts(targets: dict[str, HostTarget], requested: str | None) -> list[HostTarget]:
+    """The named hosts; without names, the agent hosts found on this device, or every host
+    when none is found yet (a fresh device that installs Pakem before its agents)."""
     if requested is None:
-        return list(targets.values())
+        present = [target for target in targets.values() if target.present()]
+        return present or list(targets.values())
     selected: list[HostTarget] = []
     for host_id in requested.split(","):
         host_id = host_id.strip()

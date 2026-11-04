@@ -93,12 +93,14 @@ def targets_toml(extra_codex_skills_dir: bool = False, claude_max_chars: int = 4
         instructions = "~/.claude/CLAUDE.md"
         skills_dirs = ["~/.claude/skills"]
         max_chars = {claude_max_chars}
+        detect = ["~/.claude"]
 
         [hosts.codex]
         label = "Codex"
         instructions = "~/.codex/AGENTS.md"
         skills_dirs = {codex_dirs}
         max_bytes = 32768
+        detect = ["~/.codex"]
 
         [hosts.antigravity]
         label = "Antigravity"
@@ -106,6 +108,7 @@ def targets_toml(extra_codex_skills_dir: bool = False, claude_max_chars: int = 4
         skills_dirs = ["~/.gemini/config/skills"]
         max_bytes = 24000
         must_not_exist = ["~/.gemini/AGENTS.md"]
+        detect = ["~/.gemini"]
         """
     )
 

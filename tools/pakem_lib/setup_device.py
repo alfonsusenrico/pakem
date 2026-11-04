@@ -16,11 +16,11 @@ from pathlib import Path
 from . import device_key
 from .common import EXIT_DONE, EXIT_OWNER_ACTION, Framework, OwnerActionRequired, display_path
 from .requirements import (
-    DEVICE_NEEDS,
     MACOS,
     SETUP_KEY_ACTION,
     assess,
     detect_device,
+    device_needs,
     device_file,
     device_name,
     prepare,
@@ -32,7 +32,7 @@ from .requirements import (
 
 def run_setup_device(args) -> int:
     framework = Framework(Path(args.root))
-    assessment, done = prepare(framework, DEVICE_NEEDS, args, "pakem setup device")
+    assessment, done = prepare(framework, device_needs(), args, "pakem setup device")
     if not args.plan:
         return report(args, assessment, done, "Result:")
     if args.json:
@@ -47,7 +47,7 @@ def run_setup_device(args) -> int:
 
 def run_setup_check(args) -> int:
     framework = Framework(Path(args.root))
-    assessment = assess(framework, DEVICE_NEEDS, sys.stdin.isatty())
+    assessment = assess(framework, device_needs(), sys.stdin.isatty())
     return report(args, assessment, [], f"pakem setup check ({assessment.device.label})")
 
 

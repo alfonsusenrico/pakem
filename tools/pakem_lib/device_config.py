@@ -14,10 +14,16 @@ from .common import PakemError, display_path, home_dir, write_text_atomically
 CONFIG_NAME = "config.toml"
 UPDATE_NOTIFY = "notify"
 UPDATE_APPLY = "apply"
+UPDATE_OFF = "off"
 # `update apply` is the owner's standing approval for agents to run `pakem update`
-# (ADR 0011, decision 7); `notify` only tells the owner.
+# (ADR 0011, decision 7); `notify` only tells the owner; `off` skips the automatic network
+# check, so only an explicit `pakem update` or `pakem status --refresh` reaches the remote.
+# `forges` and `containers` say what this device works with, so `setup device` and
+# `setup check` prepare only that.
 SETTINGS = {
-    "update": ((UPDATE_NOTIFY, UPDATE_APPLY), UPDATE_NOTIFY),
+    "update": ((UPDATE_NOTIFY, UPDATE_APPLY, UPDATE_OFF), UPDATE_NOTIFY),
+    "forges": (("github", "gitlab", "both"), "github"),
+    "containers": (("yes", "no"), "yes"),
 }
 
 

@@ -180,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--json", action="store_true", help="machine-readable result")
     network = status.add_mutually_exclusive_group()
     network.add_argument(
-        "--refresh", action="store_true", help="fetch origin now (default: at most every 4 hours)"
+        "--refresh", action="store_true", help="fetch origin now (default: at most every 4 hours, never with `pakem config set update off`)"
     )
     network.add_argument("--offline", action="store_true", help="never fetch. Use the last check")
     status.add_argument("--hook", choices=(HOOK_SESSION_START, HOOK_PROMPT), help=argparse.SUPPRESS)

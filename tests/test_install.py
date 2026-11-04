@@ -118,9 +118,20 @@ class InstallTests(IsolatedTestCase):
         self.assertFalse((self.home / ".claude" / "CLAUDE.md").exists())
         self.assertFalse((self.home / ".claude" / "skills" / "demo-skill").exists())
 
+    def test_a_default_install_covers_the_agent_hosts_found_here(self) -> None:
+        (self.home / ".codex").mkdir()
+        completed = self.pakem(*INSTALL, "--apply")
+        self.assert_ok(completed)
+        self.assertIn("Agent hosts found here: Codex. Skipped: Claude Code, Antigravity", completed.stdout)
+        self.assertTrue((self.home / ".codex" / "AGENTS.md").exists())
+        self.assertFalse((self.home / ".claude").exists())
+        self.assertFalse((self.home / ".gemini").exists())
+
     def test_unmanaged_file_is_backed_up_and_restored(self) -> None:
         original = write(self.home / ".claude" / "CLAUDE.md", "my own rules\n")
-        self.assert_ok(self.pakem(*INSTALL, "--apply"))
+        installed = self.pakem(*INSTALL, "--apply")
+        self.assert_ok(installed)
+        self.assertIn("NOTE: your own rules in ~/.claude/CLAUDE.md no longer load", installed.stdout)
         backup = self.manifest()["backups"][0]
         self.assertEqual(backup["original"], "~/.claude/CLAUDE.md")
         backup_file = self.home / backup["backup_path"].removeprefix("~/")

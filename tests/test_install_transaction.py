@@ -10,7 +10,7 @@ from pathlib import Path
 
 from support import IsolatedTestCase, write
 
-INSTALL = ("install", "--allow-dirty", "--apply")
+INSTALL = ("install", "--allow-dirty", "--apply", "--hosts", "claude,codex,antigravity")
 SKILL_DIRS = (".claude/skills", ".agents/skills", ".gemini/config/skills")
 
 
