@@ -28,6 +28,7 @@ from .gaps import STAGES, gaps_report, run_decide
 from .health import add_parser as add_health_parser
 from .health import run_health
 from .project import run_check, run_sync
+from .project_init import CI_RUNNERS as CI_RUNNER_CHOICES
 from .project_init import run_project_adopt, run_project_init
 from .propose import add_parser as add_propose_parser
 from .propose import run_propose
@@ -410,10 +411,15 @@ def build_parser() -> argparse.ArgumentParser:
     adopt.add_argument("directory", nargs="?", default=".", help="the repository (default: here)")
     adopt.add_argument("--repository", help="GitHub owner/name (default: from origin)")
     for starting in (init, adopt):
-        starting.add_argument("--forge", choices=("github", "gitlab"), default="github")
+        starting.add_argument("--forge", choices=("github", "gitlab"), default="github",
+                              help="github (gitlab is refused until GitLab support exists; a GitLab project uses "
+                                   "the GitLab CI templates)")
         starting.add_argument("--description", help="one line: what the project does, and for whom")
         starting.add_argument("--visibility", choices=("private", "public"))
         starting.add_argument("--public", action="store_true", help="same as --visibility public")
+        starting.add_argument("--ci-runner", choices=CI_RUNNER_CHOICES,
+                              help="where a private repository's CI runs (default: self-hosted once this device "
+                                   "knows a host with a runner, else hosted). Public repositories use hosted")
         starting.add_argument("--kind", choices=("service", "artifact", "none"), help="release kind")
         starting.add_argument("--delivery", choices=("us", "others", "nobody"), help="who releases it")
         starting.add_argument("--delivery-note", help="with --delivery others: who, and where our work ends")

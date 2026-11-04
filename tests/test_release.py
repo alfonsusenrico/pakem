@@ -178,6 +178,20 @@ class PublishTests(ReleaseTestCase):
             self.assertIn("deploy/release.toml", tar.getnames())
         self.assertIn("ssh af@203.0.113.7 release", self.calls())
 
+    def test_publish_follows_the_remote_default_branch(self) -> None:
+        origin = self.base / "origin.git"
+        git(self.project, "checkout", "-q", "-b", "trunk", home=self.home)
+        write(self.project / "NOTES.md", "trunk\n")
+        git(self.project, "add", "-A", home=self.home)
+        git(self.project, "commit", "-q", "-m", "docs: trunk", home=self.home)
+        git(self.project, "push", "-q", "origin", "trunk", home=self.home)
+        git(origin, "symbolic-ref", "HEAD", "refs/heads/trunk", home=self.home)
+        trunk = git(self.project, "rev-parse", "HEAD", home=self.home).stdout.strip()
+        self.checks("CI\tcompleted\tsuccess\n")
+        planned = self.release("publish", "--plan")
+        self.assert_ok(planned)
+        self.assertIn(f"origin/trunk is {trunk[:12]}", planned.stdout)
+
     def test_a_kept_commit_is_sent_without_its_archive(self) -> None:
         self.history({"staging": {"running": None, "kept": [self.main], "deployments": []}})
         self.assert_ok(self.release("publish", "--yes"))

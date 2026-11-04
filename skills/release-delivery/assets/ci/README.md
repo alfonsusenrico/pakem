@@ -45,7 +45,7 @@ complete project callers.
 | verify-node | `node_dir` (`.`), `node_version` (`24`), `build_env` (non-secret `NAME=value` lines), `test_cmd` (`npm test`), `runner`, `timeout_minutes` (20) |
 | security | `python_dir` and `node_dir` (empty skips that audit), `uv_version`, `node_version`, `runner`, `timeout_minutes` (15). One job: every check runs even after another fails |
 | database | `stack` (`python` or `node`), `app_dir`, `python_version`, `uv_version`, `node_version`, `install_cmd` (empty: `uv sync --locked` or `npm ci`), `migrate_cmd` (required), `migrate_check_cmd`, `test_cmd` (required), `postgres_image` (`postgres:17`), `runner`, `timeout_minutes` (20) |
-| deploy | `environment` and `sha` (required), `mode` (`deploy` or `rollback`), `tools_dir` (`deploy/af`), `release_ref` (`origin/main`), `protected_environments` (`production`), `smoke_paths`, `tailscale` (true), `tailscale_tags` (`tag:ci`), `runner`, `timeout_minutes` (30); environment variables and secrets per [the deploy README](../deploy/README.md#variables); callers pass `secrets: inherit` |
+| deploy | `environment` and `sha` (required), `mode` (`deploy` or `rollback`), `tools_dir` (`deploy/af`), `release_ref` (`origin/main`), `protected_environments` (`production`), `smoke_paths`, `tailscale` (false; true when the host is reachable only on a tailnet), `tailscale_tags` (`tag:ci`), `runner`, `timeout_minutes` (30); environment variables and secrets per [the deploy README](../deploy/README.md#variables); callers pass `secrets: inherit` |
 
 ### GitLab variables
 
@@ -96,7 +96,7 @@ tag or commit SHA. Alternatively copy them into the project and use `include: lo
   except deploy and rollback jobs, which are `interruptible: false` (a deploy is never
   cancelled halfway). Deploys are serialized per environment by GitHub `concurrency`
   (`cancel-in-progress: false`) and, on both platforms, by the host lock; GitLab templates
-  do not use `resource_group`, which the org instance lacks.
+  do not use `resource_group`, so they run on instances without it.
 - SSH host keys are pinned (`StrictHostKeyChecking=yes` with a stored `known_hosts`), never
   accepted on first use, and no template names a real host.
 - `run:` blocks never contain `${{ }}` expressions: values, and any secret a project adds,
@@ -104,9 +104,9 @@ tag or commit SHA. Alternatively copy them into the project and use `include: lo
   `actions/checkout` runs with `persist-credentials: false`.
 - Commands passed as inputs (`test_cmd`, `migrate_cmd`, ...) run with `eval`; they come from
   the project's own CI file, never from event data such as pull request titles.
-- GitLab jobs use `CI_COMMIT_REF_NAME` and static cache keys (`af-uv-v1`, `af-npm-v1`): the
-  org instance rejects file-derived cache keys and sets the commit-branch variable
-  inconsistently.
+- GitLab jobs use `CI_COMMIT_REF_NAME` and static cache keys (`af-uv-v1`, `af-npm-v1`), so
+  they run on any instance: some reject file-derived cache keys, and the commit-branch
+  variable is unset in merge request pipelines.
 - The GitHub security tools are linux x86_64 binaries; use an x86_64 runner. Self-hosted
   runners need Actions Runner v2.327.1 or later for the node24-based actions.
 - Built for parallel runs on one self-hosted host (`af_runner.sh add-repo <repo> <count>`):

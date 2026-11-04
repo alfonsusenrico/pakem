@@ -214,6 +214,8 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
 
 - **Facts** (asked once on a terminal, or flags; recorded in the committed
   `.pakem/project.toml`): `--description`, `--visibility private|public` (`--public`),
+  `--ci-runner hosted|self-hosted` (private repositories only; default self-hosted once
+  this device knows a host with a runner, else hosted, also without a terminal),
   `--kind service|none` (`artifact` comes later), `--delivery us|others|nobody` (with
   `--delivery-note`), `--environments production|staging,production`, `--stack
   python|node`, `--capabilities` (the registry's names, or `none`; a service adds
@@ -223,10 +225,10 @@ Stage: `experimental` for GitHub (built 2026-10-22; `adopt` proven by Proof 1, `
   - writes the standard files: `AGENTS.md` (purpose, `Capabilities:`, `Delivery:`,
     commands, the generated Open decisions list), `.pakem/`, `.gitignore`,
     `.editorconfig`, OpenSpec `config.yaml`, `research/`, `CHANGELOG.md` (kind not
-    `none`), CI for every delivery (`ci.yml` on push, pull request, and `v*` tags,
+    `none`), CI for every delivery (`ci.yml` on pushes to `main` and pull requests,
     superseded runs cancelled, plus the verify, security, and database templates the
-    capabilities switch on; private repositories run on the self-hosted runner, public ones
-    on GitHub-hosted runners; with `--delivery others --client-ci WHERE` the client runs its
+    capabilities switch on; on the self-hosted runner when the project's `ci_runner` is
+    self-hosted, else on GitHub-hosted runners, always for a public repository; with `--delivery others --client-ci WHERE` the client runs its
     own CI, so none is written and gap `ci.owner` records it), the deploy files for a
     service we release (contracts §4,
     starters marked `pakem:stub`: `compose.yaml`, `Dockerfile`, `deploy/hooks/backup`,

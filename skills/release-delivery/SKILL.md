@@ -31,11 +31,11 @@ environment, one deploy per environment at a time. Use the
 The standard is [deployment contracts v1](references/deployment-contracts.md) (ADR 0009)
 as revised by ADR 0010 (accepted 2026-10-21):
 
-- Each project chooses its builder and trigger: the work GitLab runner, the owner's
+- Each project chooses its builder and trigger: its organization's CI runner, the owner's
   device with the host building from signed source, or free GitHub runners. Never assume
   a hosted CI.
-- Checks run on every push, merge request, and tag on a free runner, separately from
-  releases; a release refuses a commit whose checks did not pass.
+- Checks run on every push and merge request on a free runner, separately from releases;
+  a release refuses a commit whose checks did not pass (a release tag reuses its commit's).
 - Nothing paid unless the project or its profile approves it (ADR 0012).
 - Each of the owner's devices has one dedicated key that connects and signs releases;
   a shared builder (a CI runner, a client platform) gets one key per project.
